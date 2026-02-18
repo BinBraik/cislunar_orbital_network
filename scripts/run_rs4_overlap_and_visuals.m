@@ -1,15 +1,6 @@
 %% RUN_RS4_OVERLAP_AND_VISUALS
 clear; clc;
 
-% --- hard-pin this repo paths ---
-thisFile = mfilename('fullpath');
-repoRoot = fileparts(fileparts(thisFile));
-restoredefaultpath; rehash toolboxcache;
-addpath(repoRoot);
-addpath(fullfile(repoRoot,'src'));
-addpath(fullfile(repoRoot,'scripts'));
-rehash;
-
 % ===================== USER KNOBS =====================
 famA = 'Lyapunov L1';
 famB = 'Resonant 2to1 Unstable';   % <-- change this
