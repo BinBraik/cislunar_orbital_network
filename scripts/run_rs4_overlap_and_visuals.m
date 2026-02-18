@@ -38,6 +38,8 @@ cfg.plot.rs4.overlap_xy = true;
 cfg.plot.rs4.overlap_xyz = false;
 cfg.plot.rs4.combo_xy = true;
 cfg.plot.rs4.combo_xyz = false;
+cfg.plot.rs4.bounds_lb = true;
+cfg.plot.rs4.bounds_ub = true;
 
 rs3_cfg_validate(cfg);
 
@@ -66,5 +68,6 @@ save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap_voxel_info.mat']
 
 rs4_overlap_visualize(O, SA, SB, cfg, outdir, tag);
 rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag);
+rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag);
 
 fprintf('[rs4] Done.\n  outdir: %s\n', outdir);
