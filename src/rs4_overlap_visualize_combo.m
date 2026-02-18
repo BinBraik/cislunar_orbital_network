@@ -74,6 +74,25 @@ if doXY
     cb = colorbar(ax);
     ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
 
+    title(ax, sprintf('A.FRS + B.BRS with overlap \DeltaV_{patch,ub} color | %s', tag), 'Interpreter','none');
+    xlabel(ax,'x'); ylabel(ax,'y');
+    legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','best');
+
+    local_apply_zoom(cfg, ax);
+    rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_scatter'], cfg, 'Resolution', local_fig_res(cfg));
+    local_close_if_hidden(cfg, fig);
+end
+
+% ---------------- 2D XY voxel cells + DVpatch heat ----------------
+fig = figure('Color','w', 'Name',['FRS+BRS cells + DVpatch heat ' tag], 'Visible', local_fig_visible(cfg));
+ax = gca;
+
+    hO = scatter(ax, Ox, Oy, 16, dv_ub_mps, 'filled', ...
+        'MarkerFaceAlpha', 0.95, 'MarkerEdgeAlpha', 0.20);
+
+    cb = colorbar(ax);
+    ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
+
     title(ax, sprintf('A.FRS + B.BRS with overlap \\DeltaV_{patch,ub} color | %s', tag), 'Interpreter','none');
     xlabel(ax,'x'); ylabel(ax,'y');
     legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','best');
@@ -82,6 +101,56 @@ if doXY
     rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_scatter'], cfg, 'Resolution', local_fig_res(cfg));
     local_close_if_hidden(cfg, fig);
 end
+% Build XY occupancy masks using actual voxel cells (not center scatters)
+[iyA, ixA, ~] = ind2sub([Ny, Nx, Nt], idsA);
+[iyB, ixB, ~] = ind2sub([Ny, Nx, Nt], idsB);
+
+maskA = false(Ny, Nx);
+maskB = false(Ny, Nx);
+maskA(sub2ind([Ny, Nx], iyA, ixA)) = true;
+maskB(sub2ind([Ny, Nx], iyB, ixB)) = true;
+
+hA = local_draw_xy_cells(ax, grid3.x_edges, grid3.y_edges, maskA, [0.20 0.45 0.95], 0.14, 0.18);
+hB = local_draw_xy_cells(ax, grid3.x_edges, grid3.y_edges, maskB, [0.92 0.35 0.15], 0.14, 0.18);
+
+% DVpatch upper bound heat per overlap voxel using box speed at center
+% CJ* = min(CJ_A, CJ_B), dv_patch_ub = 2*v_box*sin(dtheta/2), reported in m/s.
+idsO = idsO(:);
+dv_ub = zeros(numel(idsO),1);
+[iyO, ixO, ~] = ind2sub([Ny, Nx, Nt], idsO);
+xO = grid3.x_centers(ixO);
+yO = grid3.y_centers(iyO);
+
+CJstar = min(SA.CJ, SB.CJ);
+VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
+for k = 1:numel(idsO)
+    pot = rs3_core_cr3bp_U_and_derivs(xO(k), yO(k), SA.mu);
+    v_box = sqrt(max(2*pot.U - CJstar, 0));
+    dv_ub(k) = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
+end
+
+dvXY = nan(Ny, Nx);
+if ~isempty(dv_ub)
+    linO = sub2ind([Ny, Nx], iyO, ixO);
+    dvXYmax = accumarray(linO, dv_ub, [Ny*Nx, 1], @max, NaN);
+    dvXY = reshape(dvXYmax, [Ny, Nx]);
+end
+
+maskOxy = ~isnan(dvXY);
+hO = local_draw_xy_heat_cells(ax, grid3.x_edges, grid3.y_edges, maskOxy, dvXY, 0.85, 0.22);
+
+if ~isempty(hO)
+    cb = colorbar(ax);
+    ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
+end
+
+title(ax, sprintf('XY voxel footprint + overlap \DeltaV_{patch,ub} heat | %s', tag), 'Interpreter','none');
+xlabel(ax,'x'); ylabel(ax,'y');
+legend(ax, [hA hB hO], {'A.FRS XY cells', 'B.BRS XY cells', 'Overlap DVpatch UB'}, 'Location','best');
+
+local_apply_zoom(cfg, ax);
+rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_heat'], cfg, 'Resolution', local_fig_res(cfg));
+local_close_if_hidden(cfg, fig);
 
 % ---------------- 3D (x,y,theta) combined ----------------
 if doXYZ
