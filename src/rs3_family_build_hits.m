@@ -17,6 +17,11 @@ function S = rs3_family_build_hits(S, cfg, grid3)
 
 tStart = tic;
 
+% Ensure per-family Keep mask (CJ + primary radii) is used during hit logging.
+if isfield(S,'grid3') && isstruct(S.grid3) && isfield(S.grid3,'Keep')
+    grid3 = S.grid3;
+end
+
 SeedsU = S.SeedsUpper;
 Nseeds = size(SeedsU,1);
 
