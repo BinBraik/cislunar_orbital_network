@@ -62,6 +62,10 @@ save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_atlases.mat']), 'SA','SB
 O = rs4_overlap_pair(SA, SB, cfg);
 save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap.mat']), 'O', '-v7.3');
 
+% Extract voxel-wise candidate metadata for downstream ranking (no ranking yet)
+V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
+save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap_voxel_info.mat']), 'V', '-v7.3');
+
 rs4_overlap_visualize(O, SA, SB, cfg, outdir, tag);
 rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag);
 
