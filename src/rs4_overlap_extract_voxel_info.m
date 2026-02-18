@@ -31,6 +31,9 @@ Ny = numel(grid3.y_centers);
 Nx = numel(grid3.x_centers);
 Nt = numel(grid3.th_centers);
 
+VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
+TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
+
 % ---------- reconstruct full sets exactly as in overlap stage ----------
 rowsA_F_u = SA.Step4.rows_FRS_upper;
 rowsA_B_u = SA.Step4.rows_BRS_upper;
@@ -63,8 +66,8 @@ for k = 1:K
     MA = rs3_rows_to_matrix(rowsA_k);
     MB = rs3_rows_to_matrix(rowsB_k);
 
-    Ainfo = local_side_info(MA, SA, +1);
-    Binfo = local_side_info(MB, SB, -1);
+    Ainfo = local_side_info(MA, SA, +1, VU_mps, TU_days);
+    Binfo = local_side_info(MB, SB, -1, VU_mps, TU_days);
 
     v = local_empty_voxel();
     v.id = id;
@@ -108,6 +111,9 @@ summary.grid = struct('Nx',Nx,'Ny',Ny,'Nt',Nt,'dx',grid3.dx,'dy',grid3.dy,'dthet
 summary.generated = datestr(now, 31);
 summary.note = ['Voxel-wise overlap candidate extraction (seeds/headings/delta/DV-turn/time) ' ...
                 'for post-overlap ranking workflows.'];
+summary.units = struct('dv_turn','m/s','tof','days','dv_turn_nd','nondimensional','tof_nd','nondimensional');
+summary.VU_mps = VU_mps;
+summary.TU_days = TU_days;
 if isfield(cfg,'fan') && isfield(cfg.fan,'DV_cap_nd')
     summary.fan_DV_cap_nd = cfg.fan.DV_cap_nd;
 end
@@ -121,7 +127,7 @@ fprintf('[rs4] extracted voxel metadata: %d overlap voxels\n', K);
 end
 
 % -------------------------------------------------------------------------
-function info = local_side_info(M, S, sideSign)
+function info = local_side_info(M, S, sideSign, VU_mps, TU_days)
 % M columns: [iSeed iHead leg t ix iy it halfFlag]
 
 info = struct();
@@ -145,8 +151,12 @@ if isempty(M)
     info.heading_th = zeros(0,1);
     info.v0 = zeros(0,1);
     info.dv_turn = zeros(0,1);
+    info.t_days = zeros(0,1);
+    info.dv_turn_mps = zeros(0,1);
     info.t_min = NaN; info.t_max = NaN; info.t_mean = NaN;
+    info.t_days_min = NaN; info.t_days_max = NaN; info.t_days_mean = NaN;
     info.dv_turn_min = NaN; info.dv_turn_max = NaN; info.dv_turn_mean = NaN;
+    info.dv_turn_mps_min = NaN; info.dv_turn_mps_max = NaN; info.dv_turn_mps_mean = NaN;
     info.sideSign = sideSign;
     return;
 end
@@ -214,9 +224,13 @@ info.seed_th = seed_th;
 info.heading_th = heading_th;
 info.v0 = v0;
 info.dv_turn = dv_turn;
+info.t_days = t * TU_days;
+info.dv_turn_mps = dv_turn * VU_mps;
 
 info.t_min = min(t); info.t_max = max(t); info.t_mean = mean(t);
+info.t_days_min = min(info.t_days); info.t_days_max = max(info.t_days); info.t_days_mean = mean(info.t_days);
 info.dv_turn_min = min(dv_turn); info.dv_turn_max = max(dv_turn); info.dv_turn_mean = mean(dv_turn);
+info.dv_turn_mps_min = min(info.dv_turn_mps); info.dv_turn_mps_max = max(info.dv_turn_mps); info.dv_turn_mps_mean = mean(info.dv_turn_mps);
 info.sideSign = sideSign;
 end
 
@@ -267,4 +281,25 @@ v = struct('id',NaN, 'ix',NaN, 'iy',NaN, 'it',NaN, 'x',NaN, 'y',NaN, 'th',NaN, .
     'uniqueSeedsA',0, 'uniqueSeedsB',0, 'uniqueHeadsA',0, 'uniqueHeadsB',0, ...
     'uniqueSeedHeadPairsA',0, 'uniqueSeedHeadPairsB',0, ...
     'A',struct(), 'B',struct());
+end
+
+
+function v = local_cfg_get(cfg, path, defaultVal)
+v = defaultVal;
+try
+    parts = strsplit(path, '.');
+    cur = cfg;
+    for i = 1:numel(parts)
+        k = parts{i};
+        if ~isstruct(cur) || ~isfield(cur, k)
+            return;
+        end
+        cur = cur.(k);
+    end
+    if ~isempty(cur)
+        v = cur;
+    end
+catch
+    v = defaultVal;
+end
 end

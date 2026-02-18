@@ -66,6 +66,66 @@ local_apply_zoom(cfg, ax);
 rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy'], cfg, 'Resolution', local_fig_res(cfg));
 local_close_if_hidden(cfg, fig);
 
+% ---------------- 2D XY voxel cells + DVpatch heat ----------------
+fig = figure('Color','w', 'Name',['FRS+BRS cells + DVpatch heat ' tag], 'Visible', local_fig_visible(cfg));
+ax = gca;
+
+CJbg = min(SA.CJ, SB.CJ);
+rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
+set(ax.Children,'HandleVisibility','off');
+hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
+
+% Build XY occupancy masks using actual voxel cells (not center scatters)
+[iyA, ixA, ~] = ind2sub([Ny, Nx, Nt], idsA);
+[iyB, ixB, ~] = ind2sub([Ny, Nx, Nt], idsB);
+
+maskA = false(Ny, Nx);
+maskB = false(Ny, Nx);
+maskA(sub2ind([Ny, Nx], iyA, ixA)) = true;
+maskB(sub2ind([Ny, Nx], iyB, ixB)) = true;
+
+hA = local_draw_xy_cells(ax, grid3.x_edges, grid3.y_edges, maskA, [0.20 0.45 0.95], 0.14, 0.18);
+hB = local_draw_xy_cells(ax, grid3.x_edges, grid3.y_edges, maskB, [0.92 0.35 0.15], 0.14, 0.18);
+
+% DVpatch upper bound heat per overlap voxel using box speed at center
+% CJ* = min(CJ_A, CJ_B), dv_patch_ub = 2*v_box*sin(dtheta/2), reported in m/s.
+idsO = idsO(:);
+dv_ub = zeros(numel(idsO),1);
+[iyO, ixO, ~] = ind2sub([Ny, Nx, Nt], idsO);
+xO = grid3.x_centers(ixO);
+yO = grid3.y_centers(iyO);
+
+CJstar = min(SA.CJ, SB.CJ);
+VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
+for k = 1:numel(idsO)
+    pot = rs3_core_cr3bp_U_and_derivs(xO(k), yO(k), SA.mu);
+    v_box = sqrt(max(2*pot.U - CJstar, 0));
+    dv_ub(k) = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
+end
+
+dvXY = nan(Ny, Nx);
+if ~isempty(dv_ub)
+    linO = sub2ind([Ny, Nx], iyO, ixO);
+    dvXYmax = accumarray(linO, dv_ub, [Ny*Nx, 1], @max, NaN);
+    dvXY = reshape(dvXYmax, [Ny, Nx]);
+end
+
+maskOxy = ~isnan(dvXY);
+hO = local_draw_xy_heat_cells(ax, grid3.x_edges, grid3.y_edges, maskOxy, dvXY, 0.85, 0.22);
+
+if ~isempty(hO)
+    cb = colorbar(ax);
+    ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
+end
+
+title(ax, sprintf('XY voxel footprint + overlap \DeltaV_{patch,ub} heat | %s', tag), 'Interpreter','none');
+xlabel(ax,'x'); ylabel(ax,'y');
+legend(ax, [hA hB hO], {'A.FRS XY cells', 'B.BRS XY cells', 'Overlap DVpatch UB'}, 'Location','best');
+
+local_apply_zoom(cfg, ax);
+rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_heat'], cfg, 'Resolution', local_fig_res(cfg));
+local_close_if_hidden(cfg, fig);
+
 % ---------------- 3D (x,y,theta) combined ----------------
 fig = figure('Color','w', 'Name',['FRS+BRS+Overlap 3D ' tag], 'Visible', local_fig_visible(cfg));
 ax = gca;
@@ -166,5 +226,85 @@ function local_apply_zoom(cfg, ax)
 if isfield(cfg,'diag') && isfield(cfg.diag,'zoom') && isfield(cfg.diag.zoom,'enable') && cfg.diag.zoom.enable
     if isfield(cfg.diag.zoom,'xlim') && ~isempty(cfg.diag.zoom.xlim), xlim(ax, cfg.diag.zoom.xlim); end
     if isfield(cfg.diag.zoom,'ylim') && ~isempty(cfg.diag.zoom.ylim), ylim(ax, cfg.diag.zoom.ylim); end
+end
+end
+
+function h = local_draw_xy_cells(ax, x_edges, y_edges, maskXY, faceColor, faceAlpha, edgeAlpha)
+h = gobjects(0);
+[Ny, Nx] = size(maskXY);
+for iy = 1:Ny
+    for ix = 1:Nx
+        if ~maskXY(iy, ix), continue; end
+        x1 = x_edges(ix); x2 = x_edges(ix+1);
+        y1 = y_edges(iy); y2 = y_edges(iy+1);
+        h(end+1) = patch(ax, [x1 x2 x2 x1], [y1 y1 y2 y2], faceColor, ...
+            'FaceAlpha', faceAlpha, 'EdgeColor', faceColor, 'EdgeAlpha', edgeAlpha, ...
+            'LineWidth', 0.5); %#ok<AGROW>
+    end
+end
+if isempty(h)
+    h = patch(ax, nan, nan, faceColor, 'FaceAlpha', faceAlpha, 'EdgeColor', faceColor, 'EdgeAlpha', edgeAlpha);
+else
+    h = h(1);
+end
+end
+
+function h = local_draw_xy_heat_cells(ax, x_edges, y_edges, maskXY, valXY, faceAlpha, edgeAlpha)
+h = gobjects(0);
+[Ny, Nx] = size(maskXY);
+
+vals = valXY(maskXY);
+if isempty(vals)
+    h = patch(ax, nan, nan, [0.4 0.4 0.4], 'FaceAlpha', faceAlpha, 'EdgeColor', [0.2 0.2 0.2], 'EdgeAlpha', edgeAlpha);
+    return;
+end
+
+vmin = min(vals);
+vmax = max(vals);
+if abs(vmax - vmin) < 1e-14
+    vmax = vmin + 1e-14;
+end
+
+cmap = parula(256);
+for iy = 1:Ny
+    for ix = 1:Nx
+        if ~maskXY(iy, ix), continue; end
+        v = valXY(iy, ix);
+        a = (v - vmin) / (vmax - vmin);
+        a = max(0, min(1, a));
+        ci = 1 + floor(a * (size(cmap,1)-1));
+        c = cmap(ci,:);
+
+        x1 = x_edges(ix); x2 = x_edges(ix+1);
+        y1 = y_edges(iy); y2 = y_edges(iy+1);
+        h(end+1) = patch(ax, [x1 x2 x2 x1], [y1 y1 y2 y2], c, ...
+            'FaceAlpha', faceAlpha, 'EdgeColor', [0.12 0.12 0.12], ...
+            'EdgeAlpha', edgeAlpha, 'LineWidth', 0.6); %#ok<AGROW>
+    end
+end
+
+colormap(ax, cmap);
+caxis(ax, [vmin, vmax]);
+
+if isempty(h)
+    h = patch(ax, nan, nan, [0.7 0.7 0.7], 'FaceAlpha', faceAlpha, 'EdgeColor', [0.2 0.2 0.2], 'EdgeAlpha', edgeAlpha);
+else
+    h = h(1);
+end
+end
+
+function v = local_cfg_get(cfg, path, defaultVal)
+v = defaultVal;
+try
+    parts = strsplit(path, '.');
+    cur = cfg;
+    for i = 1:numel(parts)
+        k = parts{i};
+        if ~isstruct(cur) || ~isfield(cur, k), return; end
+        cur = cur.(k);
+    end
+    if ~isempty(cur), v = cur; end
+catch
+    v = defaultVal;
 end
 end
