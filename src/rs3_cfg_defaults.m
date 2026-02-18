@@ -85,7 +85,7 @@ cfg.cache = struct();
 cfg.cache.enable = true;
 cfg.cache.dir = fullfile(rs3_repo_root(), 'rs3_cache');
 cfg.cache.rebuild = false;
-cfg.cache.version_tag = 'rs3_v1_packed';  % v1: packed rows, no lower storage
+cfg.cache.version_tag = 'rs3_v2_keep_masked';  % v2: packed rows + center-level Keep filtering
 cfg.cache.store_entry_state = false;
 cfg.cache.store_dense_po = false;
 
