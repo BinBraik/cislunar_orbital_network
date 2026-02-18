@@ -1,8 +1,8 @@
 function rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag)
 %RS4_OVERLAP_VISUALIZE_COMBO
-% Plot A.FRS_full, B.BRS_full, and their overlap together.
-% Outputs:
-%   - 2D XY combined plot on cislunar background
+% Plot A.FRS_full, B.BRS_full, and overlap together.
+% Optional outputs:
+%   - 2D XY scatter with overlap colored by DVpatch upper bound (m/s)
 %   - 3D (x,y,theta) combined scatter
 
 if nargin < 6 || isempty(tag), tag = 'combo'; end
@@ -11,7 +11,6 @@ if ~exist(outdir,'dir'), mkdir(outdir); end
 
 grid3 = SA.grid3;
 
-% Robust dims
 Nx = numel(grid3.x_centers);
 Ny = numel(grid3.y_centers);
 Nt = numel(grid3.th_centers);
@@ -19,13 +18,11 @@ Nt = numel(grid3.th_centers);
 safeTag = rs3_sanitize_fname(tag);
 
 % ---------------- FULL sets ----------------
-% A.FRS_full
 rowsA_F_u = SA.Step4.rows_FRS_upper;
 rowsA_B_u = SA.Step4.rows_BRS_upper;
 rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
 rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
 
-% B.BRS_full
 rowsB_B_u = SB.Step4.rows_BRS_upper;
 rowsB_F_u = SB.Step4.rows_FRS_upper;
 rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
@@ -33,38 +30,58 @@ rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
 
 idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
 idsB = unique(local_rows_to_vid(rowsB_B, Ny, Nx, Nt));
-idsO = O.ids(:);  % already unique from overlap
+idsO = O.ids(:);
 
-% exclusive parts (nice visual)
 idsA_only = setdiff(idsA, idsO);
 idsB_only = setdiff(idsB, idsO);
 
-% Convert to (x,y,theta) centers for plotting
 [Ax, Ay, Ath] = local_ids_to_centers(idsA_only, grid3, Ny, Nx, Nt);
 [Bx, By, Bth] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
 [Ox, Oy, Oth] = local_ids_to_centers(idsO,      grid3, Ny, Nx, Nt);
 
+doXY  = local_plot_enabled(cfg, 'plot.rs4.combo_xy', true);
+doXYZ = local_plot_enabled(cfg, 'plot.rs4.combo_xyz', true);
+
 % ---------------- 2D XY combined ----------------
-fig = figure('Color','w', 'Name',['FRS+BRS+Overlap XY ' tag], 'Visible', local_fig_visible(cfg));
-ax = gca;
+if doXY
+    fig = figure('Color','w', 'Name',['FRS+BRS+Overlap XY ' tag], 'Visible', local_fig_visible(cfg));
+    ax = gca;
 
-CJbg = min(SA.CJ, SB.CJ);
-rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
-set(ax.Children,'HandleVisibility','off');
-hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
+    CJbg = min(SA.CJ, SB.CJ);
+    rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
+    set(ax.Children,'HandleVisibility','off');
+    hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
 
-% Plot exclusive parts faint-ish by marker style
-hA = plot(ax, Ax, Ay, '.', 'MarkerSize', 6);       % A only
-hB = plot(ax, Bx, By, '.', 'MarkerSize', 6);       % B only
-hO = plot(ax, Ox, Oy, 'o', 'MarkerSize', 4);       % overlap highlighted
+    % Faint non-overlap points
+    hA = scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.', ...
+        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
+    hB = scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.', ...
+        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
 
-title(ax, sprintf('A.FRS (full) + B.BRS (full) + Overlap | %s', tag), 'Interpreter','none');
-xlabel(ax,'x'); ylabel(ax,'y');
-legend(ax, [hA hB hO], {'A.FRS only', 'B.BRS only', 'Overlap'}, 'Location','best');
+    % Overlap points colored by DVpatch upper bound (m/s)
+    CJstar = min(SA.CJ, SB.CJ);
+    VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
+    dv_ub_mps = zeros(numel(Ox),1);
+    for k = 1:numel(Ox)
+        pot = rs3_core_cr3bp_U_and_derivs(Ox(k), Oy(k), SA.mu);
+        v_box = sqrt(max(2*pot.U - CJstar, 0));
+        dv_ub_mps(k) = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
+    end
 
-local_apply_zoom(cfg, ax);
-rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy'], cfg, 'Resolution', local_fig_res(cfg));
-local_close_if_hidden(cfg, fig);
+    hO = scatter(ax, Ox, Oy, 16, dv_ub_mps, 'filled', ...
+        'MarkerFaceAlpha', 0.95, 'MarkerEdgeAlpha', 0.20);
+
+    cb = colorbar(ax);
+    ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
+
+    title(ax, sprintf('A.FRS + B.BRS with overlap \DeltaV_{patch,ub} color | %s', tag), 'Interpreter','none');
+    xlabel(ax,'x'); ylabel(ax,'y');
+    legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','best');
+
+    local_apply_zoom(cfg, ax);
+    rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_scatter'], cfg, 'Resolution', local_fig_res(cfg));
+    local_close_if_hidden(cfg, fig);
+end
 
 % ---------------- 2D XY voxel cells + DVpatch heat ----------------
 fig = figure('Color','w', 'Name',['FRS+BRS cells + DVpatch heat ' tag], 'Visible', local_fig_visible(cfg));
@@ -127,23 +144,24 @@ rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_heat'], cfg, 
 local_close_if_hidden(cfg, fig);
 
 % ---------------- 3D (x,y,theta) combined ----------------
-fig = figure('Color','w', 'Name',['FRS+BRS+Overlap 3D ' tag], 'Visible', local_fig_visible(cfg));
-ax = gca;
+if doXYZ
+    fig = figure('Color','w', 'Name',['FRS+BRS+Overlap 3D ' tag], 'Visible', local_fig_visible(cfg));
+    ax = gca;
 
-% Use different marker types so it’s clear even without color assumptions
-hA = scatter3(ax, Ax, Ay, Ath, 8, '.', 'MarkerEdgeAlpha', 0.7);
-hold(ax,'on');
-hB = scatter3(ax, Bx, By, Bth, 8, '.', 'MarkerEdgeAlpha', 0.7);
-hO = scatter3(ax, Ox, Oy, Oth, 18, 'o', 'filled');  % overlap strong
+    hA = scatter3(ax, Ax, Ay, Ath, 8, [0.20 0.45 0.95], '.', 'MarkerEdgeAlpha', 0.20);
+    hold(ax,'on');
+    hB = scatter3(ax, Bx, By, Bth, 8, [0.92 0.35 0.15], '.', 'MarkerEdgeAlpha', 0.20);
+    hO = scatter3(ax, Ox, Oy, Oth, 20, [0.10 0.65 0.35], 'o', 'filled', 'MarkerFaceAlpha', 0.95, 'MarkerEdgeAlpha', 0.3);
 
-grid(ax,'on');
-xlabel(ax,'x'); ylabel(ax,'y'); zlabel(ax,'\theta (rad)');
-title(ax, sprintf('Overlap in (x,y,\\theta) | %s', tag), 'Interpreter','none');
-legend(ax, [hA hB hO], {'A.FRS only', 'B.BRS only', 'Overlap'}, 'Location','best');
-view(ax, 35, 20);
+    grid(ax,'on');
+    xlabel(ax,'x'); ylabel(ax,'y'); zlabel(ax,'\theta (rad)');
+    title(ax, sprintf('Overlap in (x,y,\\theta) | %s', tag), 'Interpreter','none');
+    legend(ax, [hA hB hO], {'A.FRS only', 'B.BRS only', 'Overlap'}, 'Location','best');
+    view(ax, 35, 20);
 
-rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xyz'], cfg, 'Resolution', local_fig_res(cfg));
-local_close_if_hidden(cfg, fig);
+    rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xyz'], cfg, 'Resolution', local_fig_res(cfg));
+    local_close_if_hidden(cfg, fig);
+end
 
 end
 
@@ -229,70 +247,6 @@ if isfield(cfg,'diag') && isfield(cfg.diag,'zoom') && isfield(cfg.diag.zoom,'ena
 end
 end
 
-function h = local_draw_xy_cells(ax, x_edges, y_edges, maskXY, faceColor, faceAlpha, edgeAlpha)
-h = gobjects(0);
-[Ny, Nx] = size(maskXY);
-for iy = 1:Ny
-    for ix = 1:Nx
-        if ~maskXY(iy, ix), continue; end
-        x1 = x_edges(ix); x2 = x_edges(ix+1);
-        y1 = y_edges(iy); y2 = y_edges(iy+1);
-        h(end+1) = patch(ax, [x1 x2 x2 x1], [y1 y1 y2 y2], faceColor, ...
-            'FaceAlpha', faceAlpha, 'EdgeColor', faceColor, 'EdgeAlpha', edgeAlpha, ...
-            'LineWidth', 0.5); %#ok<AGROW>
-    end
-end
-if isempty(h)
-    h = patch(ax, nan, nan, faceColor, 'FaceAlpha', faceAlpha, 'EdgeColor', faceColor, 'EdgeAlpha', edgeAlpha);
-else
-    h = h(1);
-end
-end
-
-function h = local_draw_xy_heat_cells(ax, x_edges, y_edges, maskXY, valXY, faceAlpha, edgeAlpha)
-h = gobjects(0);
-[Ny, Nx] = size(maskXY);
-
-vals = valXY(maskXY);
-if isempty(vals)
-    h = patch(ax, nan, nan, [0.4 0.4 0.4], 'FaceAlpha', faceAlpha, 'EdgeColor', [0.2 0.2 0.2], 'EdgeAlpha', edgeAlpha);
-    return;
-end
-
-vmin = min(vals);
-vmax = max(vals);
-if abs(vmax - vmin) < 1e-14
-    vmax = vmin + 1e-14;
-end
-
-cmap = parula(256);
-for iy = 1:Ny
-    for ix = 1:Nx
-        if ~maskXY(iy, ix), continue; end
-        v = valXY(iy, ix);
-        a = (v - vmin) / (vmax - vmin);
-        a = max(0, min(1, a));
-        ci = 1 + floor(a * (size(cmap,1)-1));
-        c = cmap(ci,:);
-
-        x1 = x_edges(ix); x2 = x_edges(ix+1);
-        y1 = y_edges(iy); y2 = y_edges(iy+1);
-        h(end+1) = patch(ax, [x1 x2 x2 x1], [y1 y1 y2 y2], c, ...
-            'FaceAlpha', faceAlpha, 'EdgeColor', [0.12 0.12 0.12], ...
-            'EdgeAlpha', edgeAlpha, 'LineWidth', 0.6); %#ok<AGROW>
-    end
-end
-
-colormap(ax, cmap);
-caxis(ax, [vmin, vmax]);
-
-if isempty(h)
-    h = patch(ax, nan, nan, [0.7 0.7 0.7], 'FaceAlpha', faceAlpha, 'EdgeColor', [0.2 0.2 0.2], 'EdgeAlpha', edgeAlpha);
-else
-    h = h(1);
-end
-end
-
 function v = local_cfg_get(cfg, path, defaultVal)
 v = defaultVal;
 try
@@ -306,5 +260,21 @@ try
     if ~isempty(cur), v = cur; end
 catch
     v = defaultVal;
+end
+end
+
+function tf = local_plot_enabled(cfg, path, defaultVal)
+tf = logical(defaultVal);
+try
+    parts = strsplit(path, '.');
+    cur = cfg;
+    for i = 1:numel(parts)
+        k = parts{i};
+        if ~isstruct(cur) || ~isfield(cur, k), return; end
+        cur = cur.(k);
+    end
+    tf = logical(cur);
+catch
+    tf = logical(defaultVal);
 end
 end

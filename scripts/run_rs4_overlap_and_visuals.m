@@ -32,6 +32,13 @@ cfg.diag.zoom.enable = false;
 cfg.diag.zoom.xlim = [0.70 1.25];
 cfg.diag.zoom.ylim = [-0.45 0.45];
 
+
+% Figure toggles (optional)
+cfg.plot.rs4.overlap_xy = true;
+cfg.plot.rs4.overlap_xyz = false;
+cfg.plot.rs4.combo_xy = true;
+cfg.plot.rs4.combo_xyz = false;
+
 rs3_cfg_validate(cfg);
 
 outdir = fullfile(cfg.io.out_root, cfg.io.tag);
