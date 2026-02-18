@@ -60,6 +60,21 @@ frac = cfg.log.segwalk.frac;
 dx = grid3.dx; dy = grid3.dy; dth = grid3.dtheta;
 doSegwalk = cfg.log.segwalk.enable;
 
+% Optional center-based admissibility mask (Ny x Nx):
+% - forbidden region exclusion
+% - Earth/Moon interior exclusion
+useKeep = false;
+keepXY = [];
+if isfield(grid3,'Keep') && ~isempty(grid3.Keep)
+    keepXY = logical(grid3.Keep);
+    if isequal(size(keepXY), [grid3.Ny, grid3.Nx])
+        useKeep = true;
+    elseif isequal(size(keepXY), [grid3.Nx, grid3.Ny])
+        keepXY = keepXY.';
+        useKeep = true;
+    end
+end
+
 prev_ix = uint16(0); prev_iy = uint16(0); prev_it = uint16(0);
 prevSet = false;
 
@@ -95,6 +110,10 @@ for k = 1:(nPts - 1)
             continue;
         end
         cix = uint16(cix); ciy = uint16(ciy); cit = uint16(cit);
+
+        if useKeep && ~keepXY(double(ciy), double(cix))
+            continue;
+        end
 
         if ~prevSet || cix ~= prev_ix || ciy ~= prev_iy || cit ~= prev_it
             nRow = nRow + 1;
