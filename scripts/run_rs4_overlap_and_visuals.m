@@ -41,6 +41,15 @@ cfg.diag.zoom.enable = false;
 cfg.diag.zoom.xlim = [0.70 1.25];
 cfg.diag.zoom.ylim = [-0.45 0.45];
 
+
+% Figure toggles (optional)
+cfg.plot.rs4.overlap_xy = true;
+cfg.plot.rs4.overlap_xyz = false;
+cfg.plot.rs4.combo_xy = true;
+cfg.plot.rs4.combo_xyz = false;
+cfg.plot.rs4.bounds_lb = true;
+cfg.plot.rs4.bounds_ub = true;
+
 rs3_cfg_validate(cfg);
 
 outdir = fullfile(cfg.io.out_root, cfg.io.tag);
@@ -62,7 +71,12 @@ save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_atlases.mat']), 'SA','SB
 O = rs4_overlap_pair(SA, SB, cfg);
 save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap.mat']), 'O', '-v7.3');
 
+% Extract voxel-wise candidate metadata for downstream ranking (no ranking yet)
+V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
+save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap_voxel_info.mat']), 'V', '-v7.3');
+
 rs4_overlap_visualize(O, SA, SB, cfg, outdir, tag);
 rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag);
+rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag);
 
 fprintf('[rs4] Done.\n  outdir: %s\n', outdir);
