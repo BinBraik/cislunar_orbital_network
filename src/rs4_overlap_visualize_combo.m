@@ -87,11 +87,20 @@ end
 fig = figure('Color','w', 'Name',['FRS+BRS cells + DVpatch heat ' tag], 'Visible', local_fig_visible(cfg));
 ax = gca;
 
-CJbg = min(SA.CJ, SB.CJ);
-rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
-set(ax.Children,'HandleVisibility','off');
-hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
+    hO = scatter(ax, Ox, Oy, 16, dv_ub_mps, 'filled', ...
+        'MarkerFaceAlpha', 0.95, 'MarkerEdgeAlpha', 0.20);
 
+    cb = colorbar(ax);
+    ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
+
+    title(ax, sprintf('A.FRS + B.BRS with overlap \\DeltaV_{patch,ub} color | %s', tag), 'Interpreter','none');
+    xlabel(ax,'x'); ylabel(ax,'y');
+    legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','best');
+
+    local_apply_zoom(cfg, ax);
+    rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_scatter'], cfg, 'Resolution', local_fig_res(cfg));
+    local_close_if_hidden(cfg, fig);
+end
 % Build XY occupancy masks using actual voxel cells (not center scatters)
 [iyA, ixA, ~] = ind2sub([Ny, Nx, Nt], idsA);
 [iyB, ixB, ~] = ind2sub([Ny, Nx, Nt], idsB);
