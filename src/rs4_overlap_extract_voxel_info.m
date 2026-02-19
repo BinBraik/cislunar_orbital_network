@@ -187,7 +187,7 @@ v0   = sqrt(max(2*pot.U - S.CJ, 0));
 
 dv_nd  = 2 * v0 .* sin(abs(delta) / 2);
 dv_mps = dv_nd * VU_mps;
-t_days = t_nd  * TU_days;
+t_days = abs(t_nd) * TU_days;   % abs: BRS stores t < 0 (backward propagation)
 
 iSeed_out = iSeed;
 iHead_out = iHead;
