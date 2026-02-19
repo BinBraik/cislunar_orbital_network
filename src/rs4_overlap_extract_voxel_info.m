@@ -33,6 +33,12 @@ Nt = numel(grid3.th_centers);
 
 VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
 TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
+usePar = local_cfg_get(cfg, 'rs4.extract.parallel', false);
+
+if usePar && isempty(gcp('nocreate'))
+    warning('[rs4] cfg.rs4.extract.parallel=true but no parpool exists. Running serial extraction.');
+    usePar = false;
+end
 
 % ---------- reconstruct full sets exactly as in overlap stage ----------
 rowsA_F_u = SA.Step4.rows_FRS_upper;
@@ -48,59 +54,34 @@ rowsB_B = local_rows_cat(rowsB_B_u, rowsB_B_l);
 idsA = rs3_rows_to_voxelid(rowsA_F, grid3);
 idsB = rs3_rows_to_voxelid(rowsB_B, grid3);
 
+[uA, idxCellsA] = local_group_indices(idsA);
+[uB, idxCellsB] = local_group_indices(idsB);
+
 idsO = O.ids(:);
 K = numel(idsO);
 
+[tfA, locA] = ismember(idsO, uA);
+[tfB, locB] = ismember(idsO, uB);
+
+cacheA = local_build_side_cache(SA);
+cacheB = local_build_side_cache(SB);
+
 voxels = repmat(local_empty_voxel(), K, 1);
 
-for k = 1:K
-    id = idsO(k);
-    [iy, ix, it] = ind2sub([Ny, Nx, Nt], id);
-
-    idxA = find(idsA == id);
-    idxB = find(idsB == id);
-
-    rowsA_k = rs3_rows_subset(rowsA_F, idxA);
-    rowsB_k = rs3_rows_subset(rowsB_B, idxB);
-
-    MA = rs3_rows_to_matrix(rowsA_k);
-    MB = rs3_rows_to_matrix(rowsB_k);
-
-    Ainfo = local_side_info(MA, SA, +1, VU_mps, TU_days);
-    Binfo = local_side_info(MB, SB, -1, VU_mps, TU_days);
-
-    v = local_empty_voxel();
-    v.id = id;
-    v.ix = ix; v.iy = iy; v.it = it;
-    v.x = grid3.x_centers(ix);
-    v.y = grid3.y_centers(iy);
-    v.th = grid3.th_centers(it);
-
-    if isfield(O,'countA') && numel(O.countA) >= k
-        v.countA = O.countA(k);
-    else
-        v.countA = numel(idxA);
+if usePar
+    parfor k = 1:K
+        idxA_k = local_group_fetch(tfA(k), locA(k), idxCellsA);
+        idxB_k = local_group_fetch(tfB(k), locB(k), idxCellsB);
+        voxels(k) = local_build_voxel_entry(k, idsO, O, idxA_k, idxB_k, rowsA_F, rowsB_B, ...
+            cacheA, cacheB, VU_mps, TU_days, grid3, Ny, Nx, Nt);
     end
-    if isfield(O,'countB') && numel(O.countB) >= k
-        v.countB = O.countB(k);
-    else
-        v.countB = numel(idxB);
+else
+    for k = 1:K
+        idxA_k = local_group_fetch(tfA(k), locA(k), idxCellsA);
+        idxB_k = local_group_fetch(tfB(k), locB(k), idxCellsB);
+        voxels(k) = local_build_voxel_entry(k, idsO, O, idxA_k, idxB_k, rowsA_F, rowsB_B, ...
+            cacheA, cacheB, VU_mps, TU_days, grid3, Ny, Nx, Nt);
     end
-
-    v.nRowsA = size(MA,1);
-    v.nRowsB = size(MB,1);
-
-    v.uniqueSeedsA = Ainfo.uniqueSeeds;
-    v.uniqueSeedsB = Binfo.uniqueSeeds;
-    v.uniqueHeadsA = Ainfo.uniqueHeads;
-    v.uniqueHeadsB = Binfo.uniqueHeads;
-    v.uniqueSeedHeadPairsA = Ainfo.uniqueSeedHeadPairs;
-    v.uniqueSeedHeadPairsB = Binfo.uniqueSeedHeadPairs;
-
-    v.A = Ainfo;
-    v.B = Binfo;
-
-    voxels(k) = v;
 end
 
 summary = struct();
@@ -127,7 +108,7 @@ fprintf('[rs4] extracted voxel metadata: %d overlap voxels\n', K);
 end
 
 % -------------------------------------------------------------------------
-function info = local_side_info(M, S, sideSign, VU_mps, TU_days)
+function info = local_side_info(M, cache, sideSign, VU_mps, TU_days)
 % M columns: [iSeed iHead leg t ix iy it halfFlag]
 
 info = struct();
@@ -171,35 +152,33 @@ it = M(:,7);
 halfFlag = M(:,8);
 
 n = size(M,1);
-delta = zeros(n,1);
+
+delta = local_lookup_delta_vec(cache.delta_lists, iSeed, iHead);
+
+isUpper = halfFlag >= 0;
 seed_x = zeros(n,1);
 seed_y = zeros(n,1);
 seed_th = zeros(n,1);
-heading_th = zeros(n,1);
 v0 = zeros(n,1);
-dv_turn = zeros(n,1);
 
-for i = 1:n
-    sidx = iSeed(i);
-    hidx = iHead(i);
-
-    delta(i) = local_lookup_delta(S.Step4.delta_lists, sidx, hidx);
-
-    if halfFlag(i) >= 0
-        seed = S.SeedsUpper(sidx,:);
-    else
-        seed = S.SeedsLower(sidx,:);
-    end
-
-    seed_x(i) = seed(1);
-    seed_y(i) = seed(2);
-    seed_th(i) = seed(3);
-    heading_th(i) = rs3_wrapToPi(seed_th(i) + delta(i));
-
-    pot = rs3_core_cr3bp_U_and_derivs(seed_x(i), seed_y(i), S.mu);
-    v0(i) = sqrt(max(2*pot.U - S.CJ, 0));
-    dv_turn(i) = 2*v0(i)*sin(abs(delta(i))/2);
+if any(isUpper)
+    iu = iSeed(isUpper);
+    seed_x(isUpper) = cache.SeedsUpper(iu,1);
+    seed_y(isUpper) = cache.SeedsUpper(iu,2);
+    seed_th(isUpper) = cache.SeedsUpper(iu,3);
+    v0(isUpper) = cache.v0_upper(iu);
 end
+
+if any(~isUpper)
+    il = iSeed(~isUpper);
+    seed_x(~isUpper) = cache.SeedsLower(il,1);
+    seed_y(~isUpper) = cache.SeedsLower(il,2);
+    seed_th(~isUpper) = cache.SeedsLower(il,3);
+    v0(~isUpper) = cache.v0_lower(il);
+end
+
+heading_th = rs3_wrapToPi(seed_th + delta);
+dv_turn = 2*v0.*sin(abs(delta)/2);
 
 pairs = [iSeed, iHead];
 
@@ -246,6 +225,90 @@ if isempty(v) || iHead < 1 || iHead > numel(v)
     return;
 end
 d = double(v(iHead));
+end
+
+% -------------------------------------------------------------------------
+function d = local_lookup_delta_vec(delta_lists, iSeed, iHead)
+n = numel(iSeed);
+d = NaN(n,1);
+for i = 1:n
+    d(i) = local_lookup_delta(delta_lists, iSeed(i), iHead(i));
+end
+end
+
+% -------------------------------------------------------------------------
+function cache = local_build_side_cache(S)
+cache = struct();
+cache.delta_lists = S.Step4.delta_lists;
+cache.SeedsUpper = S.SeedsUpper;
+cache.SeedsLower = S.SeedsLower;
+
+potU = rs3_core_cr3bp_U_and_derivs(cache.SeedsUpper(:,1), cache.SeedsUpper(:,2), S.mu);
+potL = rs3_core_cr3bp_U_and_derivs(cache.SeedsLower(:,1), cache.SeedsLower(:,2), S.mu);
+cache.v0_upper = sqrt(max(2*potU.U - S.CJ, 0));
+cache.v0_lower = sqrt(max(2*potL.U - S.CJ, 0));
+end
+
+% -------------------------------------------------------------------------
+function [u, idxCells] = local_group_indices(ids)
+[idsSorted, ord] = sort(ids(:));
+[u, ~, g] = unique(idsSorted);
+idxCells = accumarray(g, ord, [numel(u), 1], @(v){v(:)});
+end
+
+% -------------------------------------------------------------------------
+function idx = local_group_fetch(tf, loc, idxCells)
+if ~tf || loc < 1 || loc > numel(idxCells)
+    idx = zeros(0,1);
+    return;
+end
+idx = idxCells{loc};
+end
+
+% -------------------------------------------------------------------------
+function v = local_build_voxel_entry(k, idsO, O, idxA, idxB, rowsA_F, rowsB_B, ...
+    cacheA, cacheB, VU_mps, TU_days, grid3, Ny, Nx, Nt)
+
+id = idsO(k);
+[iy, ix, it] = ind2sub([Ny, Nx, Nt], id);
+
+rowsA_k = rs3_rows_subset(rowsA_F, idxA);
+rowsB_k = rs3_rows_subset(rowsB_B, idxB);
+
+MA = rs3_rows_to_matrix(rowsA_k);
+MB = rs3_rows_to_matrix(rowsB_k);
+
+Ainfo = local_side_info(MA, cacheA, +1, VU_mps, TU_days);
+Binfo = local_side_info(MB, cacheB, -1, VU_mps, TU_days);
+
+v = local_empty_voxel();
+v.id = id;
+v.ix = ix; v.iy = iy; v.it = it;
+v.x = grid3.x_centers(ix);
+v.y = grid3.y_centers(iy);
+v.th = grid3.th_centers(it);
+
+if isfield(O,'countA') && numel(O.countA) >= k
+    v.countA = O.countA(k);
+else
+    v.countA = numel(idxA);
+end
+if isfield(O,'countB') && numel(O.countB) >= k
+    v.countB = O.countB(k);
+else
+    v.countB = numel(idxB);
+end
+
+v.nRowsA = size(MA,1);
+v.nRowsB = size(MB,1);
+v.uniqueSeedsA = Ainfo.uniqueSeeds;
+v.uniqueSeedsB = Binfo.uniqueSeeds;
+v.uniqueHeadsA = Ainfo.uniqueHeads;
+v.uniqueHeadsB = Binfo.uniqueHeads;
+v.uniqueSeedHeadPairsA = Ainfo.uniqueSeedHeadPairs;
+v.uniqueSeedHeadPairsB = Binfo.uniqueSeedHeadPairs;
+v.A = Ainfo;
+v.B = Binfo;
 end
 
 % -------------------------------------------------------------------------
