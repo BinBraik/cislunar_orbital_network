@@ -51,6 +51,10 @@ end
 % DVproxy for ranking: DVlb + DVpatch_ub
 dv_patch_only = dv_ub - arrayfun(@(vk) vk.A.dv_turn_mps_max + vk.B.dv_turn_mps_max, V.voxels).';
 dv_proxy = dv_lb + dv_patch_only;
+
+% Defensive shape normalization for plotting APIs (require Nx1 or Nx3 colors)
+x = x(:); y = y(:);
+dv_lb = dv_lb(:); dv_ub = dv_ub(:); dv_proxy = dv_proxy(:);
 [minProxy, iMin] = min(dv_proxy);
 
 B = struct();
