@@ -1,24 +1,20 @@
 function V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg)
 %RS4_OVERLAP_EXTRACT_VOXEL_INFO  Build voxel-wise overlap candidate metadata.
 %
-% For each overlap voxel, extract all contributing rows from:
-%   - A.FRS_full (rows from SA)
-%   - B.BRS_full (rows from SB)
-% and derive per-row seed/heading/delta/DV-turn information so voxel-level
-% ranking can be done later without rerunning propagation.
+% Vectorized implementation: avoids per-voxel O(N_rows) search and struct
+% array construction. Uses ismember + accumarray to compute per-voxel
+% statistics in O(N_rows log K) total instead of O(N_rows * K).
 %
-% Output
-%   V : struct with fields
-%       .summary   : scalar metadata
-%       .voxels    : [K x 1] struct array, one per overlap voxel
-%
-% Per-voxel fields include:
-%   id, ix,iy,it, x,y,th, countA,countB,
-%   nRowsA, nRowsB,
-%   uniqueSeedsA, uniqueSeedsB,
-%   uniqueHeadsA, uniqueHeadsB,
-%   uniqueSeedHeadPairsA, uniqueSeedHeadPairsB,
-%   A, B (detailed row-level metadata structs)
+% Output V is a flat-array struct (not a struct array):
+%   V.ids                    [K,1]  overlap voxel linear indices
+%   V.ix, V.iy, V.it         [K,1]  grid index triplets
+%   V.x,  V.y,  V.th         [K,1]  voxel center coordinates
+%   V.nRowsA, V.nRowsB       [K,1]  row counts per voxel
+%   V.uniqueSeedsA/B         [K,1]  unique seed count per voxel
+%   V.uniqueHeadsA/B         [K,1]  unique heading count per voxel
+%   V.dv_turn_mps_min/max/mean_A/B  [K,1]  DV-turn statistics (m/s)
+%   V.t_days_min/max/mean_A/B       [K,1]  time-of-flight statistics (days)
+%   V.summary                       scalar metadata struct
 
 if nargin < 4
     cfg = struct();
@@ -31,7 +27,7 @@ Ny = numel(grid3.y_centers);
 Nx = numel(grid3.x_centers);
 Nt = numel(grid3.th_centers);
 
-VU_mps = local_cfg_get(cfg, 'units.VU_mps', 1.0);
+VU_mps  = local_cfg_get(cfg, 'units.VU_mps',  1.0);
 TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
 
 % ---------- reconstruct full sets exactly as in overlap stage ----------
@@ -45,210 +41,153 @@ rowsB_F_u = SB.Step4.rows_FRS_upper;
 rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
 rowsB_B = local_rows_cat(rowsB_B_u, rowsB_B_l);
 
-idsA = rs3_rows_to_voxelid(rowsA_F, grid3);
-idsB = rs3_rows_to_voxelid(rowsB_B, grid3);
+idsA = double(rs3_rows_to_voxelid(rowsA_F, grid3));
+idsB = double(rs3_rows_to_voxelid(rowsB_B, grid3));
 
-idsO = O.ids(:);
+idsO = double(O.ids(:));
 K = numel(idsO);
 
-voxels = repmat(local_empty_voxel(), K, 1);
+% ---------- voxel center coordinates (vectorized ind2sub) ----------
+[iy_vec, ix_vec, it_vec] = ind2sub([Ny, Nx, Nt], idsO);
+x_vec  = grid3.x_centers(ix_vec);
+y_vec  = grid3.y_centers(iy_vec);
+th_vec = grid3.th_centers(it_vec);
 
-for k = 1:K
-    id = idsO(k);
-    [iy, ix, it] = ind2sub([Ny, Nx, Nt], id);
+% ---------- map each row to its overlap voxel (O(N log K)) ----------
+[inO_A, rankA] = ismember(idsA, idsO);
+[inO_B, rankB] = ismember(idsB, idsO);
 
-    idxA = find(idsA == id);
-    idxB = find(idsB == id);
+rows_inO_A = find(inO_A);
+rows_inO_B = find(inO_B);
+group_A = rankA(rows_inO_A);   % 1..K index into overlap voxels
+group_B = rankB(rows_inO_B);
 
-    rowsA_k = rs3_rows_subset(rowsA_F, idxA);
-    rowsB_k = rs3_rows_subset(rowsB_B, idxB);
+% ---------- compute per-row dv_turn for side A ----------
+[dv_mps_A, t_days_A, iSeed_A, iHead_A] = ...
+    local_side_stats(rowsA_F, rows_inO_A, SA, +1, VU_mps, TU_days);
 
-    MA = rs3_rows_to_matrix(rowsA_k);
-    MB = rs3_rows_to_matrix(rowsB_k);
+% ---------- compute per-row dv_turn for side B ----------
+[dv_mps_B, t_days_B, iSeed_B, iHead_B] = ...
+    local_side_stats(rowsB_B, rows_inO_B, SB, -1, VU_mps, TU_days);
 
-    Ainfo = local_side_info(MA, SA, +1, VU_mps, TU_days);
-    Binfo = local_side_info(MB, SB, -1, VU_mps, TU_days);
+% ---------- accumarray: per-voxel statistics ----------
+V.ids = idsO;
+V.ix  = ix_vec(:);
+V.iy  = iy_vec(:);
+V.it  = it_vec(:);
+V.x   = x_vec(:);
+V.y   = y_vec(:);
+V.th  = th_vec(:);
 
-    v = local_empty_voxel();
-    v.id = id;
-    v.ix = ix; v.iy = iy; v.it = it;
-    v.x = grid3.x_centers(ix);
-    v.y = grid3.y_centers(iy);
-    v.th = grid3.th_centers(it);
+V.nRowsA = accumarray(group_A, 1, [K,1], @sum, 0);
+V.nRowsB = accumarray(group_B, 1, [K,1], @sum, 0);
 
-    if isfield(O,'countA') && numel(O.countA) >= k
-        v.countA = O.countA(k);
-    else
-        v.countA = numel(idxA);
-    end
-    if isfield(O,'countB') && numel(O.countB) >= k
-        v.countB = O.countB(k);
-    else
-        v.countB = numel(idxB);
-    end
+V.dv_turn_mps_min_A  = accumarray(group_A, dv_mps_A, [K,1], @min,  NaN);
+V.dv_turn_mps_max_A  = accumarray(group_A, dv_mps_A, [K,1], @max,  NaN);
+V.dv_turn_mps_mean_A = accumarray(group_A, dv_mps_A, [K,1], @mean, NaN);
 
-    v.nRowsA = size(MA,1);
-    v.nRowsB = size(MB,1);
+V.dv_turn_mps_min_B  = accumarray(group_B, dv_mps_B, [K,1], @min,  NaN);
+V.dv_turn_mps_max_B  = accumarray(group_B, dv_mps_B, [K,1], @max,  NaN);
+V.dv_turn_mps_mean_B = accumarray(group_B, dv_mps_B, [K,1], @mean, NaN);
 
-    v.uniqueSeedsA = Ainfo.uniqueSeeds;
-    v.uniqueSeedsB = Binfo.uniqueSeeds;
-    v.uniqueHeadsA = Ainfo.uniqueHeads;
-    v.uniqueHeadsB = Binfo.uniqueHeads;
-    v.uniqueSeedHeadPairsA = Ainfo.uniqueSeedHeadPairs;
-    v.uniqueSeedHeadPairsB = Binfo.uniqueSeedHeadPairs;
+V.t_days_min_A  = accumarray(group_A, t_days_A, [K,1], @min,  NaN);
+V.t_days_max_A  = accumarray(group_A, t_days_A, [K,1], @max,  NaN);
+V.t_days_mean_A = accumarray(group_A, t_days_A, [K,1], @mean, NaN);
 
-    v.A = Ainfo;
-    v.B = Binfo;
+V.t_days_min_B  = accumarray(group_B, t_days_B, [K,1], @min,  NaN);
+V.t_days_max_B  = accumarray(group_B, t_days_B, [K,1], @max,  NaN);
+V.t_days_mean_B = accumarray(group_B, t_days_B, [K,1], @mean, NaN);
 
-    voxels(k) = v;
-end
+% unique counts (custom accumulator — slower but only called once)
+V.uniqueSeedsA = accumarray(group_A, iSeed_A, [K,1], @(x) numel(unique(x)), 0);
+V.uniqueHeadsA = accumarray(group_A, iHead_A, [K,1], @(x) numel(unique(x)), 0);
+V.uniqueSeedsB = accumarray(group_B, iSeed_B, [K,1], @(x) numel(unique(x)), 0);
+V.uniqueHeadsB = accumarray(group_B, iHead_B, [K,1], @(x) numel(unique(x)), 0);
 
+% ---------- summary ----------
 summary = struct();
-summary.nVoxels = K;
-summary.familyA = SA.name;
-summary.familyB = SB.name;
-summary.grid = struct('Nx',Nx,'Ny',Ny,'Nt',Nt,'dx',grid3.dx,'dy',grid3.dy,'dtheta',grid3.dtheta);
+summary.nVoxels  = K;
+summary.familyA  = SA.name;
+summary.familyB  = SB.name;
+summary.grid     = struct('Nx',Nx,'Ny',Ny,'Nt',Nt,'dx',grid3.dx,'dy',grid3.dy,'dtheta',grid3.dtheta);
 summary.generated = datestr(now, 31);
-summary.note = ['Voxel-wise overlap candidate extraction (seeds/headings/delta/DV-turn/time) ' ...
-                'for post-overlap ranking workflows.'];
-summary.units = struct('dv_turn','m/s','tof','days','dv_turn_nd','nondimensional','tof_nd','nondimensional');
-summary.VU_mps = VU_mps;
-summary.TU_days = TU_days;
+summary.note     = 'Flat-array voxel metadata (vectorized; use V.field(k) not V.voxels(k)).';
+summary.units    = struct('dv_turn_mps','m/s','tof_days','days');
+summary.VU_mps   = VU_mps;
+summary.TU_days  = TU_days;
 if isfield(cfg,'fan') && isfield(cfg.fan,'DV_cap_nd')
     summary.fan_DV_cap_nd = cfg.fan.DV_cap_nd;
 end
-
-V = struct();
 V.summary = summary;
-V.voxels = voxels;
 
 fprintf('[rs4] extracted voxel metadata: %d overlap voxels\n', K);
-
 end
 
-% -------------------------------------------------------------------------
-function info = local_side_info(M, S, sideSign, VU_mps, TU_days)
-% M columns: [iSeed iHead leg t ix iy it halfFlag]
+% =========================================================================
+function [dv_mps, t_days, iSeed_out, iHead_out] = ...
+        local_side_stats(rows, rowIdx, S, sideSign, VU_mps, TU_days) %#ok<INUSD>
+% Compute per-row dv_turn and tof for all in-overlap rows of one side.
 
-info = struct();
-if isempty(M)
-    info.nRows = 0;
-    info.uniqueSeeds = 0;
-    info.uniqueHeads = 0;
-    info.uniqueSeedHeadPairs = 0;
-    info.iSeed = zeros(0,1);
-    info.iHead = zeros(0,1);
-    info.leg = zeros(0,1);
-    info.t = zeros(0,1);
-    info.ix = zeros(0,1);
-    info.iy = zeros(0,1);
-    info.it = zeros(0,1);
-    info.halfFlag = zeros(0,1);
-    info.delta = zeros(0,1);
-    info.seed_x = zeros(0,1);
-    info.seed_y = zeros(0,1);
-    info.seed_th = zeros(0,1);
-    info.heading_th = zeros(0,1);
-    info.v0 = zeros(0,1);
-    info.dv_turn = zeros(0,1);
-    info.t_days = zeros(0,1);
-    info.dv_turn_mps = zeros(0,1);
-    info.t_min = NaN; info.t_max = NaN; info.t_mean = NaN;
-    info.t_days_min = NaN; info.t_days_max = NaN; info.t_days_mean = NaN;
-    info.dv_turn_min = NaN; info.dv_turn_max = NaN; info.dv_turn_mean = NaN;
-    info.dv_turn_mps_min = NaN; info.dv_turn_mps_max = NaN; info.dv_turn_mps_mean = NaN;
-    info.sideSign = sideSign;
+if isempty(rowIdx)
+    dv_mps    = zeros(0,1);
+    t_days    = zeros(0,1);
+    iSeed_out = zeros(0,1);
+    iHead_out = zeros(0,1);
     return;
 end
 
-iSeed = M(:,1);
-iHead = M(:,2);
-leg = M(:,3);
-t = M(:,4);
-ix = M(:,5);
-iy = M(:,6);
-it = M(:,7);
-halfFlag = M(:,8);
+iSeed = double(rows.iSeed(rowIdx));
+iHead = double(rows.iHead(rowIdx));
+t_nd  = double(rows.t(rowIdx));
+hf    = double(rows.halfFlag(rowIdx));
 
-n = size(M,1);
-delta = zeros(n,1);
-seed_x = zeros(n,1);
-seed_y = zeros(n,1);
-seed_th = zeros(n,1);
-heading_th = zeros(n,1);
-v0 = zeros(n,1);
-dv_turn = zeros(n,1);
+n = numel(rowIdx);
 
+% --- delta lookup (tight loop; just array indexing into cell/vector) ---
+delta_lists = S.Step4.delta_lists;
+delta = zeros(n, 1);
 for i = 1:n
-    sidx = iSeed(i);
-    hidx = iHead(i);
-
-    delta(i) = local_lookup_delta(S.Step4.delta_lists, sidx, hidx);
-
-    if halfFlag(i) >= 0
-        seed = S.SeedsUpper(sidx,:);
-    else
-        seed = S.SeedsLower(sidx,:);
+    s = iSeed(i);  h = iHead(i);
+    if s >= 1 && s <= numel(delta_lists)
+        v = delta_lists{s};
+        if h >= 1 && h <= numel(v)
+            delta(i) = double(v(h));
+        end
     end
-
-    seed_x(i) = seed(1);
-    seed_y(i) = seed(2);
-    seed_th(i) = seed(3);
-    heading_th(i) = rs3_wrapToPi(seed_th(i) + delta(i));
-
-    pot = rs3_core_cr3bp_U_and_derivs(seed_x(i), seed_y(i), S.mu);
-    v0(i) = sqrt(max(2*pot.U - S.CJ, 0));
-    dv_turn(i) = 2*v0(i)*sin(abs(delta(i))/2);
 end
 
-pairs = [iSeed, iHead];
+% --- seed position lookup (vectorized matrix row-indexing) ---
+seed_x = zeros(n, 1);
+seed_y = zeros(n, 1);
+is_upper = hf >= 0;
 
-info.nRows = n;
-info.uniqueSeeds = numel(unique(iSeed));
-info.uniqueHeads = numel(unique(iHead));
-info.uniqueSeedHeadPairs = size(unique(pairs,'rows'),1);
+idxU = find(is_upper);
+idxL = find(~is_upper);
 
-info.iSeed = iSeed;
-info.iHead = iHead;
-info.leg = leg;
-info.t = t;
-info.ix = ix;
-info.iy = iy;
-info.it = it;
-info.halfFlag = halfFlag;
-
-info.delta = delta;
-info.seed_x = seed_x;
-info.seed_y = seed_y;
-info.seed_th = seed_th;
-info.heading_th = heading_th;
-info.v0 = v0;
-info.dv_turn = dv_turn;
-info.t_days = t * TU_days;
-info.dv_turn_mps = dv_turn * VU_mps;
-
-info.t_min = min(t); info.t_max = max(t); info.t_mean = mean(t);
-info.t_days_min = min(info.t_days); info.t_days_max = max(info.t_days); info.t_days_mean = mean(info.t_days);
-info.dv_turn_min = min(dv_turn); info.dv_turn_max = max(dv_turn); info.dv_turn_mean = mean(dv_turn);
-info.dv_turn_mps_min = min(info.dv_turn_mps); info.dv_turn_mps_max = max(info.dv_turn_mps); info.dv_turn_mps_mean = mean(info.dv_turn_mps);
-info.sideSign = sideSign;
+if ~isempty(idxU)
+    su = iSeed(idxU);
+    seed_x(idxU) = S.SeedsUpper(su, 1);
+    seed_y(idxU) = S.SeedsUpper(su, 2);
+end
+if ~isempty(idxL) && isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
+    sl = iSeed(idxL);
+    seed_x(idxL) = S.SeedsLower(sl, 1);
+    seed_y(idxL) = S.SeedsLower(sl, 2);
 end
 
-% -------------------------------------------------------------------------
-function d = local_lookup_delta(delta_lists, iSeed, iHead)
-if iSeed < 1 || iSeed > numel(delta_lists)
-    d = NaN;
-    return;
-end
-v = delta_lists{iSeed};
-if isempty(v) || iHead < 1 || iHead > numel(v)
-    d = NaN;
-    return;
-end
-d = double(v(iHead));
+% --- vectorized potential and v0 (one call for all rows) ---
+pot  = rs3_core_cr3bp_U_and_derivs(seed_x, seed_y, S.mu);
+v0   = sqrt(max(2*pot.U - S.CJ, 0));
+
+dv_nd  = 2 * v0 .* sin(abs(delta) / 2);
+dv_mps = dv_nd * VU_mps;
+t_days = t_nd  * TU_days;
+
+iSeed_out = iSeed;
+iHead_out = iHead;
 end
 
-% -------------------------------------------------------------------------
+% =========================================================================
 function r = local_rows_cat(a, b)
 if isstruct(a) && isstruct(b)
     nA = double(a.n); nB = double(b.n);
@@ -274,16 +213,7 @@ if isempty(b), r=a; return; end
 r = [a; b];
 end
 
-% -------------------------------------------------------------------------
-function v = local_empty_voxel()
-v = struct('id',NaN, 'ix',NaN, 'iy',NaN, 'it',NaN, 'x',NaN, 'y',NaN, 'th',NaN, ...
-    'countA',0, 'countB',0, 'nRowsA',0, 'nRowsB',0, ...
-    'uniqueSeedsA',0, 'uniqueSeedsB',0, 'uniqueHeadsA',0, 'uniqueHeadsB',0, ...
-    'uniqueSeedHeadPairsA',0, 'uniqueSeedHeadPairsB',0, ...
-    'A',struct(), 'B',struct());
-end
-
-
+% =========================================================================
 function v = local_cfg_get(cfg, path, defaultVal)
 v = defaultVal;
 try
