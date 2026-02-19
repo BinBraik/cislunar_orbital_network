@@ -45,14 +45,19 @@ cfg.cache.rebuild = false;
 % grid settings (must match for both atlases)
 cfg.grid.dx     = 0.01;
 cfg.grid.dy     = 0.01;
-cfg.grid.dtheta = deg2rad(4);
+cfg.grid.dtheta = deg2rad(2);
 
 cfg.seed.ds_seed   = 0.02;
 
 % propagation/fan
-cfg.propag.Tmax    = pi/2;
-cfg.fan.DV_cap_nd  = 0.10;
-cfg.fan.dtheta_fan = deg2rad(2);
+cfg.propag.Tmax    = pi;
+cfg.fan.DV_cap_nd  = 0.2;
+cfg.fan.dtheta_fan = deg2rad(1.0);
+cfg.propag.absTol  = 1e-9;
+cfg.propag.relTol  = 1e-9;
+cfg.propag.v2tol   = 1e-8;
+cfg.log.step_len_factor = 0.5;
+cfg.log.maxstep_factor  = 0.5;
 
 % zoom optional
 cfg.diag.zoom.enable = false;
@@ -65,12 +70,8 @@ cfg.plot.rs4.overlap_xyz  = false;
 cfg.plot.rs4.combo_xy     = true;
 cfg.plot.rs4.combo_xyz    = false;
 cfg.plot.rs4.bounds_lb    = true;
-cfg.plot.rs4.bounds_ub    = true;
+cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = true;
-
-% Top-K voxels to retain per pair for downstream processing
-cfg.rs4.topk_voxels = 10;
-cfg.rs4.extract.parallel = cfg.par.enable;
 
 rs3_cfg_validate(cfg);
 
@@ -146,9 +147,7 @@ for i = 1:N
                 status = struct('has_overlap', false, 'familyA', famA, 'familyB', famB, ...
                     'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, 'dv_patch_ub_mps', NaN, ...
                     'tof_est_days', NaN, 'voxel_id', NaN);
-                save(fullfile(pairDir, ['rs4_' pairSafe '_top10_voxels.mat']), 'status', '-v7.3');
-                fprintf('[rs4-batch] timings: overlap=%.2fs saveO=%.2fs total=%.2fs\n', ...
-                    tOverlap, tSaveOverlap, toc(tPair));
+                save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', '-v7.3');
                 continue;
             end
 
@@ -168,36 +167,34 @@ for i = 1:N
             B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, pairDir, pairTag);
             tBounds = toc(tStage);
 
-            % Winner and top-K selection by DVproxy
+            % Winner selection by DVproxy
             dv = B.dv_proxy(:);
-            finiteMask = isfinite(dv);
-            idxFinite = find(finiteMask);
+            idxFinite = find(isfinite(dv));
 
             if isempty(idxFinite)
                 fprintf('[rs4-batch] no finite DVproxy for %s | %s\n', famA, famB);
                 status = struct('has_overlap', true, 'familyA', famA, 'familyB', famB, ...
                     'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, 'dv_patch_ub_mps', NaN, ...
                     'tof_est_days', NaN, 'voxel_id', NaN);
-                save(fullfile(pairDir, ['rs4_' pairSafe '_top10_voxels.mat']), 'status', 'B', '-v7.3');
+                save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', 'B', '-v7.3');
                 continue;
             end
 
             [~, orderLocal] = sort(dv(idxFinite), 'ascend');
-            orderGlobal = idxFinite(orderLocal);
-
-            iWinner = orderGlobal(1);
+            iWinner = idxFinite(orderLocal(1));
             minDV = dv(iWinner);
             dvlbWinner = local_safe_index(B.dv_lb, iWinner);
             dvpatchWinner = local_safe_index(B.dv_patch_ub, iWinner);
 
+            % Winner voxel info from flat V arrays
             tofWinner = NaN;
             voxelIdWinner = NaN;
-            if iWinner >= 1 && iWinner <= numel(V.voxels)
-                voxelIdWinner = V.voxels(iWinner).id;
-                tofWinner = V.voxels(iWinner).A.t_days_mean + V.voxels(iWinner).B.t_days_mean;
+            if iWinner >= 1 && iWinner <= numel(V.ids)
+                voxelIdWinner = V.ids(iWinner);
+                tofWinner = V.t_days_mean_A(iWinner) + V.t_days_mean_B(iWinner);
             end
 
-            % Fill matrix and summary row (top-1 only)
+            % Fill summary matrix and row
             minDVproxyMat(i,j) = minDV;
             minDVproxyMat(j,i) = minDV;
 
@@ -207,41 +204,23 @@ for i = 1:N
             colTOF(pairRow) = tofWinner;
             colVoxelId(pairRow) = voxelIdWinner;
 
-            % Top-K payload for downstream reconstruction
-            K = min(local_cfg_get(cfg, 'rs4.topk_voxels', 10), numel(orderGlobal));
-            topIdx = orderGlobal(1:K);
-            TopVoxels = repmat(local_empty_top_voxel(), K, 1);
-            for k = 1:K
-                ik = topIdx(k);
-                vk = V.voxels(ik);
-                tv = local_empty_top_voxel();
-                tv.rank = k;
-                tv.idx_in_V = ik;
-                tv.voxel_id = vk.id;
-                tv.ix = vk.ix; tv.iy = vk.iy; tv.it = vk.it;
-                tv.x = vk.x; tv.y = vk.y; tv.th = vk.th;
-                tv.dv_proxy_mps = local_safe_index(B.dv_proxy, ik);
-                tv.dv_lb_mps = local_safe_index(B.dv_lb, ik);
-                tv.dv_patch_ub_mps = local_safe_index(B.dv_patch_ub, ik);
-                tv.dv_ub_mps = local_safe_index(B.dv_ub, ik);
-                tv.tof_est_days = vk.A.t_days_mean + vk.B.t_days_mean;
-                tv.A = vk.A;
-                tv.B = vk.B;
-                TopVoxels(k) = tv;
-            end
+            % Save winner + full bounds (DVproxy for all voxels) per pair
+            winnerMeta = struct();
+            winnerMeta.familyA = famA;
+            winnerMeta.familyB = famB;
+            winnerMeta.pairTag = pairTag;
+            winnerMeta.generated = datestr(now, 31);
+            winnerMeta.units = struct('dv','m/s','tof','days');
+            winnerMeta.grid = struct('dx',grid3.dx,'dy',grid3.dy,'dtheta',grid3.dtheta);
+            winnerMeta.iWinner = iWinner;
+            winnerMeta.voxel_id = voxelIdWinner;
+            winnerMeta.min_dvproxy_mps = minDV;
+            winnerMeta.dv_lb_mps = dvlbWinner;
+            winnerMeta.dv_patch_ub_mps = dvpatchWinner;
+            winnerMeta.tof_est_days = tofWinner;
 
-            topMeta = struct();
-            topMeta.familyA = famA;
-            topMeta.familyB = famB;
-            topMeta.pairTag = pairTag;
-            topMeta.generated = datestr(now, 31);
-            topMeta.topK = K;
-            topMeta.units = struct('dv','m/s','tof','days');
-            topMeta.grid = struct('dx',grid3.dx,'dy',grid3.dy,'dtheta',grid3.dtheta);
-            topMeta.cfg = cfg;
-
-            save(fullfile(pairDir, ['rs4_' pairSafe '_top10_voxels.mat']), ...
-                'topMeta', 'TopVoxels', 'B', '-v7.3');
+            save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), ...
+                'winnerMeta', 'B', '-v7.3');
 
             fprintf('[rs4-batch] timings: overlap=%.2fs saveO=%.2fs extract=%.2fs vizO=%.2fs vizCombo=%.2fs bounds=%.2fs total=%.2fs\n', ...
                 tOverlap, tSaveOverlap, tExtract, tVizOverlap, tVizCombo, tBounds, toc(tPair));
@@ -253,7 +232,7 @@ for i = 1:N
             status = struct('has_overlap', false, 'familyA', famA, 'familyB', famB, ...
                 'error', ME.message, 'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, ...
                 'dv_patch_ub_mps', NaN, 'tof_est_days', NaN, 'voxel_id', NaN);
-            save(fullfile(pairDir, ['rs4_' pairSafe '_top10_voxels.mat']), 'status', '-v7.3');
+            save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', '-v7.3');
         end
     end
 end
@@ -307,18 +286,3 @@ catch
 end
 end
 
-function tv = local_empty_top_voxel()
-tv = struct( ...
-    'rank', NaN, ...
-    'idx_in_V', NaN, ...
-    'voxel_id', NaN, ...
-    'ix', NaN, 'iy', NaN, 'it', NaN, ...
-    'x', NaN, 'y', NaN, 'th', NaN, ...
-    'dv_proxy_mps', NaN, ...
-    'dv_lb_mps', NaN, ...
-    'dv_patch_ub_mps', NaN, ...
-    'dv_ub_mps', NaN, ...
-    'tof_est_days', NaN, ...
-    'A', struct(), ...
-    'B', struct());
-end

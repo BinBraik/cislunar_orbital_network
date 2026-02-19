@@ -33,7 +33,7 @@ cfg.seed = struct();
 cfg.seed.Tf_scale  = 1.0;    % PO period scale factor (1.0 = one full period)
 cfg.seed.N_dense   = 2001;   % points for dense PO sampling
 cfg.seed.y_eps     = 0.0;    % y-threshold for upper-half seed selection
-cfg.seed.ds_seed   = 0.01;   % arclength spacing between seeds (nd)
+cfg.seed.ds_seed   = 0.02;   % arclength spacing between seeds (nd)
 cfg.seed.minSegPts = 5;      % minimum points per upper-half segment
 
 % ---------------- Grid / voxelization ----------------
@@ -41,26 +41,26 @@ cfg.grid = struct();
 cfg.grid.Rdom               = 1.2;          % domain radius (nd)
 cfg.grid.dx                 = 0.01;         % x voxel width (nd)
 cfg.grid.dy                 = 0.01;         % y voxel width (nd)
-cfg.grid.dtheta             = deg2rad(4);   % theta voxel width (rad)
+cfg.grid.dtheta             = deg2rad(2);   % theta voxel width (rad)
 cfg.grid.enforce_y0_edge    = true;         % force y=0 to lie on a grid edge
 cfg.grid.enforce_xy_symmetry = true;        % force grid symmetric about x- and y-axes
 
 % ---------------- Steering fan (departure/arrival) ----------------
 cfg.fan = struct();
 cfg.fan.dtheta_fan = deg2rad(1);   % heading fan resolution (rad)
-cfg.fan.DV_cap_nd  = 0.1;         % max DV budget for heading offset at seed (nd)
+cfg.fan.DV_cap_nd  = 0.2;         % max DV budget for heading offset at seed (nd)
 
 % ---------------- Propagation ----------------
 cfg.propag = struct();
-cfg.propag.Tmax   = pi/2;    % max integration time (nd, forward and backward)
-cfg.propag.absTol = 1e-11;   % ODE absolute tolerance
-cfg.propag.relTol = 1e-11;   % ODE relative tolerance
-cfg.propag.v2tol  = 1e-10;   % reduced-model fallback threshold: if v^2 < v2tol, reintegrate with full 4D
+cfg.propag.Tmax   = pi;      % max integration time (nd, forward and backward)
+cfg.propag.absTol = 1e-9;    % ODE absolute tolerance
+cfg.propag.relTol = 1e-9;    % ODE relative tolerance
+cfg.propag.v2tol  = 1e-8;    % reduced-model fallback threshold: if v^2 < v2tol, reintegrate with full 4D
 
 % ---------------- Logging / segment-walk ----------------
 cfg.log = struct();
-cfg.log.step_len_factor = 0.20;   % step_len = factor * min(dx, dy)
-cfg.log.maxstep_factor  = 0.25;   % ODE MaxStep = maxstep_factor * step_len
+cfg.log.step_len_factor = 0.5;    % step_len = factor * min(dx, dy)
+cfg.log.maxstep_factor  = 0.5;    % ODE MaxStep = maxstep_factor * step_len
 
 cfg.log.segwalk = struct();
 cfg.log.segwalk.enable = true;    % enable segment-walk subsampling
