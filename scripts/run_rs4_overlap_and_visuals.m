@@ -70,7 +70,7 @@ rs4_overlap_visualize(O, SA, SB, cfg, outdir, tag);
 rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag);
 B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag);
 
-if isstruct(B) && isfield(B,'min_dvproxy') && ~isempty(B.min_dvproxy) && isfinite(B.min_dvproxy)
+if isstruct(B) && isfield(B,'min_dvproxy') && isscalar(B.min_dvproxy) && ~isempty(B.min_dvproxy) && isfinite(double(B.min_dvproxy))
     fprintf('[rs4] min DVproxy: %.3f m/s at (x,y)=(%.4f, %.4f), voxel #%d\n', ...
         B.min_dvproxy, B.x_at_min, B.y_at_min, B.imin);
 end
