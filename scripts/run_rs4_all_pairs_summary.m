@@ -1,7 +1,8 @@
 %% RUN_RS4_ALL_PAIRS_SUMMARY
-% Batch overlap runner over all family pairs with per-pair top-10 voxel export
+% Batch overlap runner over all family pairs with per-pair winner export
 % and summary CSV outputs.
 clear; clc;
+opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
 
 % --- hard-pin this repo paths ---
 thisFile = mfilename('fullpath');

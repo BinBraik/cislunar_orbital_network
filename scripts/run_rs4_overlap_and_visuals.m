@@ -1,5 +1,6 @@
 %% RUN_RS4_OVERLAP_AND_VISUALS
 clear; clc;
+opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
 
 % ===================== USER KNOBS =====================
 famA = 'Lyapunov L1';
