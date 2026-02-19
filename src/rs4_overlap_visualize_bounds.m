@@ -1,4 +1,4 @@
-function rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag)
+function B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag)
 %RS4_OVERLAP_VISUALIZE_BOUNDS  Plot voxel-wise DVtotal lower/upper bounds.
 %
 % Bounds (m/s) per overlap voxel:
@@ -13,13 +13,14 @@ if ~exist(outdir,'dir'), mkdir(outdir); end
 
 if ~isstruct(V) || ~isfield(V,'voxels') || isempty(V.voxels)
     warning('[rs4] Bounds visualization skipped: empty voxel metadata.');
+    B = struct('dv_lb',[],'dv_ub',[],'dv_proxy',[],'min_dvproxy',NaN,'imin',NaN,'x_at_min',NaN,'y_at_min',NaN);
     return;
 end
 
 doLB = local_plot_enabled(cfg, 'plot.rs4.bounds_lb', true);
 doUB = local_plot_enabled(cfg, 'plot.rs4.bounds_ub', true);
 if ~doLB && ~doUB
-    return;
+    % Still compute bounds for reporting even when plots are disabled.
 end
 
 grid3 = SA.grid3;
@@ -45,6 +46,20 @@ for k = 1:N
     dv_patch_ub = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
     dv_ub(k) = vk.A.dv_turn_mps_max + dv_patch_ub + vk.B.dv_turn_mps_max;
 end
+
+% DVproxy for ranking: DVlb + DVpatch_ub
+dv_patch_only = dv_ub - arrayfun(@(vk) vk.A.dv_turn_mps_max + vk.B.dv_turn_mps_max, V.voxels).';
+dv_proxy = dv_lb + dv_patch_only;
+[minProxy, iMin] = min(dv_proxy);
+
+B = struct();
+B.dv_lb = dv_lb;
+B.dv_ub = dv_ub;
+B.dv_proxy = dv_proxy;
+B.min_dvproxy = minProxy;
+B.imin = iMin;
+B.x_at_min = x(iMin);
+B.y_at_min = y(iMin);
 
 if doLB
     fig = figure('Color','w', 'Name',['DVtotal Lower Bound XY ' tag], 'Visible', local_fig_visible(cfg));
