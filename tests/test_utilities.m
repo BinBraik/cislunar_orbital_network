@@ -45,6 +45,25 @@ function test_circ_diff_across_boundary(testCase)
     verifyLessThan(testCase, abs(d), 0.3);
 end
 
+function test_circ_diff_output_convention(testCase)
+    % Output must always be in [-pi, pi) — same convention as rs3_wrapToPi.
+    % Specifically +pi must NOT appear in the output.
+    probes = [0, pi/4, pi/2, pi, -pi, 3*pi/2, -3*pi/4, 2*pi, -2*pi];
+    for a = probes
+        for b = probes
+            d = rs3_circ_diff(a, b);
+            verifyGreaterThanOrEqual(testCase, d, -pi);
+            verifyLessThan(testCase, d, pi);
+        end
+    end
+end
+
+function test_wrapToPi_seam(testCase)
+    % pi maps to -pi (seam is at +pi, excluded)
+    verifyEqual(testCase, rs3_wrapToPi(pi), -pi, 'AbsTol', 1e-14);
+    verifyEqual(testCase, rs3_wrapToPi(-pi), -pi, 'AbsTol', 1e-14);
+end
+
 % ---- rs3_family_short_tag ----
 
 function test_short_tag_lyapunov(testCase)

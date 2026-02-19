@@ -27,15 +27,12 @@ for i = 1:N
     dmax = 2*asin(min(1, DVcap/(2*max(v0,eps))));
     dmax_all(i) = dmax;
 
-    deltas = (-dmax):dtheta_fan:(+dmax);
-    if isempty(deltas)
-        deltas = [-dmax; +dmax];
-    end
-    % Ensure endpoints are included
-    if abs(deltas(1)+dmax) > 1e-12, deltas = [-dmax, deltas]; end
-    if abs(deltas(end)-dmax) > 1e-12, deltas = [deltas, +dmax]; end
-
-    delta_lists{i} = unique(deltas(:), 'stable');
+    % Symmetric fan centered on delta=0 (nominal heading).
+    % Nh is always odd so delta=0 is exactly the middle element,
+    % and both endpoints ±dmax are exact (no floating-point drift).
+    Nh = 2*floor(dmax/dtheta_fan) + 1;
+    deltas = linspace(-dmax, dmax, Nh);
+    delta_lists{i} = deltas(:);
     nheads(i) = numel(delta_lists{i});
 end
 
