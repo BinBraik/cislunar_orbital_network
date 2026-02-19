@@ -13,7 +13,7 @@ if ~exist(outdir,'dir'), mkdir(outdir); end
 
 if ~isstruct(V) || ~isfield(V,'voxels') || isempty(V.voxels)
     warning('[rs4] Bounds visualization skipped: empty voxel metadata.');
-    B = struct('dv_lb',[],'dv_ub',[],'dv_proxy',[],'min_dvproxy',NaN,'imin',NaN,'x_at_min',NaN,'y_at_min',NaN);
+    B = struct('dv_lb',[],'dv_ub',[],'dv_patch_ub',[],'dv_proxy',[],'min_dvproxy',NaN,'imin',NaN,'x_at_min',NaN,'y_at_min',NaN);
     return;
 end
 
@@ -31,7 +31,7 @@ CJstar = min(SA.CJ, SB.CJ);
 
 N = numel(V.voxels);
 x = zeros(N,1); y = zeros(N,1);
-dv_lb = zeros(N,1); dv_ub = zeros(N,1);
+dv_lb = zeros(N,1); dv_ub = zeros(N,1); dv_patch_ub = zeros(N,1);
 
 for k = 1:N
     vk = V.voxels(k);
@@ -44,24 +44,23 @@ for k = 1:N
     % Upper bound: use per-side max turn + voxel-center patch upper bound.
     pot = rs3_core_cr3bp_U_and_derivs(vk.x, vk.y, SA.mu);
     v_box = sqrt(max(2*pot.U - CJstar, 0));
-    dv_patch_ub = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
-    dv_ub(k) = vk.A.dv_turn_mps_max + dv_patch_ub + vk.B.dv_turn_mps_max;
+    dv_patch_k = 2*v_box*sin(abs(grid3.dtheta)/2) * VU_mps;
+    dv_patch_ub(k) = dv_patch_k;
+    dv_ub(k) = vk.A.dv_turn_mps_max + dv_patch_k + vk.B.dv_turn_mps_max;
 end
 
 % DVproxy for ranking: DVlb + DVpatch_ub
-side_turn_max = arrayfun(@(vk) vk.A.dv_turn_mps_max + vk.B.dv_turn_mps_max, V.voxels);
-side_turn_max = side_turn_max(:);
-dv_patch_only = dv_ub - side_turn_max;
-dv_proxy = dv_lb + dv_patch_only;
+dv_patch_ub = dv_patch_ub(:);
+dv_proxy = dv_lb + dv_patch_ub;
 
 % Defensive shape normalization for plotting APIs (require Nx1 or Nx3 colors)
 x = x(:); y = y(:);
-dv_lb = dv_lb(:); dv_ub = dv_ub(:); dv_proxy = dv_proxy(:);
+dv_lb = dv_lb(:); dv_ub = dv_ub(:); dv_patch_ub = dv_patch_ub(:); dv_proxy = dv_proxy(:);
 
 % Ensure all plotted vectors share the same length (guard against shape drift).
-nPlot = min([numel(x), numel(y), numel(dv_lb), numel(dv_ub), numel(dv_proxy)]);
+nPlot = min([numel(x), numel(y), numel(dv_lb), numel(dv_ub), numel(dv_patch_ub), numel(dv_proxy)]);
 x = x(1:nPlot); y = y(1:nPlot);
-dv_lb = dv_lb(1:nPlot); dv_ub = dv_ub(1:nPlot); dv_proxy = dv_proxy(1:nPlot);
+dv_lb = dv_lb(1:nPlot); dv_ub = dv_ub(1:nPlot); dv_patch_ub = dv_patch_ub(1:nPlot); dv_proxy = dv_proxy(1:nPlot);
 
 % Robust minimum extraction (scalar index) even with NaNs/shape surprises.
 valid = isfinite(dv_proxy);
@@ -77,6 +76,7 @@ end
 B = struct();
 B.dv_lb = dv_lb;
 B.dv_ub = dv_ub;
+B.dv_patch_ub = dv_patch_ub;
 B.dv_proxy = dv_proxy;
 B.min_dvproxy = minProxy;
 B.imin = iMin;

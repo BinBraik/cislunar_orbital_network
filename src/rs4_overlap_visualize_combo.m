@@ -76,7 +76,7 @@ if doXY
 
     title(ax, sprintf('A.FRS + B.BRS with overlap \\\\DeltaV_{patch,ub} color | %s', tag), 'Interpreter','none');
     xlabel(ax,'x'); ylabel(ax,'y');
-    legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','best');
+    legend(ax, [hA hB hO], {'A.FRS only (faint)', 'B.BRS only (faint)', 'Overlap (DVpatch color)'}, 'Location','northwest');
 
     local_apply_zoom(cfg, ax);
     rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xy_dvpatch_scatter'], cfg, 'Resolution', local_fig_res(cfg));
@@ -96,7 +96,7 @@ if doXYZ
     grid(ax,'on');
     xlabel(ax,'x'); ylabel(ax,'y'); zlabel(ax,'\theta (rad)');
     title(ax, sprintf('Overlap in (x,y,\\theta) | %s', tag), 'Interpreter','none');
-    legend(ax, [hA hB hO], {'A.FRS only', 'B.BRS only', 'Overlap'}, 'Location','best');
+    legend(ax, [hA hB hO], {'A.FRS only', 'B.BRS only', 'Overlap'}, 'Location','northwest');
     view(ax, 35, 20);
 
     rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_combo_xyz'], cfg, 'Resolution', local_fig_res(cfg));
