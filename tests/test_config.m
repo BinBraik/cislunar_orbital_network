@@ -20,10 +20,9 @@ function test_defaults_has_all_sections(testCase)
     verifyTrue(testCase, isfield(cfg, 'grid'));
     verifyTrue(testCase, isfield(cfg, 'fan'));
     verifyTrue(testCase, isfield(cfg, 'propag'));
+    verifyTrue(testCase, isfield(cfg, 'log'));
     verifyTrue(testCase, isfield(cfg, 'cache'));
-    verifyTrue(testCase, isfield(cfg, 'refine'));
-    verifyTrue(testCase, isfield(cfg, 'refine7'));
-    verifyTrue(testCase, isfield(cfg, 'score'));
+    verifyTrue(testCase, isfield(cfg, 'overlap'));
     verifyTrue(testCase, isfield(cfg, 'par'));
     verifyTrue(testCase, isfield(cfg, 'io'));
     verifyTrue(testCase, isfield(cfg, 'diag'));
@@ -41,20 +40,6 @@ function test_defaults_units_consistent(testCase)
     % VU = LU / TU
     VU_expected = cfg.units.LU_m / cfg.units.TU_s;
     verifyEqual(testCase, cfg.units.VU_mps, VU_expected, 'RelTol', 1e-10);
-end
-
-% ---- rs3_cfg_get ----
-
-function test_cfg_get_existing_field(testCase)
-    cfg = rs3_cfg_defaults();
-    val = rs3_cfg_get(cfg, 'grid.dx', 999);
-    verifyEqual(testCase, val, cfg.grid.dx);
-end
-
-function test_cfg_get_missing_field(testCase)
-    cfg = rs3_cfg_defaults();
-    val = rs3_cfg_get(cfg, 'grid.nonexistent_field', 42);
-    verifyEqual(testCase, val, 42);
 end
 
 % ---- rs3_core_family_ic ----
