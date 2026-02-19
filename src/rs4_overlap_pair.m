@@ -6,6 +6,17 @@ function O = rs4_overlap_pair(SA, SB, cfg)
 %
 % Output O:
 %   ids, ix,iy,it, x,y,th, countA,countB, Nx,Ny,Nt
+%
+% Performance rewrite:
+%   - Mirror + cat eliminated: IDs extracted directly from ix/iy/it fields
+%     of the upper-half rows; no 8-field packed struct is allocated for
+%     mirrored or concatenated row sets.
+%   - Theta mirror uses a precomputed LUT (one uint16 array lookup per row)
+%     instead of per-row wrapToPi + discretize calls.
+%   - unique() called once per set; uid/cnt reused for both intersect and
+%     count queries.
+%   - local_counts_via_unique replaces ismember(N_rows, K_overlap): query
+%     is O(K log N_unique) vs old O(N_rows log K).
 
 if nargin < 3, cfg = struct(); end
 
@@ -20,25 +31,24 @@ gridB = SB.grid3;
 assert(Nx==numel(gridB.x_centers) && Ny==numel(gridB.y_centers) && Nt==numel(gridB.th_centers), ...
     'A and B must share the same grid dims (x_centers/y_centers/th_centers).');
 
-% ---------------- FULL sets ----------------
+% ---------------- theta mirror LUT ----------------
+% Precompute: for each theta bin index it (1..Nt), the bin index of
+% wrapToPi(pi - th_center(it)).  LUT value 0 = no valid mirror bin.
+it_lut = local_build_theta_mirror_lut(grid3, Nt);
+
+% ---------------- voxel IDs (no struct allocation) ----------------
 % A.FRS_full = FRS_upper + mirror(BRS_upper -> FRS_lower)
-rowsA_F_u = SA.Step4.rows_FRS_upper;
-rowsA_B_u = SA.Step4.rows_BRS_upper;
-rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
-rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
+idsA = local_full_vid(SA.Step4.rows_FRS_upper, SA.Step4.rows_BRS_upper, Ny, Nx, Nt, it_lut);
 
 % B.BRS_full = BRS_upper + mirror(FRS_upper -> BRS_lower)
-rowsB_B_u = SB.Step4.rows_BRS_upper;
-rowsB_F_u = SB.Step4.rows_FRS_upper;
-rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
-rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
+idsB = local_full_vid(SB.Step4.rows_BRS_upper, SB.Step4.rows_FRS_upper, Ny, Nx, Nt, it_lut);
 
-% ---------------- voxel IDs ----------------
-idsA = local_rows_to_vid(rowsA_F, Ny, Nx, Nt);
-idsB = local_rows_to_vid(rowsB_B, Ny, Nx, Nt);
+% ---------------- unique once; reuse for intersect and counts ----------------
+[uid_A, ~, ic_A] = unique(idsA);   cnt_A = accumarray(ic_A, 1);
+[uid_B, ~, ic_B] = unique(idsB);   cnt_B = accumarray(ic_B, 1);
 
-idsO = intersect(unique(idsA), unique(idsB));
-idsO = idsO(:);  % column
+idsO = intersect(uid_A, uid_B);    % uid_A/B already sorted — fast merge
+idsO = idsO(:);
 
 O = struct('ids',idsO,'ix',[],'iy',[],'it',[],'x',[],'y',[],'th',[], ...
            'countA',[],'countB',[],'Nx',Nx,'Ny',Ny,'Nt',Nt);
@@ -50,7 +60,7 @@ end
 
 % ---------------- unpack overlap IDs ----------------
 [iy, ix, it] = ind2sub([Ny, Nx, Nt], idsO);
-ix = ix(:); iy = iy(:); it = it(:);  % force column
+ix = ix(:); iy = iy(:); it = it(:);
 
 % ---------------- FILTER: Keep + buffered primaries ----------------
 bufFrac = 0.05;
@@ -58,39 +68,29 @@ if isfield(cfg,'overlap') && isfield(cfg.overlap,'primary_buffer_frac') && ~isem
     bufFrac = cfg.overlap.primary_buffer_frac;
 end
 
-% Keep masks must be [Ny,Nx]
 keepA = local_get_keep_xy(SA, Ny, Nx);
 keepB = local_get_keep_xy(SB, Ny, Nx);
-keepXY = keepA & keepB;  % conservative for CJ mismatch
+keepXY = keepA & keepB;
 
-% radii + mu (nd)
 if ~(isfield(cfg,'sys') && isfield(cfg.sys,'RE_nd') && isfield(cfg.sys,'RM_nd'))
     error('cfg.sys.RE_nd and cfg.sys.RM_nd are required for primary buffer filtering.');
 end
 RE = cfg.sys.RE_nd;
 RM = cfg.sys.RM_nd;
-
-mu = SA.mu;  
+mu = SA.mu;
 
 x = grid3.x_centers(ix);
 y = grid3.y_centers(iy);
 
-rE = hypot(x + mu, y);           % Earth at (-mu,0)
-rM = hypot(x - (1-mu), y);       % Moon  at (1-mu,0)
+rE = hypot(x + mu, y);
+rM = hypot(x - (1-mu), y);
 
 okKeep  = keepXY(sub2ind([Ny, Nx], iy, ix));
 okEarth = rE > (1 + bufFrac)*RE;
 okMoon  = rM > (1 + bufFrac)*RM;
 
-% CRITICAL: force ALL to column vectors to avoid implicit expansion -> KxK
-okKeep  = okKeep(:);
-okEarth = okEarth(:);
-okMoon  = okMoon(:);
+ok = okKeep(:) & okEarth(:) & okMoon(:);
 
-ok = okKeep & okEarth & okMoon;  % now Kx1
-ok = ok(:);
-
-% Apply filter safely
 idsO = idsO(ok);
 ix   = ix(ok);
 iy   = iy(ok);
@@ -105,15 +105,15 @@ if isempty(idsO)
     return;
 end
 
-% ---------------- centers ----------------
 O.ix = ix; O.iy = iy; O.it = it;
 O.x  = grid3.x_centers(ix);
 O.y  = grid3.y_centers(iy);
 O.th = grid3.th_centers(it);
 
 % ---------------- counts per kept overlap voxel ----------------
-O.countA = local_counts_in_bins(idsA, idsO);
-O.countB = local_counts_in_bins(idsB, idsO);
+% uid_A/B and cnt_A/B already computed above — no re-sorting needed.
+O.countA = local_counts_via_unique(uid_A, cnt_A, idsO);
+O.countB = local_counts_via_unique(uid_B, cnt_B, idsO);
 
 fprintf('[rs4] overlap voxels after Keep+buffer: %d\n', numel(O.ids));
 
@@ -122,6 +122,85 @@ end
 % =======================================================================
 % Helpers
 % =======================================================================
+
+function it_lut = local_build_theta_mirror_lut(grid3, Nt)
+%LOCAL_BUILD_THETA_MIRROR_LUT
+% Precompute the mirrored theta bin for each of the Nt theta bins.
+% Mirror formula: thm = wrapToPi(pi - th_center(it)).
+% LUT value 0 means "invalid mirror bin" (defensive; should not occur for
+% a well-formed symmetric theta grid).
+thm = rs3_wrapToPi(pi - grid3.th_centers(:));   % (Nt x 1)
+lut = discretize(thm, grid3.th_edges);           % (Nt x 1), NaN if out of range
+lut(isnan(lut)) = 0;
+it_lut = uint16(lut);
+end
+
+
+function ids = local_full_vid(rows_upper, rows_to_mirror, Ny, Nx, Nt, it_lut)
+%LOCAL_FULL_VID  Voxel IDs for upper rows + their mirrored lower rows.
+%
+% Does NOT allocate any intermediate packed row struct — only reads ix/iy/it
+% from the inputs and computes sub2ind directly.
+%
+% Mirror formula (CR3BP symmetry):
+%   x  unchanged  =>  ix unchanged
+%   y -> -y        =>  iy -> Ny - iy + 1
+%   th -> wrapToPi(pi - th)  =>  it -> it_lut(it)
+
+% --- Upper half ---
+nu = double(rows_upper.n);
+if nu > 0
+    iu_x = double(rows_upper.ix(1:nu));
+    iu_y = double(rows_upper.iy(1:nu));
+    iu_t = double(rows_upper.it(1:nu));
+    iu_x = max(1, min(Nx, iu_x));
+    iu_y = max(1, min(Ny, iu_y));
+    iu_t = max(1, min(Nt, iu_t));
+    ids_u = sub2ind([Ny, Nx, Nt], iu_y, iu_x, iu_t);
+else
+    ids_u = zeros(0, 1);
+end
+
+% --- Mirrored lower half ---
+nm = double(rows_to_mirror.n);
+if nm > 0
+    im_x = double(rows_to_mirror.ix(1:nm));
+    im_y = Ny - double(rows_to_mirror.iy(1:nm)) + 1;         % y mirror
+    im_t = double(it_lut(double(rows_to_mirror.it(1:nm))));   % theta LUT lookup
+    ok   = im_t > 0 & im_y >= 1 & im_y <= Ny;                % skip invalid mirrors
+    im_x = max(1, min(Nx, im_x(ok)));
+    im_y = im_y(ok);
+    im_t = max(1, min(Nt, im_t(ok)));
+    ids_l = sub2ind([Ny, Nx, Nt], im_y, im_x, im_t);
+else
+    ids_l = zeros(0, 1);
+end
+
+ids = [ids_u(:); ids_l(:)];
+end
+
+
+function c = local_counts_via_unique(uid_all, cnt_all, idsO)
+%LOCAL_COUNTS_VIA_UNIQUE  Count how many raw rows in the full set fall into
+% each voxel of idsO, using a pre-computed unique decomposition.
+%
+% Inputs:
+%   uid_all  — sorted unique voxel IDs from the full set
+%   cnt_all  — hit counts per unique voxel (from accumarray)
+%   idsO     — query IDs (the filtered overlap voxels)
+%
+% This is O(K log N') where K = numel(idsO) and N' = numel(uid_all),
+% replacing the old ismember(N_rows, K) pattern which was O(N log K)
+% with N being the full (non-unique) row count.
+if isempty(idsO)
+    c = zeros(0, 1);
+    return;
+end
+[tf, loc] = ismember(idsO(:), uid_all);
+c = zeros(numel(idsO), 1);
+c(tf) = cnt_all(loc(tf));
+end
+
 
 function keep = local_get_keep_xy(S, Ny, Nx)
 assert(isfield(S,'grid3') && isfield(S.grid3,'Keep') && ~isempty(S.grid3.Keep), ...
@@ -133,70 +212,9 @@ sz = size(keep);
 if isequal(sz, [Ny, Nx])
     return;
 elseif isequal(sz, [Nx, Ny])
-    keep = keep.';   % common swapped dims
+    keep = keep.';
     return;
 else
     error('Keep mask size [%d,%d], expected [%d,%d] (or transposed).', sz(1), sz(2), Ny, Nx);
 end
-end
-
-function ids = local_rows_to_vid(rows, Ny, Nx, Nt)
-if isempty(rows), ids = zeros(0,1); return; end
-
-if isstruct(rows)
-    n = double(rows.n);
-    if n==0, ids = zeros(0,1); return; end
-    iy = double(rows.iy(1:n));
-    ix = double(rows.ix(1:n));
-    it = double(rows.it(1:n));
-else
-    ix = double(rows(:,5));
-    iy = double(rows(:,6));
-    it = double(rows(:,7));
-end
-
-% defensive clamp
-ix = max(1, min(Nx, ix));
-iy = max(1, min(Ny, iy));
-it = max(1, min(Nt, it));
-
-ids = sub2ind([Ny, Nx, Nt], iy, ix, it);
-ids = ids(:);
-end
-
-function c = local_counts_in_bins(idsAll, idsBins)
-if isempty(idsBins)
-    c = zeros(0,1);
-    return;
-end
-idsBins = idsBins(:);
-[tf, loc] = ismember(idsAll, idsBins);
-loc = loc(tf);
-c = accumarray(loc, 1, [numel(idsBins), 1], @sum, 0);
-end
-
-function r = local_rows_cat(a, b)
-% concat packed rows without rs3_rows_vcat dependency
-if isstruct(a) && isstruct(b)
-    nA = double(a.n); nB = double(b.n);
-    if nA==0, r=b; return; end
-    if nB==0, r=a; return; end
-
-    r = rs3_rows_empty(nA+nB);
-    r.n = uint32(nA+nB);
-
-    r.iSeed(1:nA)    = a.iSeed(1:nA);    r.iSeed(nA+1:end)    = b.iSeed(1:nB);
-    r.iHead(1:nA)    = a.iHead(1:nA);    r.iHead(nA+1:end)    = b.iHead(1:nB);
-    r.leg(1:nA)      = a.leg(1:nA);      r.leg(nA+1:end)      = b.leg(1:nB);
-    r.halfFlag(1:nA) = a.halfFlag(1:nA); r.halfFlag(nA+1:end) = b.halfFlag(1:nB);
-    r.t(1:nA)        = a.t(1:nA);        r.t(nA+1:end)        = b.t(1:nB);
-    r.ix(1:nA)       = a.ix(1:nA);       r.ix(nA+1:end)       = b.ix(1:nB);
-    r.iy(1:nA)       = a.iy(1:nA);       r.iy(nA+1:end)       = b.iy(1:nB);
-    r.it(1:nA)       = a.it(1:nA);       r.it(nA+1:end)       = b.it(1:nB);
-    return;
-end
-
-if isempty(a), r=b; return; end
-if isempty(b), r=a; return; end
-r = [a; b];
 end
