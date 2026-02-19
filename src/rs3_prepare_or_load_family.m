@@ -12,7 +12,7 @@ end
 
 % Build from scratch (Step3 + Step4)
 S = rs3_family_prepare_seeds(familyName, cfg, grid3);
-S = rs3_family_build_hits(S, cfg, grid3);
+S = rs3_family_build_hits(S, cfg, S.grid3);
 
 % Save to cache
 info = rs3_cache_save_family(S, cfg);
