@@ -78,6 +78,10 @@ cfg.cache.store_dense_po = false;                 % if true: store full dense PO
 cfg.overlap = struct();
 cfg.overlap.primary_buffer_frac = 0.05;   % fractional exclusion buffer around Earth/Moon (applied to RE_nd/RM_nd)
 
+cfg.rs4 = struct();
+cfg.rs4.extract = struct();
+cfg.rs4.extract.parallel = false;  % parallelize overlap voxel metadata extraction (requires parpool)
+
 % ---------------- Parallelism ----------------
 cfg.par = struct();
 cfg.par.enable         = true;   % enable PARFOR over (seed x heading) jobs

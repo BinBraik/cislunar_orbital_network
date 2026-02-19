@@ -29,6 +29,12 @@ Nt = numel(grid3.th_centers);
 
 VU_mps  = local_cfg_get(cfg, 'units.VU_mps',  1.0);
 TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
+usePar = local_cfg_get(cfg, 'rs4.extract.parallel', false);
+
+if usePar && isempty(gcp('nocreate'))
+    warning('[rs4] cfg.rs4.extract.parallel=true but no parpool exists. Running serial extraction.');
+    usePar = false;
+end
 
 % ---------- reconstruct full sets exactly as in overlap stage ----------
 rowsA_F_u = SA.Step4.rows_FRS_upper;

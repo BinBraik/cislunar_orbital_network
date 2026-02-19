@@ -132,8 +132,15 @@ for i = 1:N
         SB = Sall{j};
 
         try
+            tPair = tic;
+
+            tStage = tic;
             O = rs4_overlap_pair(SA, SB, cfg);
+            tOverlap = toc(tStage);
+
+            tStage = tic;
             save(fullfile(pairDir, ['rs4_' pairSafe '_overlap.mat']), 'O', '-v7.3');
+            tSaveOverlap = toc(tStage);
 
             if isempty(O.ids)
                 fprintf('[rs4-batch] no overlap for %s | %s\n', famA, famB);
@@ -144,11 +151,21 @@ for i = 1:N
                 continue;
             end
 
+            tStage = tic;
             V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
+            tExtract = toc(tStage);
 
+            tStage = tic;
             rs4_overlap_visualize(O, SA, SB, cfg, pairDir, pairTag);
+            tVizOverlap = toc(tStage);
+
+            tStage = tic;
             rs4_overlap_visualize_combo(SA, SB, O, cfg, pairDir, pairTag);
+            tVizCombo = toc(tStage);
+
+            tStage = tic;
             B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, pairDir, pairTag);
+            tBounds = toc(tStage);
 
             % Winner selection by DVproxy
             dv = B.dv_proxy(:);
@@ -204,6 +221,9 @@ for i = 1:N
 
             save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), ...
                 'winnerMeta', 'B', '-v7.3');
+
+            fprintf('[rs4-batch] timings: overlap=%.2fs saveO=%.2fs extract=%.2fs vizO=%.2fs vizCombo=%.2fs bounds=%.2fs total=%.2fs\n', ...
+                tOverlap, tSaveOverlap, tExtract, tVizOverlap, tVizCombo, tBounds, toc(tPair));
 
             fprintf('[rs4-batch] min DVproxy = %.3f m/s (voxel id %d)\n', minDV, round(voxelIdWinner));
 
