@@ -33,7 +33,7 @@ Xpo = deval(solPO, t_dense)';
 
 % --- per-family Keep mask (CJ dependent) ---
 grid3 = grid3geom;
-grid3.Keep = rs3_keep_mask_xy(grid3, CJ, mu);
+grid3.Keep = rs3_keep_mask_xy(grid3, CJ, mu, cfg.sys.RE_nd, cfg.sys.RM_nd);
 
 % --- validations / sanity checks ---
 if cfg.diag.smoke_checks
