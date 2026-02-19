@@ -40,6 +40,7 @@ cfg.plot.rs4.combo_xy = true;
 cfg.plot.rs4.combo_xyz = false;
 cfg.plot.rs4.bounds_lb = true;
 cfg.plot.rs4.bounds_ub = true;
+cfg.plot.rs4.bounds_proxy = true;
 
 rs3_cfg_validate(cfg);
 

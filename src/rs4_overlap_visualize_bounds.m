@@ -19,7 +19,8 @@ end
 
 doLB = local_plot_enabled(cfg, 'plot.rs4.bounds_lb', true);
 doUB = local_plot_enabled(cfg, 'plot.rs4.bounds_ub', true);
-if ~doLB && ~doUB
+doProxy = local_plot_enabled(cfg, 'plot.rs4.bounds_proxy', true);
+if ~doLB && ~doUB && ~doProxy
     % Still compute bounds for reporting even when plots are disabled.
 end
 
@@ -100,6 +101,30 @@ if doUB
     local_apply_zoom(cfg, ax);
 
     rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_bounds_ub_xy'], cfg, 'Resolution', local_fig_res(cfg));
+    local_close_if_hidden(cfg, fig);
+end
+
+if doProxy
+    fig = figure('Color','w', 'Name',['DVproxy XY ' tag], 'Visible', local_fig_visible(cfg));
+    ax = gca;
+
+    CJbg = min(SA.CJ, SB.CJ);
+    rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
+    set(ax.Children,'HandleVisibility','off');
+    hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
+
+    scatter(ax, x, y, 20, dv_proxy, 'filled', 'MarkerFaceAlpha', 0.94, 'MarkerEdgeAlpha', 0.30);
+    cb = colorbar(ax);
+    ylabel(cb, 'DVproxy = DVlb + DVpatch_{ub} (m/s)', 'Interpreter','tex');
+
+    % Mark best voxel
+    plot(ax, x(iMin), y(iMin), 'kp', 'MarkerSize', 10, 'MarkerFaceColor', 'y');
+
+    title(ax, sprintf('Voxel DVproxy heatmap | %s', tag), 'Interpreter','none');
+    xlabel(ax,'x'); ylabel(ax,'y');
+    local_apply_zoom(cfg, ax);
+
+    rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_bounds_proxy_xy'], cfg, 'Resolution', local_fig_res(cfg));
     local_close_if_hidden(cfg, fig);
 end
 
