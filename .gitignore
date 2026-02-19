@@ -1,0 +1,38 @@
+# MATLAB temporary/session files
+*.asv
+*.m~
+*.autosave
+*.mlx~
+
+# MATLAB project and preferences
+*.prj
+*.mlproj
+
+# MAT and generated data artifacts
+*.mat
+*.h5
+*.hdf5
+
+# Figures and exports
+*.fig
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+
+# Logs and caches
+*.log
+cache/
+
+# macOS / Linux / Windows metadata
+.DS_Store
+Thumbs.db
+
+# Python artifacts (if local helper scripts are added)
+__pycache__/
+*.pyc
+
+# Editor / IDE
+.vscode/
+.idea/
