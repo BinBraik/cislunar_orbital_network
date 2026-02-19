@@ -49,12 +49,19 @@ for k = 1:N
 end
 
 % DVproxy for ranking: DVlb + DVpatch_ub
-dv_patch_only = dv_ub - arrayfun(@(vk) vk.A.dv_turn_mps_max + vk.B.dv_turn_mps_max, V.voxels).';
+side_turn_max = arrayfun(@(vk) vk.A.dv_turn_mps_max + vk.B.dv_turn_mps_max, V.voxels);
+side_turn_max = side_turn_max(:);
+dv_patch_only = dv_ub - side_turn_max;
 dv_proxy = dv_lb + dv_patch_only;
 
 % Defensive shape normalization for plotting APIs (require Nx1 or Nx3 colors)
 x = x(:); y = y(:);
 dv_lb = dv_lb(:); dv_ub = dv_ub(:); dv_proxy = dv_proxy(:);
+
+% Ensure all plotted vectors share the same length (guard against shape drift).
+nPlot = min([numel(x), numel(y), numel(dv_lb), numel(dv_ub), numel(dv_proxy)]);
+x = x(1:nPlot); y = y(1:nPlot);
+dv_lb = dv_lb(1:nPlot); dv_ub = dv_ub(1:nPlot); dv_proxy = dv_proxy(1:nPlot);
 
 % Robust minimum extraction (scalar index) even with NaNs/shape surprises.
 valid = isfinite(dv_proxy);
