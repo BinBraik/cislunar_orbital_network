@@ -55,7 +55,17 @@ dv_proxy = dv_lb + dv_patch_only;
 % Defensive shape normalization for plotting APIs (require Nx1 or Nx3 colors)
 x = x(:); y = y(:);
 dv_lb = dv_lb(:); dv_ub = dv_ub(:); dv_proxy = dv_proxy(:);
-[minProxy, iMin] = min(dv_proxy);
+
+% Robust minimum extraction (scalar index) even with NaNs/shape surprises.
+valid = isfinite(dv_proxy);
+if any(valid)
+    idxValid = find(valid);
+    [minProxy, iLocal] = min(dv_proxy(valid));
+    iMin = idxValid(iLocal);
+else
+    minProxy = NaN;
+    iMin = NaN;
+end
 
 B = struct();
 B.dv_lb = dv_lb;
@@ -63,8 +73,13 @@ B.dv_ub = dv_ub;
 B.dv_proxy = dv_proxy;
 B.min_dvproxy = minProxy;
 B.imin = iMin;
-B.x_at_min = x(iMin);
-B.y_at_min = y(iMin);
+if isfinite(iMin) && iMin >= 1 && iMin <= numel(x)
+    B.x_at_min = x(iMin);
+    B.y_at_min = y(iMin);
+else
+    B.x_at_min = NaN;
+    B.y_at_min = NaN;
+end
 
 if doLB
     fig = figure('Color','w', 'Name',['DVtotal Lower Bound XY ' tag], 'Visible', local_fig_visible(cfg));
@@ -122,7 +137,9 @@ if doProxy
     ylabel(cb, 'DVproxy = DVlb + DVpatch_{ub} (m/s)', 'Interpreter','tex');
 
     % Mark best voxel
-    plot(ax, x(iMin), y(iMin), 'kp', 'MarkerSize', 10, 'MarkerFaceColor', 'y');
+    if isfinite(iMin) && iMin >= 1 && iMin <= numel(x)
+        plot(ax, x(iMin), y(iMin), 'kp', 'MarkerSize', 10, 'MarkerFaceColor', 'y');
+    end
 
     title(ax, sprintf('Voxel DVproxy heatmap | %s', tag), 'Interpreter','none');
     xlabel(ax,'x'); ylabel(ax,'y');
