@@ -80,3 +80,23 @@ function test_bin_theta_wrapping(testCase)
     [~, ~, it2] = rs3_bin_xyth(0, 0, 0.5 + 2*pi, grid3);
     verifyEqual(testCase, it1, it2);
 end
+
+
+function test_keep_mask_excludes_primaries(testCase)
+    cfg = rs3_cfg_defaults();
+    cfg.grid.dx = 0.02;
+    cfg.grid.dy = 0.02;
+    grid3 = rs3_grid_make(cfg);
+
+    mu = 0.012150584270572;
+    CJ = 3.1;
+    Keep = rs3_keep_mask_xy(grid3, CJ, mu, cfg.sys.RE_nd, cfg.sys.RM_nd);
+
+    % Find nearest centers to Earth and Moon centers on x-axis.
+    [~, ixE] = min(abs(grid3.x_centers - (-mu)));
+    [~, iy0] = min(abs(grid3.y_centers - 0));
+    [~, ixM] = min(abs(grid3.x_centers - (1-mu)));
+
+    verifyFalse(testCase, Keep(iy0, ixE));
+    verifyFalse(testCase, Keep(iy0, ixM));
+end
