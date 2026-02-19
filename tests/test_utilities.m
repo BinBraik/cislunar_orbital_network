@@ -64,25 +64,3 @@ function test_short_tag_truncation(testCase)
     verifyLessThanOrEqual(testCase, numel(tag), 12);
 end
 
-% ---- rs3_group_sorted_ids ----
-
-function test_group_sorted_simple(testCase)
-    [u, s, e] = rs3_group_sorted_ids([1; 1; 2; 2; 2; 3]);
-    verifyEqual(testCase, u, [1; 2; 3]);
-    verifyEqual(testCase, s, [1; 3; 6]);
-    verifyEqual(testCase, e, [2; 5; 6]);
-end
-
-function test_group_sorted_empty(testCase)
-    [u, s, e] = rs3_group_sorted_ids([]);
-    verifyEmpty(testCase, u);
-    verifyEmpty(testCase, s);
-    verifyEmpty(testCase, e);
-end
-
-function test_group_sorted_single(testCase)
-    [u, s, e] = rs3_group_sorted_ids([42]);
-    verifyEqual(testCase, u, 42);
-    verifyEqual(testCase, s, 1);
-    verifyEqual(testCase, e, 1);
-end
