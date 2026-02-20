@@ -31,7 +31,6 @@ VU_mps     = local_cfg_get(cfg_sub, 'units.VU_mps',  1.0);
 
 Tmax_sub   = cfg_sub.propag.Tmax;
 DV_sub     = cfg_sub.fan.DV_cap_nd;
-DV_orig    = S.Step4.fanStats.DV_cap_nd;   % may not exist; fall back gracefully
 
 % --- check feasibility ---
 if Tmax_sub > Tmax_orig * (1 + 1e-9)
