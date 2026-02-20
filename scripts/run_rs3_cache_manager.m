@@ -270,7 +270,7 @@ fprintf('  cfg.grid.dtheta = deg2rad(%.6g);  %% = %.4f°\n', ...
     rad2deg(p.grid.dtheta), rad2deg(p.grid.dtheta));
 fprintf('  cfg.seed.ds_seed   = %.6g;\n',      p.seed.ds_seed);
 fprintf('  %% propagation/fan\n');
-fprintf('  cfg.propag.Tmax    = %.6g;  %% = %s\n', p.propag.Tmax, local_tmax_str(p.propag.Tmax));
+fprintf('  cfg.propag.Tmax    = %s;  %% = %s\n', local_tmax_matlab_expr(p.propag.Tmax), local_tmax_str(p.propag.Tmax));
 fprintf('  cfg.fan.DV_cap_nd  = %.6g;\n',      p.fan.DV_cap_nd);
 fprintf('  cfg.fan.dtheta_fan = deg2rad(%.6g);  %% = %.4f°\n', ...
     rad2deg(p.fan.dtheta_fan), rad2deg(p.fan.dtheta_fan));
@@ -289,6 +289,19 @@ elseif abs(frac-0.5) < 1e-6, s = 'π/2';
 elseif abs(frac-2)   < 1e-6, s = '2π';
 elseif abs(frac-0.25)< 1e-6, s = 'π/4';
 else,                          s = sprintf('%.4gπ', frac);
+end
+end
+
+function expr = local_tmax_matlab_expr(T)
+% Return a pasteable MATLAB expression for Tmax — exact pi fractions where
+% possible, otherwise %.16g so the fingerprint round-trips correctly.
+if isnan(T), expr = 'NaN'; return; end
+frac = T/pi;
+if     abs(frac-1)   < 1e-6, expr = 'pi';
+elseif abs(frac-0.5) < 1e-6, expr = 'pi/2';
+elseif abs(frac-2)   < 1e-6, expr = '2*pi';
+elseif abs(frac-0.25)< 1e-6, expr = 'pi/4';
+else,                          expr = sprintf('%.16g', T);
 end
 end
 
