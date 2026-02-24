@@ -19,25 +19,27 @@ end
 % hit table sizes
 if isfield(S,'Step4')
     st.rows_FRS_upper = rs3_rows_count(S.Step4.rows_FRS_upper);
-    st.rows_BRS_upper = rs3_rows_count(S.Step4.rows_BRS_upper);
-    % Lower rows are now computed on-the-fly (Phase 4); report as equal to upper
-    st.rows_FRS_lower = st.rows_BRS_upper;  % mirror(BRS_upper)
-    st.rows_BRS_lower = st.rows_FRS_upper;  % mirror(FRS_upper)
+    st.rows_FRS_lower = rs3_rows_count(S.Step4.rows_FRS_lower);
+    % BRS is R(FRS): BRS_upper = R(FRS_lower), BRS_lower = R(FRS_upper)
+    st.rows_BRS_upper = st.rows_FRS_lower;  % same count (kept for cache inspect compat)
+    st.rows_BRS_lower = st.rows_FRS_upper;
 
     st.uv_FRS_upper = numel(unique(rs3_rows_to_voxelid(S.Step4.rows_FRS_upper, S.grid3)));
-    st.uv_BRS_upper = numel(unique(rs3_rows_to_voxelid(S.Step4.rows_BRS_upper, S.grid3)));
+    st.uv_FRS_lower = numel(unique(rs3_rows_to_voxelid(S.Step4.rows_FRS_lower, S.grid3)));
+    st.uv_BRS_upper = st.uv_FRS_lower;     % kept for cache inspect compat
 else
     st.rows_FRS_upper = NaN;
-    st.rows_BRS_upper = NaN;
     st.rows_FRS_lower = NaN;
+    st.rows_BRS_upper = NaN;
     st.rows_BRS_lower = NaN;
     st.uv_FRS_upper = NaN;
+    st.uv_FRS_lower = NaN;
     st.uv_BRS_upper = NaN;
 end
 
 % rough size estimate (bytes)
 if isfield(S,'Step4')
-    nrows = st.rows_FRS_upper + st.rows_BRS_upper;
+    nrows = st.rows_FRS_upper + st.rows_FRS_lower;
     % Packed format: ~14 bytes/row (not 64)
     isPacked = isfield(S.Step4,'packed') && S.Step4.packed;
     bpr = 14; if ~isPacked, bpr = 64; end

@@ -8,7 +8,8 @@ function rs3_hits_visual_validate(S, cfg, outdir)
 %
 % Expected inputs:
 %   S.Step4.rows_FRS_upper  (packed rows struct or [N x 8] matrix)
-%   S.Step4.rows_BRS_upper  (packed rows struct or [N x 8] matrix)
+%   S.Step4.rows_FRS_lower  (packed rows struct or [N x 8] matrix)
+%   BRS is derived on-the-fly as R(FRS): BRS_upper=R(FRS_lower), BRS_lower=R(FRS_upper)
 %   S.grid3 has x_centers, y_centers, th_edges, th_centers, Nx, Ny
 
 if ~isfield(cfg,'io') || ~isfield(cfg.io,'save_figs') || ~cfg.io.save_figs
@@ -23,12 +24,13 @@ grid3 = S.grid3;
 Nx = grid3.Nx; Ny = grid3.Ny;
 
 rowsF_u = S.Step4.rows_FRS_upper;
-rowsB_u = S.Step4.rows_BRS_upper;
+rowsF_l = S.Step4.rows_FRS_lower;
 
-% ---- Symmetry-complete lower halves (for plotting) ----
-[rowsF_l, rowsB_l] = local_symmetry_complete(rowsF_u, rowsB_u, grid3);
+% ---- BRS = R(FRS): derive BRS from FRS via time-reversal symmetry ----
+% BRS_upper = R(FRS_lower),  BRS_lower = R(FRS_upper)
+[rowsB_u, rowsB_l] = local_brs_from_frs(rowsF_u, rowsF_l, grid3);
 
-% Full (upper + lower) for histograms, etc.
+% Full (upper + lower)
 rowsF_full = local_rows_cat(rowsF_u, rowsF_l);
 rowsB_full = local_rows_cat(rowsB_u, rowsB_l);
 
@@ -121,23 +123,25 @@ end
 % Helpers
 % =======================================================================
 
-function [rowsF_l, rowsB_l] = local_symmetry_complete(rowsF_u, rowsB_u, grid3)
-% CR3BP symmetry completion:
-%   FRS_lower = mirror(BRS_upper) with leg=1
-%   BRS_lower = mirror(FRS_upper) with leg=2
+function [rowsB_u, rowsB_l] = local_brs_from_frs(rowsF_u, rowsF_l, grid3)
+% BRS = R(FRS) via CR3BP time-reversal symmetry:
+%   BRS_upper = R(FRS_lower)  [mirror lower FRS rows into upper half]
+%   BRS_lower = R(FRS_upper)  [mirror upper FRS rows into lower half]
+% rs3_rows_mirror_lower applies the full R map (iy, it, t all flipped)
+% regardless of which half the input rows are in.
 
-if isstruct(rowsF_u) && isstruct(rowsB_u)
-    rowsF_l = rs3_rows_mirror_lower(rowsB_u, grid3, 1);
-    rowsB_l = rs3_rows_mirror_lower(rowsF_u, grid3, 2);
+if isstruct(rowsF_u) && isstruct(rowsF_l)
+    rowsB_u = rs3_rows_mirror_lower(rowsF_l, grid3, 2);   % R(FRS_lower) -> BRS_upper
+    rowsB_l = rs3_rows_mirror_lower(rowsF_u, grid3, 2);   % R(FRS_upper) -> BRS_lower
     return;
 end
 
-% Matrix fallback ([N x 8]): [iSeed iHead leg t ix iy it halfFlag]
-rowsF_l = local_mirror_lower_matrix(rowsB_u, grid3, 1);
-rowsB_l = local_mirror_lower_matrix(rowsF_u, grid3, 2);
+% Matrix fallback ([N x 8])
+rowsB_u = local_mirror_matrix(rowsF_l, grid3, 2);
+rowsB_l = local_mirror_matrix(rowsF_u, grid3, 2);
 end
 
-function rL = local_mirror_lower_matrix(rU, grid3, target_leg)
+function rL = local_mirror_matrix(rU, grid3, target_leg)
 if isempty(rU)
     rL = zeros(0, 8);
     return;
@@ -146,10 +150,10 @@ end
 Ny = grid3.Ny;
 
 rL = rU;
-rL(:,3) = target_leg;     % leg
-rL(:,4) = -rU(:,4);       % time flip
-rL(:,6) = (Ny - rU(:,6) + 1);  % iy mirror
-rL(:,8) = -1;             % halfFlag = -1 (lower)
+rL(:,3) = target_leg;          % leg
+rL(:,4) = -rU(:,4);            % time flip
+rL(:,6) = (Ny - rU(:,6) + 1); % iy mirror
+rL(:,8) = -1;                  % halfFlag = -1
 
 % Theta mirror: wrapToPi(pi - th)
 th  = grid3.th_centers(rU(:,7));

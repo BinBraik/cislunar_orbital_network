@@ -36,12 +36,12 @@ assert(Nx==numel(gridB.x_centers) && Ny==numel(gridB.y_centers) && Nt==numel(gri
 % wrapToPi(pi - th_center(it)).  LUT value 0 = no valid mirror bin.
 it_lut = local_build_theta_mirror_lut(grid3, Nt);
 
-% ---------------- voxel IDs (no struct allocation) ----------------
-% A.FRS_full = FRS_upper + mirror(BRS_upper -> FRS_lower)
-idsA = local_full_vid(SA.Step4.rows_FRS_upper, SA.Step4.rows_BRS_upper, Ny, Nx, Nt, it_lut);
+% ---------------- voxel IDs (BRS = R(FRS), no backward rows stored) ----
+% A.FRS_full = FRS_upper (direct) + FRS_lower (direct, from lower-seed integration)
+idsA = local_frs_vid(SA.Step4.rows_FRS_upper, SA.Step4.rows_FRS_lower, Ny, Nx, Nt);
 
-% B.BRS_full = BRS_upper + mirror(FRS_upper -> BRS_lower)
-idsB = local_full_vid(SB.Step4.rows_BRS_upper, SB.Step4.rows_FRS_upper, Ny, Nx, Nt, it_lut);
+% B.BRS_full = R(B.FRS_full) = mirror(FRS_upper) + mirror(FRS_lower)
+idsB = local_brs_vid(SB.Step4.rows_FRS_upper, SB.Step4.rows_FRS_lower, Ny, Nx, Nt, it_lut);
 
 % ---------------- unique once; reuse for intersect and counts ----------------
 [uid_A, ~, ic_A] = unique(idsA);   cnt_A = accumarray(ic_A, 1);
@@ -136,47 +136,59 @@ it_lut = uint16(lut);
 end
 
 
-function ids = local_full_vid(rows_upper, rows_to_mirror, Ny, Nx, Nt, it_lut)
-%LOCAL_FULL_VID  Voxel IDs for upper rows + their mirrored lower rows.
-%
-% Does NOT allocate any intermediate packed row struct — only reads ix/iy/it
-% from the inputs and computes sub2ind directly.
-%
-% Mirror formula (CR3BP symmetry):
-%   x  unchanged  =>  ix unchanged
-%   y -> -y        =>  iy -> Ny - iy + 1
-%   th -> wrapToPi(pi - th)  =>  it -> it_lut(it)
+function ids = local_frs_vid(rows_upper, rows_lower, Ny, Nx, Nt)
+%LOCAL_FRS_VID  FRS full voxel IDs = upper rows (direct) + lower rows (direct).
+% No mirror needed: both halves are stored from actual forward integration.
 
-% --- Upper half ---
 nu = double(rows_upper.n);
 if nu > 0
-    iu_x = double(rows_upper.ix(1:nu));
-    iu_y = double(rows_upper.iy(1:nu));
-    iu_t = double(rows_upper.it(1:nu));
-    iu_x = max(1, min(Nx, iu_x));
-    iu_y = max(1, min(Ny, iu_y));
-    iu_t = max(1, min(Nt, iu_t));
+    iu_x = max(1, min(Nx, double(rows_upper.ix(1:nu))));
+    iu_y = max(1, min(Ny, double(rows_upper.iy(1:nu))));
+    iu_t = max(1, min(Nt, double(rows_upper.it(1:nu))));
     ids_u = sub2ind([Ny, Nx, Nt], iu_y, iu_x, iu_t);
 else
     ids_u = zeros(0, 1);
 end
 
-% --- Mirrored lower half ---
-nm = double(rows_to_mirror.n);
-if nm > 0
-    im_x = double(rows_to_mirror.ix(1:nm));
-    im_y = Ny - double(rows_to_mirror.iy(1:nm)) + 1;         % y mirror
-    im_t = double(it_lut(double(rows_to_mirror.it(1:nm))));   % theta LUT lookup
-    ok   = im_t > 0 & im_y >= 1 & im_y <= Ny;                % skip invalid mirrors
-    im_x = max(1, min(Nx, im_x(ok)));
-    im_y = im_y(ok);
-    im_t = max(1, min(Nt, im_t(ok)));
-    ids_l = sub2ind([Ny, Nx, Nt], im_y, im_x, im_t);
+nl = double(rows_lower.n);
+if nl > 0
+    il_x = max(1, min(Nx, double(rows_lower.ix(1:nl))));
+    il_y = max(1, min(Ny, double(rows_lower.iy(1:nl))));
+    il_t = max(1, min(Nt, double(rows_lower.it(1:nl))));
+    ids_l = sub2ind([Ny, Nx, Nt], il_y, il_x, il_t);
 else
     ids_l = zeros(0, 1);
 end
 
 ids = [ids_u(:); ids_l(:)];
+end
+
+
+function ids = local_brs_vid(rows_frs_upper, rows_frs_lower, Ny, Nx, Nt, it_lut)
+%LOCAL_BRS_VID  BRS full voxel IDs = R(FRS_full) via CR3BP time-reversal.
+% R(FRS_upper) contributes to BRS_lower; R(FRS_lower) contributes to BRS_upper.
+
+ids_a = local_mirror_rows_to_ids(rows_frs_upper, Ny, Nx, Nt, it_lut);
+ids_b = local_mirror_rows_to_ids(rows_frs_lower, Ny, Nx, Nt, it_lut);
+ids = [ids_a(:); ids_b(:)];
+end
+
+
+function ids = local_mirror_rows_to_ids(rows, Ny, Nx, Nt, it_lut)
+%LOCAL_MIRROR_ROWS_TO_IDS  Apply R map to rows and return voxel IDs.
+nm = double(rows.n);
+if nm == 0
+    ids = zeros(0, 1);
+    return;
+end
+im_x = double(rows.ix(1:nm));
+im_y = Ny - double(rows.iy(1:nm)) + 1;         % y mirror
+im_t = double(it_lut(double(rows.it(1:nm))));   % theta LUT lookup
+ok   = im_t > 0 & im_y >= 1 & im_y <= Ny;      % skip invalid mirrors
+im_x = max(1, min(Nx, im_x(ok)));
+im_y = im_y(ok);
+im_t = max(1, min(Nt, im_t(ok)));
+ids  = sub2ind([Ny, Nx, Nt], im_y, im_x, im_t);
 end
 
 

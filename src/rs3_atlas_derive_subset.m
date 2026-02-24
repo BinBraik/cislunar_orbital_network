@@ -125,25 +125,25 @@ end
 % =====================================================================
 %  2. Filter rows: Tmax + DV_cap
 % =====================================================================
-rows_FRS_sub = local_filter_rows(S.Step4.rows_FRS_upper, Tmax_sub, valid_head, ihead_remap);
-rows_BRS_sub = local_filter_rows(S.Step4.rows_BRS_upper, Tmax_sub, valid_head, ihead_remap);
+rows_FRS_sub     = local_filter_rows(S.Step4.rows_FRS_upper, Tmax_sub, valid_head, ihead_remap);
+rows_FRS_lower_sub = local_filter_rows(S.Step4.rows_FRS_lower, Tmax_sub, valid_head, ihead_remap);
 
-fprintf('[rs3_subset] FRS: %d → %d rows (%.1f%%)\n', ...
+fprintf('[rs3_subset] FRS_upper: %d → %d rows (%.1f%%)\n', ...
     double(S.Step4.rows_FRS_upper.n), double(rows_FRS_sub.n), ...
     100*double(rows_FRS_sub.n)/max(1,double(S.Step4.rows_FRS_upper.n)));
-fprintf('[rs3_subset] BRS: %d → %d rows (%.1f%%)\n', ...
-    double(S.Step4.rows_BRS_upper.n), double(rows_BRS_sub.n), ...
-    100*double(rows_BRS_sub.n)/max(1,double(S.Step4.rows_BRS_upper.n)));
+fprintf('[rs3_subset] FRS_lower: %d → %d rows (%.1f%%)\n', ...
+    double(S.Step4.rows_FRS_lower.n), double(rows_FRS_lower_sub.n), ...
+    100*double(rows_FRS_lower_sub.n)/max(1,double(S.Step4.rows_FRS_lower.n)));
 
 % =====================================================================
 %  3. (Optional) Re-grid to coarser grid
 % =====================================================================
 if doRegrid
     grid3_sub = rs3_grid_make(cfg_sub);
-    rows_FRS_sub = local_regrid_rows(rows_FRS_sub, grid3_orig, grid3_sub);
-    rows_BRS_sub = local_regrid_rows(rows_BRS_sub, grid3_orig, grid3_sub);
-    fprintf('[rs3_subset] After re-grid: FRS %d rows, BRS %d rows\n', ...
-        double(rows_FRS_sub.n), double(rows_BRS_sub.n));
+    rows_FRS_sub       = local_regrid_rows(rows_FRS_sub,       grid3_orig, grid3_sub);
+    rows_FRS_lower_sub = local_regrid_rows(rows_FRS_lower_sub, grid3_orig, grid3_sub);
+    fprintf('[rs3_subset] After re-grid: FRS_upper %d rows, FRS_lower %d rows\n', ...
+        double(rows_FRS_sub.n), double(rows_FRS_lower_sub.n));
 else
     grid3_sub = grid3_orig;
 end
@@ -157,7 +157,7 @@ S_sub.grid3 = grid3_sub;
 step4_sub = S.Step4;
 step4_sub.Tmax              = Tmax_sub;
 step4_sub.rows_FRS_upper    = rows_FRS_sub;
-step4_sub.rows_BRS_upper    = rows_BRS_sub;
+step4_sub.rows_FRS_lower    = rows_FRS_lower_sub;
 step4_sub.delta_lists       = delta_lists_sub;
 step4_sub.nJobs             = uint32(Nseeds * max(cellfun(@numel, delta_lists_sub)));
 

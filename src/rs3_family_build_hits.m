@@ -1,17 +1,21 @@
 function S = rs3_family_build_hits(S, cfg, grid3)
 %RS3_FAMILY_BUILD_HITS  Step 4: propagate fan from seeds and log voxel hits.
 %
-% Builds only UPPER-half by integration. Lower-half is computed on-the-fly
-% in Step 6 via rs3_rows_mirror_lower (Phase 4 memory optimization).
+% Exploits CR3BP time-reversal symmetry: BRS = R(FRS).
+% Integrates FORWARD only, from both upper and lower seeds.
+%   rows_FRS_upper : upper-half hits from forward trajectories of upper seeds
+%   rows_FRS_lower : lower-half hits from forward trajectories of lower seeds
+% BRS is derived on-the-fly downstream via R(FRS): no backward integration.
 %
 % CHANGES from original:
 %   - Rows stored as packed struct-of-arrays (~4x less memory)
-%   - Lower-half rows NOT stored (saves additional 50%)
+%   - Lower-half rows stored directly (forward from lower seeds)
+%   - No backward integration: BRS = R(FRS) applied downstream
 %   - Aggressive clear after vertcat (Phase 2)
 %   - rs3_rows_concat_cell replaces vertcat for packed structs
 %
 % Outputs added to S.Step4:
-%   delta_lists, stats, rows_FRS_upper, rows_BRS_upper (packed structs)
+%   delta_lists, stats, rows_FRS_upper, rows_FRS_lower (packed structs)
 %
 % Row struct fields: iSeed, iHead, leg, t, ix, iy, it, halfFlag, n
 
@@ -23,26 +27,38 @@ if isfield(S,'grid3') && isstruct(S.grid3) && isfield(S.grid3,'Keep')
 end
 
 SeedsU = S.SeedsUpper;
+SeedsL = S.SeedsLower;
 Nseeds = size(SeedsU,1);
 
 % ---- Build per-seed delta lists (fan wedge) ----
+% Delta lists are identical for upper and lower seeds (same speed by symmetry).
 [delta_lists, fanStats] = rs3_fan_delta_lists(SeedsU, S.CJ, S.mu, cfg);
 
-% ---- Build job list (seed x heading) ----
-jobSeed = zeros(0,1);
-jobHead = zeros(0,1);
+% ---- Build job list: upper seeds then lower seeds ----
+% iSeed is always in 1..Nseeds (same index used for both upper and lower).
+% jobIsUpper distinguishes which seed matrix to look up.
+jobSeed  = zeros(0,1);
+jobHead  = zeros(0,1);
 jobDelta = zeros(0,1);
 
 for i = 1:Nseeds
     deltas = delta_lists{i};
     nh = numel(deltas);
-    jobSeed = [jobSeed; i*ones(nh,1)]; %#ok<AGROW>
-    jobHead = [jobHead; (1:nh)'];      %#ok<AGROW>
-    jobDelta = [jobDelta; deltas(:)];  %#ok<AGROW>
+    jobSeed  = [jobSeed;  i*ones(nh,1)]; %#ok<AGROW>
+    jobHead  = [jobHead;  (1:nh)'];      %#ok<AGROW>
+    jobDelta = [jobDelta; deltas(:)];    %#ok<AGROW>
 end
 
-nJobs = numel(jobSeed);
-fprintf('[rs3] Step 4 (%s): jobs=%d (seeds=%d, mean heads=%.2f, max heads=%d)\n', ...
+nJobsHalf = numel(jobSeed);          % jobs per half (upper or lower)
+nJobs     = 2 * nJobsHalf;           % total jobs (forward only, both halves)
+
+% Concatenate: first nJobsHalf entries = upper seeds, next = lower seeds
+jobSeed_all  = [jobSeed;  jobSeed];
+jobHead_all  = [jobHead;  jobHead];
+jobDelta_all = [jobDelta; jobDelta];
+jobIsUpper   = [true(nJobsHalf,1); false(nJobsHalf,1)];
+
+fprintf('[rs3] Step 4 (%s): jobs=%d (seeds=%d x2 halves, mean heads=%.2f, max heads=%d)\n', ...
         S.name, nJobs, Nseeds, fanStats.nheads_mean, fanStats.nheads_max);
 
 % ---- ODE options ----
@@ -65,11 +81,10 @@ if usePar && isempty(gcp('nocreate'))
     usePar = false;
 end
 
-rowsF_cell = cell(nJobs,1);
-rowsB_cell = cell(nJobs,1);
+rowsF_cell = cell(nJobs,1);   % all forward hits (upper half: 1..nJobsHalf, lower: nJobsHalf+1..nJobs)
 
 if usePar
-    fprintf('[rs3]   Step4: running PARFOR over seed×heading jobs.\n');
+    fprintf('[rs3]   Step4: running PARFOR over seed×heading jobs (forward only, both halves).\n');
 
     doProg = cfg.diag.progress && isfield(cfg.par,'progress_every') && ~isempty(cfg.par.progress_every);
     dq = []; %#ok<NASGU>
@@ -80,22 +95,29 @@ if usePar
     end
 
     parfor j = 1:nJobs
-        iSeed = jobSeed(j);
-        iHead = jobHead(j);
-        delta = jobDelta(j);
+        iSeed  = jobSeed_all(j);
+        iHead  = jobHead_all(j);
+        delta  = jobDelta_all(j);
+        isUpper = jobIsUpper(j);
 
-        x0 = SeedsU(iSeed,1);
-        y0 = SeedsU(iSeed,2);
-        th0 = SeedsU(iSeed,3);
+        if isUpper
+            x0 = SeedsU(iSeed,1);
+            y0 = SeedsU(iSeed,2);
+            th0 = SeedsU(iSeed,3);
+            hf  = int8(+1);
+        else
+            x0 = SeedsL(iSeed,1);
+            y0 = SeedsL(iSeed,2);
+            th0 = SeedsL(iSeed,3);
+            hf  = int8(-1);
+        end
+
         th = rs3_wrapToPi(th0 + delta);
-
         X0 = [x0; y0; th];
 
         [tF, XF] = rs3_core_integrate_reduced_with_fallback(X0, [0 Tmax], S.CJ, S.mu, cfg.propag.v2tol, optsR, opts4);
-        rowsF_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 1, +1, tF, XF, grid3, cfg);
+        rowsF_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 1, double(hf), tF, XF, grid3, cfg);
 
-        [tB, XB] = rs3_core_integrate_reduced_with_fallback(X0, [0 -Tmax], S.CJ, S.mu, cfg.propag.v2tol, optsR, opts4);
-        rowsB_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 2, +1, tB, XB, grid3, cfg);
         if doProg
             send(dq, 1);
         end
@@ -104,22 +126,28 @@ else
     tProg = tic;
     every = max(1, round(nJobs/20));
     for j = 1:nJobs
-        iSeed = jobSeed(j);
-        iHead = jobHead(j);
-        delta = jobDelta(j);
+        iSeed  = jobSeed_all(j);
+        iHead  = jobHead_all(j);
+        delta  = jobDelta_all(j);
+        isUpper = jobIsUpper(j);
 
-        x0 = SeedsU(iSeed,1);
-        y0 = SeedsU(iSeed,2);
-        th0 = SeedsU(iSeed,3);
+        if isUpper
+            x0 = SeedsU(iSeed,1);
+            y0 = SeedsU(iSeed,2);
+            th0 = SeedsU(iSeed,3);
+            hf  = +1;
+        else
+            x0 = SeedsL(iSeed,1);
+            y0 = SeedsL(iSeed,2);
+            th0 = SeedsL(iSeed,3);
+            hf  = -1;
+        end
+
         th = rs3_wrapToPi(th0 + delta);
-
         X0 = [x0; y0; th];
 
         [tF, XF] = rs3_core_integrate_reduced_with_fallback(X0, [0 Tmax], S.CJ, S.mu, cfg.propag.v2tol, optsR, opts4);
-        rowsF_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 1, +1, tF, XF, grid3, cfg);
-
-        [tB, XB] = rs3_core_integrate_reduced_with_fallback(X0, [0 -Tmax], S.CJ, S.mu, cfg.propag.v2tol, optsR, opts4);
-        rowsB_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 2, +1, tB, XB, grid3, cfg);
+        rowsF_cell{j} = rs3_hits_log_from_traj(iSeed, iHead, 1, hf, tF, XF, grid3, cfg);
 
         if cfg.diag.progress && (mod(j, every)==0 || j==nJobs)
             fprintf('[rs3]   Step4 progress: %d/%d (%.1f%%) | elapsed %.1fs\n', ...
@@ -129,17 +157,16 @@ else
 end
 
 % ---- Concatenate packed structs (replaces vertcat) ----
-rows_FRS_upper = rs3_rows_concat_cell(rowsF_cell);
+% First nJobsHalf cells = upper-seed forward hits (halfFlag=+1)
+% Next  nJobsHalf cells = lower-seed forward hits (halfFlag=-1)
+rows_FRS_upper = rs3_rows_concat_cell(rowsF_cell(1:nJobsHalf));
+rows_FRS_lower = rs3_rows_concat_cell(rowsF_cell(nJobsHalf+1:end));
 clear rowsF_cell;                  % Phase 2: free cell array immediately
-rows_BRS_upper = rs3_rows_concat_cell(rowsB_cell);
-clear rowsB_cell;                  % Phase 2: free cell array immediately
 
 % ---- Validate hits ----
-rs3_hits_validate(rows_FRS_upper, rows_BRS_upper, grid3);
+rs3_hits_validate(rows_FRS_upper, rows_FRS_lower, grid3);
 
-% ---- Phase 4: do NOT compute or store lower-half rows ----
-% Lower-half is generated on-the-fly in Step 6 via rs3_rows_mirror_lower.
-% This saves ~50% of permanent atlas memory.
+% BRS is NOT stored — derived on-the-fly as R(FRS) downstream.
 
 S.Step4 = struct();
 S.Step4.Tmax = Tmax;
@@ -148,10 +175,10 @@ S.Step4.MaxStep = MaxStep;
 S.Step4.delta_lists = delta_lists;
 S.Step4.fanStats = fanStats;
 S.Step4.rows_FRS_upper = rows_FRS_upper;
-S.Step4.rows_BRS_upper = rows_BRS_upper;
+S.Step4.rows_FRS_lower = rows_FRS_lower;
 S.Step4.nJobs = nJobs;
 S.Step4.packed = true;  % flag for downstream compatibility checks
 
-fprintf('[rs3] Step 4 (%s) done in %.2fs. rows(FRS_u)=%d rows(BRS_u)=%d\n', ...
-        S.name, toc(tStart), double(rows_FRS_upper.n), double(rows_BRS_upper.n));
+fprintf('[rs3] Step 4 (%s) done in %.2fs. rows(FRS_u)=%d rows(FRS_l)=%d\n', ...
+        S.name, toc(tStart), double(rows_FRS_upper.n), double(rows_FRS_lower.n));
 end
