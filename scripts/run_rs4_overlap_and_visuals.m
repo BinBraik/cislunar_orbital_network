@@ -1,6 +1,6 @@
 %% RUN_RS4_OVERLAP_AND_VISUALS
 clear; clc;
-opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
+% opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
 
 % ===================== USER KNOBS =====================
 famA = 'Lyapunov L1';
@@ -10,7 +10,7 @@ tag  = [famA '_TO_' famB];
 cfg = rs3_cfg_defaults();   % you can rename later to rs4_cfg_defaults
 
 cfg.io.save_figs   = true;
-cfg.io.save_fig    = false;
+cfg.io.save_fig    = true;
 cfg.io.fig_visible = 'on';
 
 cfg.cache.enable  = true;
@@ -19,14 +19,14 @@ cfg.cache.rebuild = false;
 % grid settings (must match for both atlases)
 cfg.grid.dx     = 0.01;
 cfg.grid.dy     = 0.01;
-cfg.grid.dtheta = deg2rad(2);
+cfg.grid.dtheta = deg2rad(4);
 
 cfg.seed.ds_seed   = 0.02;
 
 % propagation/fan
-cfg.propag.Tmax    = pi;
-cfg.fan.DV_cap_nd  = 0.2;
-cfg.fan.dtheta_fan = deg2rad(1.0);
+cfg.propag.Tmax    = pi/2;
+cfg.fan.DV_cap_nd  = 0.1;
+cfg.fan.dtheta_fan = deg2rad(2.0);
 cfg.propag.absTol  = 1e-9;
 cfg.propag.relTol  = 1e-9;
 cfg.propag.v2tol   = 1e-8;
@@ -75,7 +75,7 @@ save(fullfile(outdir, ['rs4_' rs3_sanitize_fname(tag) '_overlap_voxel_info.mat']
 
 rs4_overlap_visualize(O, SA, SB, cfg, outdir, tag);
 rs4_overlap_visualize_combo(SA, SB, O, cfg, outdir, tag);
-B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag);
+B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, outdir, tag);
 
 if isstruct(B) && isfield(B,'min_dvproxy') && isscalar(B.min_dvproxy) && ~isempty(B.min_dvproxy) && isfinite(double(B.min_dvproxy))
     fprintf('[rs4] min DVproxy: %.3f m/s at (x,y)=(%.4f, %.4f), voxel #%d\n', ...

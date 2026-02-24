@@ -53,9 +53,9 @@ if doXY
     hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
 
     % Faint non-overlap points
-    hA = scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.', ...
+    hA = scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.r', ...
         'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
-    hB = scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.', ...
+    hB = scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.b', ...
         'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
 
     % Overlap points colored by DVpatch upper bound (m/s)
@@ -70,7 +70,7 @@ if doXY
 
     hO = scatter(ax, Ox, Oy, 16, dv_ub_mps, 'filled', ...
         'MarkerFaceAlpha', 0.95, 'MarkerEdgeAlpha', 0.20);
-
+    colormap(ax, "parula");          % or parula, hot, jet, magma, inferno, viridis, etc.
     cb = colorbar(ax);
     ylabel(cb, '\DeltaV_{patch,ub} (m/s)', 'Interpreter', 'tex');
 

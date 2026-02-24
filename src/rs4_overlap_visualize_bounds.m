@@ -1,4 +1,4 @@
-function B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, outdir, tag)
+function B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, outdir, tag)
 %RS4_OVERLAP_VISUALIZE_BOUNDS  Plot voxel-wise DVtotal bounds (vectorized).
 %
 % Bounds (m/s) per overlap voxel:
@@ -28,6 +28,31 @@ grid3   = SA.grid3;
 safeTag = rs3_sanitize_fname(tag);
 VU_mps  = local_cfg_get(cfg, 'units.VU_mps', 1.0);
 CJstar  = min(SA.CJ, SB.CJ);
+Nx = numel(grid3.x_centers);
+Ny = numel(grid3.y_centers);
+Nt = numel(grid3.th_centers);
+
+% ---------------- FULL sets ----------------
+rowsA_F_u = SA.Step4.rows_FRS_upper;
+rowsA_B_u = SA.Step4.rows_BRS_upper;
+rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
+rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
+
+rowsB_B_u = SB.Step4.rows_BRS_upper;
+rowsB_F_u = SB.Step4.rows_FRS_upper;
+rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
+rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
+
+idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
+idsB = unique(local_rows_to_vid(rowsB_B, Ny, Nx, Nt));
+idsO = O.ids(:);
+
+idsA_only = setdiff(idsA, idsO);
+idsB_only = setdiff(idsB, idsO);
+
+[Ax, Ay, Ath] = local_ids_to_centers(idsA_only, grid3, Ny, Nx, Nt);
+[Bx, By, Bth] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
+[Ox, Oy, Oth] = local_ids_to_centers(idsO,      grid3, Ny, Nx, Nt);
 
 % ---------- flat arrays from V ----------
 x  = V.x(:);
@@ -116,6 +141,11 @@ if doProxy
     rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
     set(ax.Children,'HandleVisibility','off');
     hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
+        % Faint non-overlap points
+    hA = scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.r', ...
+        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
+    hB = scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.b', ...
+        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
     scatter(ax, x, y, 20, dv_proxy, 'filled', 'MarkerFaceAlpha', 0.94, 'MarkerEdgeAlpha', 0.30);
     cb = colorbar(ax); ylabel(cb, 'DVproxy = DVlb + DVpatch_{ub} (m/s)', 'Interpreter','tex');
     if isfinite(iMin) && iMin >= 1 && iMin <= numel(x)
@@ -191,4 +221,54 @@ try
 catch
     tf = logical(defaultVal);
 end
+end
+
+function r = local_rows_cat(a, b)
+if isstruct(a) && isstruct(b)
+    nA = double(a.n); nB = double(b.n);
+    if nA==0, r=b; return; end
+    if nB==0, r=a; return; end
+    r = rs3_rows_empty(nA+nB);
+    r.n = uint32(nA+nB);
+    r.iSeed(1:nA)    = a.iSeed(1:nA);    r.iSeed(nA+1:end)    = b.iSeed(1:nB);
+    r.iHead(1:nA)    = a.iHead(1:nA);    r.iHead(nA+1:end)    = b.iHead(1:nB);
+    r.leg(1:nA)      = a.leg(1:nA);      r.leg(nA+1:end)      = b.leg(1:nB);
+    r.halfFlag(1:nA) = a.halfFlag(1:nA); r.halfFlag(nA+1:end) = b.halfFlag(1:nB);
+    r.t(1:nA)        = a.t(1:nA);        r.t(nA+1:end)        = b.t(1:nB);
+    r.ix(1:nA)       = a.ix(1:nA);       r.ix(nA+1:end)       = b.ix(1:nB);
+    r.iy(1:nA)       = a.iy(1:nA);       r.iy(nA+1:end)       = b.iy(1:nB);
+    r.it(1:nA)       = a.it(1:nA);       r.it(nA+1:end)       = b.it(1:nB);
+    return;
+end
+if isempty(a), r=b; return; end
+if isempty(b), r=a; return; end
+r = [a; b];
+end
+
+function ids = local_rows_to_vid(rows, Ny, Nx, Nt)
+if isempty(rows), ids = zeros(0,1); return; end
+if isstruct(rows)
+    n = double(rows.n);
+    if n==0, ids = zeros(0,1); return; end
+    iy = double(rows.iy(1:n));
+    ix = double(rows.ix(1:n));
+    it = double(rows.it(1:n));
+else
+    ix = double(rows(:,5)); iy = double(rows(:,6)); it = double(rows(:,7));
+end
+ix = max(1, min(Nx, ix));
+iy = max(1, min(Ny, iy));
+it = max(1, min(Nt, it));
+ids = sub2ind([Ny, Nx, Nt], iy, ix, it);
+end
+
+function [x,y,th] = local_ids_to_centers(ids, grid3, Ny, Nx, Nt)
+if isempty(ids)
+    x = []; y = []; th = [];
+    return;
+end
+[iy, ix, it] = ind2sub([Ny, Nx, Nt], ids);
+x  = grid3.x_centers(ix);
+y  = grid3.y_centers(iy);
+th = grid3.th_centers(it);
 end

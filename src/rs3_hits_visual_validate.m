@@ -55,8 +55,8 @@ if local_show_orbit(cfg, S)
         'LineWidth', 1.0, 'HandleVisibility','off');
 end
 
-h1 = plot(ax, xc(maskF_u), yc(maskF_u), '.', 'MarkerSize', 6);
-h2 = plot(ax, xc(maskF_l), yc(maskF_l), '.', 'MarkerSize', 6);
+h1 = plot(ax, xc(maskF_u), yc(maskF_u), '.r', 'MarkerSize', 6);
+h2 = plot(ax, xc(maskF_l), yc(maskF_l), '.r', 'MarkerSize', 6);
 
 title(ax, sprintf('FRS (upper + lower via symmetry) | %s', S.name), 'Interpreter','none');
 legend(ax, [h1 h2], {'FRS upper (generated)', 'FRS lower (sym)'}, 'Location','best');
@@ -80,8 +80,8 @@ if local_show_orbit(cfg, S)
         'LineWidth', 1.0, 'HandleVisibility','off');
 end
 
-h1 = plot(ax, xc(maskB_u), yc(maskB_u), '.', 'MarkerSize', 6);
-h2 = plot(ax, xc(maskB_l), yc(maskB_l), '.', 'MarkerSize', 6);
+h1 = plot(ax, xc(maskB_u), yc(maskB_u), '.b', 'MarkerSize', 6);
+h2 = plot(ax, xc(maskB_l), yc(maskB_l), '.b', 'MarkerSize', 6);
 
 title(ax, sprintf('BRS (upper + lower via symmetry) | %s', S.name), 'Interpreter','none');
 legend(ax, [h1 h2], {'BRS upper (generated)', 'BRS lower (sym)'}, 'Location','best');
