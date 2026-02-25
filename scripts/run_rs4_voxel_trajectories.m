@@ -63,7 +63,7 @@ cfg.log.maxstep_factor  = 0.5;
 % Differential-correction (DC) options for voxel patch refinement.
 % Keep disabled by default so current DV_proxy/DV_patch_true outputs and
 % figure behavior remain unchanged unless explicitly enabled.
-cfg.rs4.dc.enable             = false;
+cfg.rs4.dc.enable             = true;
 cfg.rs4.dc.max_iter           = 25;
 cfg.rs4.dc.tol_residual       = 1e-10;
 cfg.rs4.dc.tol_step           = 1e-10;

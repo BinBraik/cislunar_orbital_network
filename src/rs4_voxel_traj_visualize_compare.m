@@ -248,4 +248,3 @@ else
     p = fullfile(outdir, subdir, [baseName '.png']);
 end
 end
-end
