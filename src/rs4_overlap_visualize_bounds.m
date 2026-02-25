@@ -32,27 +32,37 @@ Nx = numel(grid3.x_centers);
 Ny = numel(grid3.y_centers);
 Nt = numel(grid3.th_centers);
 
-% ---------------- FULL sets ----------------
-rowsA_F_u = SA.Step4.rows_FRS_upper;
-rowsA_B_u = SA.Step4.rows_BRS_upper;
-rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
-rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
+% ---------------- FULL sets (BRS = R(FRS), new schema from PR #25) --------
+% rows_FRS_upper + rows_FRS_lower are directly stored from forward integration.
+% BRS_full = R(FRS_full): BRS_upper=R(FRS_lower), BRS_lower=R(FRS_upper).
+% Gracefully degrade for old-format caches missing rows_FRS_lower.
+hasFullA = isfield(SA,'Step4') && isfield(SA.Step4,'rows_FRS_upper') && isfield(SA.Step4,'rows_FRS_lower');
+hasFullB = isfield(SB,'Step4') && isfield(SB.Step4,'rows_FRS_upper') && isfield(SB.Step4,'rows_FRS_lower');
 
-rowsB_B_u = SB.Step4.rows_BRS_upper;
-rowsB_F_u = SB.Step4.rows_FRS_upper;
-rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
-rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
-
-idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
-idsB = unique(local_rows_to_vid(rowsB_B, Ny, Nx, Nt));
+Ax = []; Ay = []; Bx = []; By = [];
 idsO = O.ids(:);
+[Ox, Oy, ~] = local_ids_to_centers(idsO, grid3, Ny, Nx, Nt);
 
-idsA_only = setdiff(idsA, idsO);
-idsB_only = setdiff(idsB, idsO);
+if hasFullA && hasFullB
+    % A.FRS_full = FRS_upper + FRS_lower (both directly stored)
+    rowsA_F = local_rows_cat(SA.Step4.rows_FRS_upper, SA.Step4.rows_FRS_lower);
 
-[Ax, Ay, Ath] = local_ids_to_centers(idsA_only, grid3, Ny, Nx, Nt);
-[Bx, By, Bth] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
-[Ox, Oy, Oth] = local_ids_to_centers(idsO,      grid3, Ny, Nx, Nt);
+    % B.BRS_full = R(B.FRS_full): mirror both halves
+    rowsB_B_u = rs3_rows_mirror_lower(SB.Step4.rows_FRS_lower, grid3, 2);
+    rowsB_B_l = rs3_rows_mirror_lower(SB.Step4.rows_FRS_upper, grid3, 2);
+    rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
+
+    idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
+    idsB = unique(local_rows_to_vid(rowsB_B, Ny, Nx, Nt));
+
+    idsA_only = setdiff(idsA, idsO);
+    idsB_only = setdiff(idsB, idsO);
+
+    [Ax, Ay, ~] = local_ids_to_centers(idsA_only, grid3, Ny, Nx, Nt);
+    [Bx, By, ~] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
+else
+    warning('[rs4] Atlas missing rows_FRS_lower — non-overlap background omitted from proxy plot. Rebuild cache to include it.');
+end
 
 % ---------- flat arrays from V ----------
 x  = V.x(:);
@@ -141,11 +151,15 @@ if doProxy
     rs3_core_plot_cislunar_background(CJbg, SA.mu, ax);
     set(ax.Children,'HandleVisibility','off');
     hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
-        % Faint non-overlap points
-    hA = scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.r', ...
-        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
-    hB = scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.b', ...
-        'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
+        % Faint non-overlap points (only when full row data is available)
+    if ~isempty(Ax)
+        scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.r', ...
+            'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
+    end
+    if ~isempty(Bx)
+        scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.b', ...
+            'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
+    end
     scatter(ax, x, y, 20, dv_proxy, 'filled', 'MarkerFaceAlpha', 0.94, 'MarkerEdgeAlpha', 0.30);
     cb = colorbar(ax); ylabel(cb, 'DVproxy = DVlb + DVpatch_{ub} (m/s)', 'Interpreter','tex');
     if isfinite(iMin) && iMin >= 1 && iMin <= numel(x)
