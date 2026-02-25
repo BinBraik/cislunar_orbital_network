@@ -137,6 +137,13 @@ th_A_star = XA(i_star, 3);
 th_B_star = th_B(j_star);
 
 % =========================================================================
+% Step 6b: Heading-residual Jacobian assembly for DC
+% =========================================================================
+arcA = struct('IC', IC_A, 'tfinal', t_A, 'CJ', SA.CJ, 'mu', SA.mu, 'mirror_heading', false);
+arcB = struct('IC', IC_B_frs, 'tfinal', t_B, 'CJ', SB.CJ, 'mu', SB.mu, 'mirror_heading', true);
+Jdc  = rs4_dc_assemble_heading_jacobian(arcA, arcB, cfg);
+
+% =========================================================================
 % Step 7: True DV_patch
 % =========================================================================
 pot_center   = rs3_core_cr3bp_U_and_derivs(xc, yc, SA.mu);
@@ -210,6 +217,14 @@ T.DV_proxy_mps     = B.min_dvproxy;
 
 T.tof_A_days       = t_A * TU_days;
 T.tof_B_days       = t_B * TU_days;
+
+T.dc_jacobian_mode_requested = Jdc.mode_requested;
+T.dc_jacobian_mode_used      = Jdc.mode_used;
+T.dc_heading_residual_rad    = Jdc.residual_heading_rad;
+T.dc_heading_jacobian        = Jdc.jacobian;
+T.dc_heading_thetaA_rad      = Jdc.theta_A_rad;
+T.dc_heading_thetaB_rad      = Jdc.theta_B_rad;
+T.dc_heading_details         = Jdc.details;
 end
 
 % =========================================================================
