@@ -35,6 +35,7 @@ VU_mps      = local_cfg_get(cfg, 'units.VU_mps', 1.0);
 
 usePenalty  = local_cfg_get(cfg, 'rs4.dc.soft_voxel_penalty.enable', false);
 penaltyW    = local_cfg_get(cfg, 'rs4.dc.soft_voxel_penalty.weight', 1.0);
+severeIncFactor = local_cfg_get(cfg, 'rs4.dc.severe_residual_increase_factor', 25.0);
 
 if isscalar(fdEps)
     fdEps = repmat(fdEps, 1, 6);
@@ -48,6 +49,8 @@ seedA = T.seed_A(:);       % [x, y, th_nominal]
 seedB = T.seed_B_frs(:);   % [x, y, th_nominal] on B FRS side
 
 u = [0, T.delta_A, T.t_A, 0, T.delta_B, T.t_B]';
+[tBoundsA, tBoundsB] = local_time_bounds(T);
+u = local_project_u(u, tBoundsA, tBoundsB);
 
 if numel(Wdiag) < 3
     Wdiag = [1,1,1];
@@ -66,6 +69,14 @@ hist = repmat(struct('iter',0,'lambda',0,'res_norm',0,'cost',0,'step_norm',0,'ac
 
 converged = false;
 msg = '';
+status = 'ok';
+acceptedCount = 0;
+
+bestU = u;
+bestRA = ra;
+bestSA = sA;
+bestSB = sB;
+bestCost = 0.5 * (ra' * W * ra);
 
 for k = 1:maxIter
     r = ra;
@@ -94,9 +105,17 @@ for k = 1:maxIter
         break;
     end
 
-    uTry = u + du;
+    uTry = local_project_u(u + du, tBoundsA, tBoundsB);
     [rTry, sATry, sBTry] = local_residual(uTry, SA, SB, seedA, seedB, T, relTol, absTol, usePenalty, penaltyW);
     costTry = 0.5 * (rTry' * W * rTry);
+
+    if costTry < bestCost
+        bestCost = costTry;
+        bestU = uTry;
+        bestRA = rTry;
+        bestSA = sATry;
+        bestSB = sBTry;
+    end
 
     pred = 0.5 * du' * (lambda * du - g);
     if pred <= 0
@@ -105,12 +124,14 @@ for k = 1:maxIter
         rho = (cost - costTry) / pred;
     end
 
-    accepted = isfinite(rho) && (rho > accThresh) && (costTry < cost);
+    severeIncrease = (cost > 0) && (costTry > severeIncFactor * cost);
+    accepted = isfinite(rho) && (rho > accThresh) && (costTry < cost) && ~severeIncrease;
     if accepted
         u = uTry;
         ra = rTry;
         sA = sATry;
         sB = sBTry;
+        acceptedCount = acceptedCount + 1;
         lambda = max(lambdaMin, lambda * lambdaDown);
     else
         lambda = min(lambdaMax, lambda * lambdaUp);
@@ -119,11 +140,21 @@ for k = 1:maxIter
     hist(k) = local_hist(k, lambda, norm(ra), 0.5*(ra' * W * ra), stepNorm, accepted, rho);
 end
 
+% return best-so-far even on partial convergence
+u = bestU;
+ra = bestRA;
+sA = bestSA;
+sB = bestSB;
+
 if ~converged && isempty(msg)
     if norm(ra) < resTol
         converged = true;
         msg = 'Residual tolerance reached at final iteration.';
+    elseif acceptedCount == 0
+        status = 'warning';
+        msg = 'No acceptable LM step found; returning best-so-far estimate.';
     else
+        status = 'warning';
         msg = 'Maximum iterations reached.';
     end
 end
@@ -155,6 +186,7 @@ dvTotal_mps = dvTotal_nd * VU_mps;
 
 R = struct();
 R.converged = converged;
+R.status = status;
 R.message = msg;
 R.iterations = numel(hist);
 R.final_residual_norm = norm(ra);
@@ -183,6 +215,8 @@ end
 
 % -------------------------------------------------------------------------
 function [r, stateA, stateB] = local_residual(u, SA, SB, seedA, seedB, T, relTol, absTol, usePenalty, penaltyW)
+[tBoundsA, tBoundsB] = local_time_bounds(T);
+u = local_project_u(u, tBoundsA, tBoundsB);
 phiA = u(1); deltaA = u(2); tA = u(3);
 phiB = u(4); deltaB = u(5); tB = u(6);
 
@@ -211,7 +245,7 @@ end
 % -------------------------------------------------------------------------
 function s = local_arc_end_state(seed, S, dth, tEnd, relTol, absTol, mirrorToBRS)
 tEnd = max(tEnd, 0);
-IC = [seed(1); seed(2); rs3_wrapToPi(seed(3) + dth)];
+IC = [seed(1); seed(2); rs3_wrapToPi(seed(3) + rs3_wrapToPi(dth))];
 
 odeOpts = odeset('RelTol', relTol, 'AbsTol', absTol);
 [~, X] = ode113(@(tt,XX) rs3_core_reduced_cr3bp_model(tt, XX, S.CJ, S.mu, false), [0, tEnd], IC, odeOpts);
@@ -267,8 +301,54 @@ potB = rs3_core_cr3bp_U_and_derivs(seedB(1), seedB(2), SB.mu);
 vA = sqrt(max(2 * potA.U - SA.CJ, 0));
 vB = sqrt(max(2 * potB.U - SB.CJ, 0));
 
-dvA = 2 * vA * sin(abs(dthA) / 2);
-dvB = 2 * vB * sin(abs(dthB) / 2);
+dvA = 2 * vA * sin(abs(rs3_wrapToPi(dthA)) / 2);
+dvB = 2 * vB * sin(abs(rs3_wrapToPi(dthB)) / 2);
+end
+
+% -------------------------------------------------------------------------
+function [tBoundsA, tBoundsB] = local_time_bounds(T)
+tBoundsA = local_time_window(T, 'A');
+tBoundsB = local_time_window(T, 'B');
+end
+
+% -------------------------------------------------------------------------
+function bounds = local_time_window(T, tag)
+tNom = local_struct_get(T, ['t_', tag], 0);
+tVec = local_struct_get(T, ['t', tag, '_vec'], []);
+
+tUpper = max([tNom; tVec(:); 0]);
+if ~isfinite(tUpper) || tUpper <= 0
+    tUpper = max(tNom, 0);
+end
+
+bounds = [0; tUpper];
+end
+
+% -------------------------------------------------------------------------
+function uOut = local_project_u(uIn, tBoundsA, tBoundsB)
+if nargin < 2
+    tBoundsA = [0; inf];
+end
+if nargin < 3
+    tBoundsB = [0; inf];
+end
+
+uOut = uIn;
+uOut(1) = rs3_wrapToPi(uOut(1));
+uOut(2) = rs3_wrapToPi(uOut(2));
+uOut(3) = min(max(uOut(3), tBoundsA(1)), tBoundsA(2));
+uOut(4) = rs3_wrapToPi(uOut(4));
+uOut(5) = rs3_wrapToPi(uOut(5));
+uOut(6) = min(max(uOut(6), tBoundsB(1)), tBoundsB(2));
+end
+
+% -------------------------------------------------------------------------
+function v = local_struct_get(S, field, defaultVal)
+if isstruct(S) && isfield(S, field)
+    v = S.(field);
+else
+    v = defaultVal;
+end
 end
 
 % -------------------------------------------------------------------------
