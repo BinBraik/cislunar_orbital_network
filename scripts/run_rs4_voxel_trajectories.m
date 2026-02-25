@@ -103,6 +103,48 @@ fprintf('\n  TOF_A = %.2f days,  TOF_B = %.2f days\n', T.tof_A_days, T.tof_B_day
 fprintf('  miss dA = %.5f nd,  dB = %.5f nd\n', T.dA_nd, T.dB_nd);
 fprintf('=================================================\n\n');
 
+% ===================== OPTIONAL DC REFINEMENT =====================
+if isfield(cfg, 'rs4') && isfield(cfg.rs4, 'dc') && isfield(cfg.rs4.dc, 'enable') && cfg.rs4.dc.enable
+    fprintf('========== DC Voxel Patch Refinement ==========' );
+    fprintf('\n');
+
+    Rdc = rs4_voxel_dc_solve(SA, SB, T, cfg);
+
+    fprintf('  DV_proxy         = %8.3f m/s\n', T.DV_proxy_mps);
+    fprintf('  DV_total_true    = %8.3f m/s\n', T.DV_total_true_mps);
+    fprintf('  DV_total_dc      = %8.3f m/s\n', Rdc.DV_total_dc_mps);
+    fprintf('  ------------------------------------------------\n');
+    fprintf('  proxy - true     = %8.3f m/s\n', T.DV_proxy_mps - T.DV_total_true_mps);
+    fprintf('  true - dc        = %8.3f m/s\n', T.DV_total_true_mps - Rdc.DV_total_dc_mps);
+    fprintf('  proxy - dc       = %8.3f m/s\n', T.DV_proxy_mps - Rdc.DV_total_dc_mps);
+
+    if isempty(Rdc.history)
+        res0 = NaN;
+        resf = Rdc.final_residual_norm;
+    else
+        res0 = Rdc.history(1).res_norm;
+        resf = Rdc.history(end).res_norm;
+    end
+
+    fprintf('  ------------------------------------------------\n');
+    if Rdc.converged
+        convStr = 'true';
+    else
+        convStr = 'false';
+    end
+
+    fprintf('  residual norm (init/final) = %.3e / %.3e\n', res0, resf);
+    fprintf('  iterations                 = %d\n', Rdc.iterations);
+    fprintf('  converged                  = %s\n', convStr);
+    fprintf('  message                    = %s\n', Rdc.message);
+
+    if ~Rdc.converged
+        fprintf('  [DC] FAILED to converge; retaining existing trajectory outputs (DV_total_true).\n');
+    end
+
+    fprintf('===============================================\n\n');
+end
+
 % ===================== PLOT =====================
 rs4_voxel_traj_visualize_single(T, SA, SB, cfg, outdir, tag);
 
