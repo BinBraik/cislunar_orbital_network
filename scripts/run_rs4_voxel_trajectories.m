@@ -13,6 +13,19 @@
 %   DV_total_true = DV_turn_A_min + DV_patch_true + DV_turn_B_min
 % where DV_patch_true = 2*v_box_center*sin(|theta_A - theta_B|/2) measured
 % at the closest points of each re-integrated arc to the voxel center.
+%
+% Manual validation checklist for DC refinement:
+%   1) Run baseline with cfg.rs4.dc.enable = false and record DV outputs,
+%      especially DV_total_true.
+%   2) Re-run with cfg.rs4.dc.enable = true and verify DC solver iteration
+%      logs, residual progression, and convergence/message fields.
+%   3) For at least one representative family pair, confirm
+%      Rdc.DV_total_dc_mps <= T.DV_total_true_mps when DC converges.
+%   4) Review the compare figure (rs4_*_traj_compare_dc) and ensure the
+%      reported residual magnitudes are consistent with console summaries.
+%   5) Exercise a known difficult/non-convergent case and verify graceful
+%      fallback messaging that retains trajectory outputs based on
+%      DV_total_true.
 
 clear; clc;
 
