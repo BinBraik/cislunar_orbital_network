@@ -17,6 +17,12 @@ if nargin < 5 || isempty(outdir), outdir = pwd;    end
 if nargin < 6 || isempty(tag),    tag    = 'traj'; end
 if ~exist(outdir, 'dir'), mkdir(outdir); end
 
+% Rebuild dense PO trace if stripped from cache (store_dense_po=false default).
+relTol = local_cfg_get(cfg, 'propag.relTol', 1e-9);
+absTol = local_cfg_get(cfg, 'propag.absTol', 1e-9);
+SA = local_ensure_xpo(SA, relTol, absTol, 1001);
+SB = local_ensure_xpo(SB, relTol, absTol, 1001);
+
 grid3  = SA.grid3;
 CJbg   = min(SA.CJ, SB.CJ);
 mu     = SA.mu;
@@ -124,16 +130,18 @@ end
 % =========================================================================
 
 function local_plot_po(ax, S, rgb, dispName, y_flip)
-% Plot the periodic orbit from S.PO_xy or S.Xpo (whichever is available).
+% Plot the periodic orbit from S.Xpo or S.PO_xy (dense preferred).
 % y_flip=true applies the R-transform (y → -y) to display in BRS frame.
 if nargin < 5, y_flip = false; end
 hasPOxy = isfield(S, 'PO_xy') && ~isempty(S.PO_xy);
 hasXpo  = isfield(S, 'Xpo')   && ~isempty(S.Xpo);
 
-if hasPOxy
-    xy = S.PO_xy;
-elseif hasXpo
+% Prefer dense Xpo (1001 pts) — PO_xy is stride-8 (~126 pts) and its
+% straight-line segments deviate from the true curve in curved regions.
+if hasXpo
     xy = S.Xpo(:, 1:2);
+elseif hasPOxy
+    xy = S.PO_xy;
 else
     % No orbit trace cached — just mark the seeds
     if isfield(S, 'SeedsUpper') && ~isempty(S.SeedsUpper)
@@ -168,4 +176,39 @@ try
     end
 catch
 end
+end
+
+% -------------------------------------------------------------------------
+
+function S = local_ensure_xpo(S, relTol, absTol, N_po)
+% Re-integrate the periodic orbit if Xpo/t_dense were stripped from cache.
+    if isfield(S,'Xpo') && ~isempty(S.Xpo) && ...
+       isfield(S,'t_dense') && ~isempty(S.t_dense)
+        return;
+    end
+    fprintf('[traj_viz] Xpo not cached for "%s" — re-integrating PO ...\n', S.name);
+    opts    = odeset('RelTol', relTol, 'AbsTol', absTol);
+    solPO   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,S.CJ,S.mu,true), ...
+                     [0, S.Tf_PO], S.X0, opts);
+    t_dense = linspace(0, S.Tf_PO, N_po)';
+    S.t_dense = t_dense;
+    S.Xpo     = deval(solPO, t_dense)';
+end
+
+% -------------------------------------------------------------------------
+
+function v = local_cfg_get(cfg, path, defaultVal)
+    v = defaultVal;
+    try
+        parts = strsplit(path, '.');
+        cur = cfg;
+        for i = 1:numel(parts)
+            k = parts{i};
+            if ~isstruct(cur) || ~isfield(cur, k), return; end
+            cur = cur.(k);
+        end
+        if ~isempty(cur), v = cur; end
+    catch
+        v = defaultVal;
+    end
 end
