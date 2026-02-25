@@ -180,6 +180,7 @@ T.iSeed_A          = iSeed_A;
 T.iHead_A          = iHead_A;
 T.halfFlag_A       = halfFlag_A;
 T.t_A              = t_A;
+T.delta_A          = delta_A;
 T.IC_A             = IC_A;
 T.seed_A           = seed_A;    % [x, y, th_nominal] on PO_A
 
@@ -188,6 +189,7 @@ T.iHead_B          = iHead_B;
 T.halfFlag_B_frs   = halfFlag_B_frs;
 T.from_lower_B     = from_lower_B;
 T.t_B              = t_B;
+T.delta_B          = delta_B;
 T.IC_B_frs         = IC_B_frs;
 T.seed_B_frs       = seed_B_frs;   % [x, y, th_nominal] on PO_B (FRS side)
 
