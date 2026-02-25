@@ -17,15 +17,13 @@ Nt = numel(grid3.th_centers);
 
 safeTag = rs3_sanitize_fname(tag);
 
-% ---------------- FULL sets ----------------
-rowsA_F_u = SA.Step4.rows_FRS_upper;
-rowsA_B_u = SA.Step4.rows_BRS_upper;
-rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
-rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
+% ---------------- FULL sets (BRS = R(FRS)) ----------------
+% A.FRS_full: both halves stored directly from integration
+rowsA_F = local_rows_cat(SA.Step4.rows_FRS_upper, SA.Step4.rows_FRS_lower);
 
-rowsB_B_u = SB.Step4.rows_BRS_upper;
-rowsB_F_u = SB.Step4.rows_FRS_upper;
-rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
+% B.BRS_full = R(B.FRS_full): BRS_upper=R(FRS_lower), BRS_lower=R(FRS_upper)
+rowsB_B_u = rs3_rows_mirror_lower(SB.Step4.rows_FRS_lower, grid3, 2);
+rowsB_B_l = rs3_rows_mirror_lower(SB.Step4.rows_FRS_upper, grid3, 2);
 rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
 
 idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
