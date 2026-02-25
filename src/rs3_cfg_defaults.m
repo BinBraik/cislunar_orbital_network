@@ -86,6 +86,10 @@ cfg.rs4.dc.jacobian_mode = 'auto';  % {'stm','fd','auto'}; auto prefers STM and 
 cfg.rs4.dc.fd_step = 1e-6;                % central-difference perturbation for Jacobian fallback
 cfg.rs4.dc.stm_max_sensitivity = 1e6;   % if STM |dthf/dth0| exceeds this, fallback to FD in auto mode
 
+cfg.plot = struct();
+cfg.plot.rs4 = struct();
+cfg.plot.rs4.traj_compare_dc = true;    % show baseline-vs-DC trajectory compare plot when available
+
 % ---------------- Parallelism ----------------
 cfg.par = struct();
 cfg.par.enable         = true;   % enable PARFOR over (seed x heading) jobs

@@ -8,6 +8,7 @@
 %   3. Run rs4_overlap_visualize_bounds to get B struct (best voxel index B.imin)
 %   4. Call rs4_voxel_traj_extract  -> T struct with arcs + true DV values
 %   5. Call rs4_voxel_traj_visualize_single -> cislunar background plot
+%   6. Optionally call rs4_voxel_traj_visualize_compare for baseline vs DC
 %
 % The DVtotal printed here replaces the proxy upper-bound with:
 %   DV_total_true = DV_turn_A_min + DV_patch_true + DV_turn_B_min
@@ -77,6 +78,7 @@ cfg.rs4.dc.weights.heading    = 1.0;
 cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.rs4.traj_compare_dc = true;
 
 rs3_cfg_validate(cfg);
 
@@ -156,6 +158,10 @@ if isfield(cfg, 'rs4') && isfield(cfg.rs4, 'dc') && isfield(cfg.rs4.dc, 'enable'
     end
 
     fprintf('===============================================\n\n');
+
+    if cfg.plot.rs4.traj_compare_dc
+        rs4_voxel_traj_visualize_compare(T, Rdc, SA, SB, cfg, outdir, tag);
+    end
 end
 
 % ===================== PLOT =====================
