@@ -46,6 +46,20 @@ cfg.propag.v2tol   = 1e-8;
 cfg.log.step_len_factor = 0.5;
 cfg.log.maxstep_factor  = 0.5;
 
+% Differential-correction (DC) options for voxel patch refinement.
+% Keep disabled by default so current DV_proxy/DV_patch_true outputs and
+% figure behavior remain unchanged unless explicitly enabled.
+cfg.rs4.dc.enable             = false;
+cfg.rs4.dc.max_iter           = 25;
+cfg.rs4.dc.tol_residual       = 1e-10;
+cfg.rs4.dc.tol_step           = 1e-10;
+cfg.rs4.dc.tol_dv_improve     = 1e-6;
+cfg.rs4.dc.lambda_init        = 1e-2;   % Levenberg-Marquardt damping
+cfg.rs4.dc.line_search_enable = true;
+cfg.rs4.dc.phase_enable       = true;
+cfg.rs4.dc.weights.position   = 1.0;
+cfg.rs4.dc.weights.heading    = 1.0;
+
 % Disable all bound plots (we only need B.imin from visualize_bounds)
 cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
