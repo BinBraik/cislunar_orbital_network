@@ -165,24 +165,30 @@ end
 
 function local_draw_background(ax, CJbg, mu, SA, SB)
 % Draw cislunar background + both periodic orbits onto axes ax.
+% PO_B is R-transformed (y → -y) to match the BRS frame in which arc B
+% and its seed marker are plotted.
     rs3_core_plot_cislunar_background(CJbg, mu, ax);
     set(ax.Children, 'HandleVisibility', 'off');
     hold(ax, 'on');
     axis(ax, 'equal');
     grid(ax, 'on');
     local_plot_po(ax, SA, [0.10 0.40 0.85], 'PO_A');
-    local_plot_po(ax, SB, [0.85 0.15 0.10], 'PO_B');
+    local_plot_po(ax, SB, [0.85 0.15 0.10], 'PO_B', true);  % R-transform: y → -y
 end
 
 % -------------------------------------------------------------------------
 
-function local_plot_po(ax, S, rgb, dispName)
+function local_plot_po(ax, S, rgb, dispName, y_flip)
+    if nargin < 5, y_flip = false; end
     if isfield(S,'PO_xy') && ~isempty(S.PO_xy)
         xy = S.PO_xy;
     elseif isfield(S,'Xpo') && ~isempty(S.Xpo)
         xy = S.Xpo(:,1:2);
     else
         return;
+    end
+    if y_flip
+        xy(:,2) = -xy(:,2);
     end
     if norm(xy(end,:) - xy(1,:)) > 1e-6
         xy = [xy; xy(1,:)];
