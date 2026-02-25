@@ -9,6 +9,10 @@ for k = 1:numel(req)
     end
 end
 
+if ~isfield(cfg,'rs4') || ~isstruct(cfg.rs4) || ~isfield(cfg.rs4,'dc') || ~isstruct(cfg.rs4.dc)
+    error('rs3:cfg:missingField', 'cfg.rs4.dc is missing');
+end
+
 % --- System ---
 mustPos(cfg.sys.RE_nd, 'cfg.sys.RE_nd');
 mustPos(cfg.sys.RM_nd, 'cfg.sys.RM_nd');
@@ -55,6 +59,15 @@ end
 % --- IO ---
 mustText(cfg.io.out_root,    'cfg.io.out_root');
 mustText(cfg.io.fig_visible, 'cfg.io.fig_visible');
+
+% --- RS4 DC ---
+mustText(cfg.rs4.dc.jacobian_mode, 'cfg.rs4.dc.jacobian_mode');
+mode = lower(strtrim(char(cfg.rs4.dc.jacobian_mode)));
+if ~ismember(mode, {'stm','fd','auto'})
+    error('rs3:cfg:badValue', 'cfg.rs4.dc.jacobian_mode must be ''stm'', ''fd'', or ''auto''');
+end
+mustPos(cfg.rs4.dc.fd_step, 'cfg.rs4.dc.fd_step');
+mustPos(cfg.rs4.dc.stm_max_sensitivity, 'cfg.rs4.dc.stm_max_sensitivity');
 
 end
 
