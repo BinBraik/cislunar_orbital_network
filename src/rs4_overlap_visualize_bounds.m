@@ -32,25 +32,24 @@ Nx = numel(grid3.x_centers);
 Ny = numel(grid3.y_centers);
 Nt = numel(grid3.th_centers);
 
-% ---------------- FULL sets (only if atlas has both row fields) ----------------
-% Cached atlases built before rows_BRS_upper was stored will lack these
-% fields; gracefully degrade to overlap-only plot in that case.
-hasFullA = isfield(SA,'Step4') && isfield(SA.Step4,'rows_FRS_upper') && isfield(SA.Step4,'rows_BRS_upper');
-hasFullB = isfield(SB,'Step4') && isfield(SB.Step4,'rows_BRS_upper') && isfield(SB.Step4,'rows_FRS_upper');
+% ---------------- FULL sets (BRS = R(FRS), new schema from PR #25) --------
+% rows_FRS_upper + rows_FRS_lower are directly stored from forward integration.
+% BRS_full = R(FRS_full): BRS_upper=R(FRS_lower), BRS_lower=R(FRS_upper).
+% Gracefully degrade for old-format caches missing rows_FRS_lower.
+hasFullA = isfield(SA,'Step4') && isfield(SA.Step4,'rows_FRS_upper') && isfield(SA.Step4,'rows_FRS_lower');
+hasFullB = isfield(SB,'Step4') && isfield(SB.Step4,'rows_FRS_upper') && isfield(SB.Step4,'rows_FRS_lower');
 
 Ax = []; Ay = []; Bx = []; By = [];
 idsO = O.ids(:);
 [Ox, Oy, ~] = local_ids_to_centers(idsO, grid3, Ny, Nx, Nt);
 
 if hasFullA && hasFullB
-    rowsA_F_u = SA.Step4.rows_FRS_upper;
-    rowsA_B_u = SA.Step4.rows_BRS_upper;
-    rowsA_F_l = rs3_rows_mirror_lower(rowsA_B_u, grid3, 1);
-    rowsA_F   = local_rows_cat(rowsA_F_u, rowsA_F_l);
+    % A.FRS_full = FRS_upper + FRS_lower (both directly stored)
+    rowsA_F = local_rows_cat(SA.Step4.rows_FRS_upper, SA.Step4.rows_FRS_lower);
 
-    rowsB_B_u = SB.Step4.rows_BRS_upper;
-    rowsB_F_u = SB.Step4.rows_FRS_upper;
-    rowsB_B_l = rs3_rows_mirror_lower(rowsB_F_u, grid3, 2);
+    % B.BRS_full = R(B.FRS_full): mirror both halves
+    rowsB_B_u = rs3_rows_mirror_lower(SB.Step4.rows_FRS_lower, grid3, 2);
+    rowsB_B_l = rs3_rows_mirror_lower(SB.Step4.rows_FRS_upper, grid3, 2);
     rowsB_B   = local_rows_cat(rowsB_B_u, rowsB_B_l);
 
     idsA = unique(local_rows_to_vid(rowsA_F, Ny, Nx, Nt));
@@ -62,7 +61,7 @@ if hasFullA && hasFullB
     [Ax, Ay, ~] = local_ids_to_centers(idsA_only, grid3, Ny, Nx, Nt);
     [Bx, By, ~] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
 else
-    warning('[rs4] Atlas missing rows_BRS_upper/rows_FRS_upper — non-overlap background omitted from proxy plot. Rebuild cache to include them.');
+    warning('[rs4] Atlas missing rows_FRS_lower — non-overlap background omitted from proxy plot. Rebuild cache to include it.');
 end
 
 % ---------- flat arrays from V ----------
