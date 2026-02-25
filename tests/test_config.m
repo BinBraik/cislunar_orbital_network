@@ -25,6 +25,7 @@ function test_defaults_has_all_sections(testCase)
     verifyTrue(testCase, isfield(cfg, 'overlap'));
     verifyTrue(testCase, isfield(cfg, 'rs4'));
     verifyTrue(testCase, isfield(cfg.rs4, 'dc'));
+    verifyTrue(testCase, isfield(cfg.rs4.dc, 'stm_max_sensitivity'));
     verifyTrue(testCase, isfield(cfg, 'par'));
     verifyTrue(testCase, isfield(cfg, 'io'));
     verifyTrue(testCase, isfield(cfg, 'diag'));
@@ -75,5 +76,12 @@ end
 function test_dc_jacobian_mode_validation(testCase)
     cfg = rs3_cfg_defaults();
     cfg.rs4.dc.jacobian_mode = 'bad_mode';
+    verifyError(testCase, @() rs3_cfg_validate(cfg), 'rs3:cfg:badValue');
+end
+
+
+function test_dc_stm_max_sensitivity_validation(testCase)
+    cfg = rs3_cfg_defaults();
+    cfg.rs4.dc.stm_max_sensitivity = 0;
     verifyError(testCase, @() rs3_cfg_validate(cfg), 'rs3:cfg:badValue');
 end

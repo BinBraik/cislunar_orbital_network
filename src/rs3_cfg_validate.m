@@ -4,7 +4,7 @@ function rs3_cfg_validate(cfg)
 
 req = {'sys','families','seed','grid','fan','propag','log','cache','par','io','diag'};
 for k = 1:numel(req)
-if ~isfield(cfg, req{k})
+    if ~isfield(cfg, req{k})
         error('rs3:cfg:missingField', 'cfg.%s is missing', req{k});
     end
 end
@@ -67,6 +67,7 @@ if ~ismember(mode, {'stm','fd','auto'})
     error('rs3:cfg:badValue', 'cfg.rs4.dc.jacobian_mode must be ''stm'', ''fd'', or ''auto''');
 end
 mustPos(cfg.rs4.dc.fd_step, 'cfg.rs4.dc.fd_step');
+mustPos(cfg.rs4.dc.stm_max_sensitivity, 'cfg.rs4.dc.stm_max_sensitivity');
 
 end
 

@@ -28,6 +28,7 @@ if ~ismember(modeReq, {'stm','fd','auto'})
 end
 
 fdStep = local_get_cfg(cfg, 'rs4.dc.fd_step', 1e-6);
+stmMaxSensitivity = local_get_cfg(cfg, 'rs4.dc.stm_max_sensitivity', 1e6);
 absTol = local_get_cfg(cfg, 'propag.absTol', 1e-9);
 relTol = local_get_cfg(cfg, 'propag.relTol', 1e-9);
 
@@ -42,7 +43,7 @@ J.details = struct();
 
 trySTM = ismember(modeReq, {'stm','auto'});
 if trySTM
-    [okSTM, outSTM] = local_try_stm(A, B, absTol, relTol);
+    [okSTM, outSTM] = local_try_stm(A, B, absTol, relTol, stmMaxSensitivity);
     if okSTM
         J.mode_used = 'stm';
         J.theta_A_rad = outSTM.thetaA;
@@ -54,6 +55,8 @@ if trySTM
         return;
     elseif strcmp(modeReq, 'stm')
         error('rs4:dc:stmFailed', 'STM Jacobian requested but unavailable/unstable: %s', outSTM.reason);
+    else
+        J.details.stm = outSTM;
     end
 end
 
@@ -73,7 +76,7 @@ end
 end
 
 % -------------------------------------------------------------------------
-function [ok, out] = local_try_stm(A, B, absTol, relTol)
+function [ok, out] = local_try_stm(A, B, absTol, relTol, stmMaxSensitivity)
 out = struct('reason', 'unknown');
 ok = false;
 
@@ -91,6 +94,11 @@ end
 
 if ~(isfinite(arcA.dth_dth0) && isfinite(arcB.dth_dth0))
     out.reason = 'Non-finite STM sensitivities';
+    return;
+end
+
+if max(abs([arcA.dth_dth0, arcB.dth_dth0])) > stmMaxSensitivity
+    out.reason = sprintf('STM sensitivity exceeded threshold %.3g', stmMaxSensitivity);
     return;
 end
 
