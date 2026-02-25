@@ -35,8 +35,8 @@ grid(ax, 'on');
 % ---- Periodic orbit A (blue dashed) ----
 local_plot_po(ax, SA, [0.15 0.45 0.80], 'Origin PO');
 
-% ---- Periodic orbit B (red dashed) ----
-local_plot_po(ax, SB, [0.80 0.20 0.15], 'Target PO');
+% ---- Periodic orbit B (red dashed, R-transformed to match BRS frame) ----
+local_plot_po(ax, SB, [0.80 0.20 0.15], 'Target PO', true);  % y → -y
 
 % ---- Departure arc A (blue solid) ----
 hA = plot(ax, T.XA(:,1), T.XA(:,2), '-', ...
@@ -123,8 +123,10 @@ end
 % Local helpers
 % =========================================================================
 
-function local_plot_po(ax, S, rgb, dispName)
+function local_plot_po(ax, S, rgb, dispName, y_flip)
 % Plot the periodic orbit from S.PO_xy or S.Xpo (whichever is available).
+% y_flip=true applies the R-transform (y → -y) to display in BRS frame.
+if nargin < 5, y_flip = false; end
 hasPOxy = isfield(S, 'PO_xy') && ~isempty(S.PO_xy);
 hasXpo  = isfield(S, 'Xpo')   && ~isempty(S.Xpo);
 
@@ -135,10 +137,16 @@ elseif hasXpo
 else
     % No orbit trace cached — just mark the seeds
     if isfield(S, 'SeedsUpper') && ~isempty(S.SeedsUpper)
-        plot(ax, S.SeedsUpper(:,1), S.SeedsUpper(:,2), '.', ...
+        y_vals = S.SeedsUpper(:,2);
+        if y_flip, y_vals = -y_vals; end
+        plot(ax, S.SeedsUpper(:,1), y_vals, '.', ...
             'Color', rgb, 'MarkerSize', 4, 'HandleVisibility', 'off');
     end
     return;
+end
+
+if y_flip
+    xy(:,2) = -xy(:,2);
 end
 
 % Close the orbit if not already closed
