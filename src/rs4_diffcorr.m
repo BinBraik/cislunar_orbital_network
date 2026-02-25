@@ -50,6 +50,15 @@ tol_patch = local_cfg_get(cfg, 'diffcorr.tol_patch', 1e-6);
 odeOpts = odeset('RelTol', relTol, 'AbsTol', absTol);
 
 % -------------------------------------------------------------------------
+% Step 0 — Ensure SA/SB have dense PO trace (Xpo, t_dense)
+%   The cache strips these by default (cfg.cache.store_dense_po=false).
+%   Re-integrate on demand using X0, CJ, mu, Tf_PO — all of which are cached.
+% -------------------------------------------------------------------------
+N_po = 1001;    % dense-enough for smooth interpolation
+SA   = local_ensure_xpo(SA, relTol, absTol, N_po);
+SB   = local_ensure_xpo(SB, relTol, absTol, N_po);
+
+% -------------------------------------------------------------------------
 % Step 1 — Build initial guess from T
 % -------------------------------------------------------------------------
 alpha_A_0 = local_find_alpha(SA, T.seed_A(1:2));
@@ -286,6 +295,25 @@ function seed = local_interp_po(S, alpha)
     th_uw = unwrap(S.Xpo(:,3));
     th  = rs3_wrapToPi(interp1(S.t_dense, th_uw, t, 'linear'));
     seed = [xy(1), xy(2), th];
+end
+
+% -------------------------------------------------------------------------
+
+function S = local_ensure_xpo(S, relTol, absTol, N_po)
+% If SA.Xpo / SA.t_dense were stripped by the cache, rebuild them by
+% re-integrating the periodic orbit from S.X0 over [0, S.Tf_PO].
+    if isfield(S, 'Xpo') && ~isempty(S.Xpo) && ...
+       isfield(S, 't_dense') && ~isempty(S.t_dense)
+        return;
+    end
+    fprintf('[diffcorr] Xpo not in cache for "%s" — re-integrating PO ...\n', S.name);
+    opts   = odeset('RelTol', relTol, 'AbsTol', absTol);
+    solPO  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t, X, S.CJ, S.mu, true), ...
+                    [0, S.Tf_PO], S.X0, opts);
+    t_dense = linspace(0, S.Tf_PO, N_po)';
+    Xpo     = deval(solPO, t_dense)';
+    S.t_dense = t_dense;
+    S.Xpo     = Xpo;
 end
 
 % -------------------------------------------------------------------------
