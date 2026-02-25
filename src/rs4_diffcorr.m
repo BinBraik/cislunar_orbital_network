@@ -99,10 +99,14 @@ fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r0(1), r0(2), 
 fprintf('[diffcorr]   residual (scaled)  = %.3e\n', norm(r0 ./ r_scale));
 
 % -------------------------------------------------------------------------
-% Step 5 — fmincon
+% Step 5 — fmincon (pass 1)
 % -------------------------------------------------------------------------
 obj_fun = @(z) local_objective(z, SA, SB);
 con_fun = @(z) local_constraints(z, SA, SB, odeOpts, r_scale);
+
+% TypicalX guides the per-variable FD step size.
+% alpha [0,Tf_PO] ~ Tf_PO/2,  delta [-pi/2,pi/2] ~ pi/6,  t [1e-4,Tmax] ~ Tmax/2
+typX = [SA.Tf_PO/2; pi/6; Tmax/2; SB.Tf_PO/2; pi/6; Tmax/2];
 
 opts_fmin = optimoptions('fmincon', ...
     'Algorithm',               'sqp',   ...
@@ -111,19 +115,79 @@ opts_fmin = optimoptions('fmincon', ...
     'OptimalityTolerance',     1e-7,    ...
     'StepTolerance',           1e-10,   ...
     'MaxIterations',           300,     ...
-    'MaxFunctionEvaluations',  5000,    ...
+    'MaxFunctionEvaluations',  8000,    ...
     'FiniteDifferenceType',    'central', ...
-    'FiniteDifferenceStepSize', 1e-6);
+    'FiniteDifferenceStepSize', 1e-6,   ...
+    'TypicalX',                typX);
 
 [z_star, ~, exitflag, output] = fmincon( ...
     obj_fun, z0, [], [], [], [], lb, ub, con_fun, opts_fmin);
 
-fprintf('[diffcorr] fmincon done: exitflag=%d  iter=%d  fevals=%d\n', ...
+fprintf('[diffcorr] fmincon pass 1: exitflag=%d  iter=%d  fevals=%d\n', ...
     exitflag, output.iterations, output.funcCount);
 
-if exitflag <= 0
-    warning('[diffcorr] fmincon did not converge (exitflag=%d). Tc may be inaccurate.', exitflag);
+% -------------------------------------------------------------------------
+% Step 5b — Pre-feasibility fallback
+%
+%   exitflag=-2 : SQP constraint-recovery phase failed from the warm start.
+%                 The miss-distance is too large for SQP to bridge with its
+%                 quadratic sub-problems.
+%   exitflag= 0 : budget exhausted before residual converged.
+%
+%   Fix: run lsqnonlin on ||r||^2 alone (no DV objective) to drive the
+%        patch residual to near-zero, then restart fmincon from that
+%        feasible warm point to recover DV optimality.
+% -------------------------------------------------------------------------
+r_pass1      = local_residual(z_star, SA, SB, odeOpts);
+r_pass1_norm = norm(r_pass1 ./ r_scale);
+
+z_best      = z_star;
+r_best_norm = r_pass1_norm;
+
+if (exitflag == -2 || exitflag == 0) && r_pass1_norm > tol_patch
+    fprintf('[diffcorr] Pass 1 infeasible (||r_sc||=%.2e). Running lsqnonlin ...\n', ...
+        r_pass1_norm);
+
+    % Warm-start: from z_star when pass 1 made progress (exitflag=0),
+    % otherwise fall back to the original warm start z0.
+    z_lsq0 = z0;
+    if exitflag == 0, z_lsq0 = z_star; end
+
+    opts_lsq = optimoptions('lsqnonlin', ...
+        'Display',                'off', ...
+        'FunctionTolerance',      tol_patch^2, ...
+        'StepTolerance',          1e-10, ...
+        'MaxFunctionEvaluations', 5000, ...
+        'FiniteDifferenceType',   'central');
+
+    z_feas      = lsqnonlin(@(z) local_residual(z, SA, SB, odeOpts) ./ r_scale, ...
+                             z_lsq0, lb, ub, opts_lsq);
+    r_feas_norm = norm(local_residual(z_feas, SA, SB, odeOpts) ./ r_scale);
+    fprintf('[diffcorr] lsqnonlin: ||r_sc||=%.2e\n', r_feas_norm);
+
+    if r_feas_norm < r_best_norm
+        z_best      = z_feas;
+        r_best_norm = r_feas_norm;
+
+        % Restart fmincon from the feasible point to optimise DV.
+        fprintf('[diffcorr] Restarting fmincon from feasible point ...\n');
+        opts_fmin2 = optimoptions(opts_fmin, 'Display', 'off');
+        [z_star2, ~, exitflag2, output2] = fmincon( ...
+            obj_fun, z_feas, [], [], [], [], lb, ub, con_fun, opts_fmin2);
+
+        r_pass2_norm = norm(local_residual(z_star2, SA, SB, odeOpts) ./ r_scale);
+        fprintf('[diffcorr] fmincon pass 2: exitflag=%d  iter=%d  ||r_sc||=%.2e\n', ...
+            exitflag2, output2.iterations, r_pass2_norm);
+
+        if r_pass2_norm <= r_best_norm + tol_patch
+            z_best      = z_star2;
+            exitflag    = exitflag2;
+            r_best_norm = r_pass2_norm;
+        end
+    end
 end
+
+z_star = z_best;
 
 % -------------------------------------------------------------------------
 % Step 6 — Unpack corrected solution and re-integrate dense arcs
@@ -169,16 +233,22 @@ v_patch      = sqrt(max(2*pot_p.U - min(SA.CJ, SB.CJ), 0));
 delta_th     = abs(rs3_wrapToPi(thp_A - thp_B));
 DV_patch_nd  = 2 * v_patch * sin(delta_th / 2);
 
-r_final = local_residual(z_star, SA, SB, odeOpts);
+r_final   = local_residual(z_star, SA, SB, odeOpts);
+converged = norm(r_final ./ r_scale) <= tol_patch;
 
 fprintf('[diffcorr] Corrected solution:\n');
 fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
     (DV_turn_A_nd + DV_patch_nd + DV_turn_B_nd)*VU_mps, ...
     DV_turn_A_nd*VU_mps, DV_patch_nd*VU_mps, DV_turn_B_nd*VU_mps);
 fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r_final(1), r_final(2), r_final(3));
-fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol=%.2e)\n', ...
-    norm(r_final ./ r_scale), tol_patch);
+fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol=%.2e)  %s\n', ...
+    norm(r_final ./ r_scale), tol_patch, local_conv_str(converged));
 fprintf('[diffcorr]   delta_th at patch  = %.4f deg\n', rad2deg(delta_th));
+
+if ~converged
+    warning('[diffcorr] Patch constraint NOT satisfied (||r_sc||=%.2e > tol=%.2e, exitflag=%d).', ...
+        norm(r_final ./ r_scale), tol_patch, exitflag);
+end
 
 % -------------------------------------------------------------------------
 % Pack output struct
@@ -228,6 +298,7 @@ Tc.tof_B_days   = t_B * TU_days;
 
 % Optimisation metadata
 Tc.exitflag     = exitflag;
+Tc.converged    = converged;   % true iff ||r_final ./ r_scale|| <= tol_patch
 Tc.iterations   = output.iterations;
 Tc.tol_patch    = tol_patch;
 end
@@ -323,6 +394,12 @@ function alpha = local_find_alpha(S, xy)
     d = hypot(S.Xpo(:,1) - xy(1), S.Xpo(:,2) - xy(2));
     [~, idx] = min(d);
     alpha = S.t_dense(idx);
+end
+
+% -------------------------------------------------------------------------
+
+function s = local_conv_str(converged)
+    if converged, s = 'CONVERGED'; else, s = 'NOT CONVERGED'; end
 end
 
 % -------------------------------------------------------------------------
