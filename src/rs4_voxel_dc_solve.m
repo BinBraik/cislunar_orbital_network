@@ -48,7 +48,9 @@ end
 seedA = T.seed_A(:);       % [x, y, th_nominal]
 seedB = T.seed_B_frs(:);   % [x, y, th_nominal] on B FRS side
 
-u = [0, T.delta_A, T.t_A, 0, T.delta_B, T.t_B]';
+[deltaA0, deltaB0] = local_initial_deltas(T);
+
+u = [0, deltaA0, T.t_A, 0, deltaB0, T.t_B]';
 [tBoundsA, tBoundsB] = local_time_bounds(T);
 u = local_project_u(u, tBoundsA, tBoundsB);
 
@@ -191,7 +193,7 @@ R.message = msg;
 R.iterations = numel(hist);
 R.final_residual_norm = norm(ra);
 
-R.u0 = [0, T.delta_A, T.t_A, 0, T.delta_B, T.t_B];
+R.u0 = [0, deltaA0, T.t_A, 0, deltaB0, T.t_B];
 R.u = u(:)';
 R.phi_A = phiA; R.delta_A = deltaA; R.t_A = tA;
 R.phi_B = phiB; R.delta_B = deltaB; R.t_B = tB;
@@ -211,6 +213,36 @@ R.DV_total_dc_mps = dvTotal_mps;
 
 R.history = hist;
 R.residual = ra(:)';
+end
+
+function [deltaA0, deltaB0] = local_initial_deltas(T)
+if isfield(T, 'delta_A')
+    deltaA0 = T.delta_A;
+else
+    requiredA = {'IC_A', 'seed_A'};
+    missingA = requiredA(~isfield(T, requiredA));
+    if ~isempty(missingA)
+        error('Cannot reconstruct delta_A: missing required field(s): %s.', strjoin(missingA, ', '));
+    end
+    if numel(T.IC_A) < 3 || numel(T.seed_A) < 3
+        error('Cannot reconstruct delta_A: IC_A and seed_A must each have at least 3 elements.');
+    end
+    deltaA0 = rs3_wrapToPi(T.IC_A(3) - T.seed_A(3));
+end
+
+if isfield(T, 'delta_B')
+    deltaB0 = T.delta_B;
+else
+    requiredB = {'IC_B_frs', 'seed_B_frs'};
+    missingB = requiredB(~isfield(T, requiredB));
+    if ~isempty(missingB)
+        error('Cannot reconstruct delta_B: missing required field(s): %s.', strjoin(missingB, ', '));
+    end
+    if numel(T.IC_B_frs) < 3 || numel(T.seed_B_frs) < 3
+        error('Cannot reconstruct delta_B: IC_B_frs and seed_B_frs must each have at least 3 elements.');
+    end
+    deltaB0 = rs3_wrapToPi(T.IC_B_frs(3) - T.seed_B_frs(3));
+end
 end
 
 % -------------------------------------------------------------------------
