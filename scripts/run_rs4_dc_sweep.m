@@ -395,6 +395,15 @@ function [before_row, after_row, traj] = local_process_pair( ...
         traj.T_DV_total_mps  = T.DV_total_true_mps;
         traj.T_tof_A_days    = T.tof_A_days;
         traj.T_tof_B_days    = T.tof_B_days;
+        % before-DC visualisation fields (for plot replay)
+        traj.T_i_star        = T.i_star;
+        traj.T_j_star        = T.j_star;
+        traj.T_xc            = T.xc;
+        traj.T_yc            = T.yc;
+        traj.T_dA_nd         = T.dA_nd;
+        traj.T_dB_nd         = T.dB_nd;
+        traj.T_delta_th_rad  = T.delta_th_rad;
+        traj.T_DV_proxy_mps  = T.DV_proxy_mps;
         % after DC
         traj.IC_A            = Tc.IC_A;
         traj.IC_B_frs        = Tc.IC_B_frs;
@@ -415,6 +424,9 @@ function [before_row, after_row, traj] = local_process_pair( ...
         traj.exitflag        = Tc.exitflag;
         traj.converged       = Tc.converged;
         traj.r_norm_scaled   = r_sc;
+        % after-DC visualisation fields (for plot replay)
+        traj.delta_th_rad    = Tc.delta_th_rad;
+        traj.r_final         = Tc.r_final;
 
     catch ME
         warning('[dc_sweep] pair (%d,%d) %s → %s failed: %s', ...
