@@ -122,23 +122,51 @@ end
 % 2. ENUMERATE VALID PAIRS
 % =========================================================================
 % Load batch summary to skip no-overlap pairs without touching disk.
+% IMPORTANT: also load 'families' from the summary so the matrix row/column
+% indices are correctly remapped to our local families list, regardless of
+% the order they were saved in.
 has_batch_summary = false;
-dvFilter = zeros(N, N);   % default: try all pairs
+dvFilter = zeros(N, N);   % default: try all pairs (0 = finite → passes filter)
 batchSummaryFile = fullfile(PAIR_OUTPUT_ROOT, 'Summary', 'batch_summary_workspace.mat');
 if exist(batchSummaryFile, 'file')
-    bw = load(batchSummaryFile, 'minDVproxyMat');
-    dvFilter = bw.minDVproxyMat;
+    bw = load(batchSummaryFile, 'minDVproxyMat', 'families');
+    bw_mat = bw.minDVproxyMat;
+
+    if isfield(bw, 'families') && ~isequal(bw.families(:), families(:))
+        % The saved family order may differ → remap to local order.
+        [~, loc] = ismember(families, bw.families);
+        dvFilter = NaN(N, N);
+        for ki = 1:N
+            if loc(ki) == 0, continue; end
+            for kj = 1:N
+                if loc(kj) == 0, continue; end
+                dvFilter(ki, kj) = bw_mat(loc(ki), loc(kj));
+            end
+        end
+        fprintf('[dc_sweep] Loaded minDVproxyMat (remapped family order).\n');
+    else
+        dvFilter = bw_mat;
+        fprintf('[dc_sweep] Loaded minDVproxyMat from batch summary.\n');
+    end
+
+    n_finite = sum(isfinite(dvFilter(:)));
+    n_upper  = sum(sum(isfinite(triu(dvFilter, 1))));
+    fprintf('[dc_sweep] dvFilter: %d finite entries total, %d in upper triangle.\n', ...
+        n_finite, n_upper);
     has_batch_summary = true;
-    fprintf('[dc_sweep] Loaded minDVproxyMat from batch summary.\n');
 else
     fprintf('[dc_sweep] batch_summary_workspace.mat not found — will attempt all pairs.\n');
 end
 
-pairs_ij = zeros(0, 2);
+pairs_ij   = zeros(0, 2);
+n_no_ovlap = 0;
+n_no_file  = 0;
+n_no_win   = 0;
 for ii = 1:N
     for jj = ii+1:N
-        % Skip pairs confirmed to have no overlap
-        if has_batch_summary && ~isfinite(dvFilter(ii, jj))
+        % Skip pairs confirmed to have no overlap (check both triangles for safety).
+        if has_batch_summary && ~isfinite(dvFilter(ii,jj)) && ~isfinite(dvFilter(jj,ii))
+            n_no_ovlap = n_no_ovlap + 1;
             continue;
         end
         pairTag  = sprintf('%s__TO__%s', families{ii}, families{jj});
@@ -146,20 +174,21 @@ for ii = 1:N
         pairDir  = fullfile(PAIR_OUTPUT_ROOT, pairSafe);
         prFile   = fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']);
         if ~exist(prFile, 'file')
-            fprintf('[dc_sweep] SKIP (%d,%d) — pair_result.mat missing.\n', ii, jj);
+            n_no_file = n_no_file + 1;
             continue;
         end
         pr = load(prFile);
         if ~isfield(pr, 'winnerMeta') || ~isfield(pr, 'B')
-            fprintf('[dc_sweep] SKIP (%2d,%2d) %s → %s — no valid winner.\n', ...
-                ii, jj, families{ii}, families{jj});
+            n_no_win = n_no_win + 1;
             continue;
         end
         pairs_ij(end+1, :) = [ii, jj]; %#ok<AGROW>
     end
 end
 nPairs = size(pairs_ij, 1);
-fprintf('\n[dc_sweep] %d valid pairs to process  (%d total possible).\n\n', ...
+fprintf('\n[dc_sweep] Pair enumeration: %d valid | %d no-overlap | %d missing file | %d no winner\n', ...
+    nPairs, n_no_ovlap, n_no_file, n_no_win);
+fprintf('[dc_sweep] %d valid pairs to process  (%d total possible).\n\n', ...
     nPairs, N*(N-1)/2);
 
 if nPairs == 0
