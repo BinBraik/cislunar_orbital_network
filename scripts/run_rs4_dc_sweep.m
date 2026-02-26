@@ -2,18 +2,27 @@
 % Self-contained batch differential correction over every pair of the 13
 % periodic-orbit families.
 %
-% This script follows the exact same pipeline as run_rs4_voxel_trajectories.m
-% but loops over all N*(N-1)/2 pairs:
+% Pipeline per pair (identical to run_rs4_voxel_trajectories.m):
+%   rs4_overlap_pair               -> O
+%   rs4_overlap_extract_voxel_info -> V
+%   rs4_overlap_visualize_bounds   -> B  (no plots)
+%   rs4_voxel_traj_extract         -> T  (before-DC arcs + true DV)
+%   rs4_diffcorr                   -> Tc (after-DC arcs)
 %
-%   1. Pre-load ALL families into memory (main process, serial)
-%   2. For each pair (i, j) — serial or parfor:
-%        rs4_overlap_pair               -> O
-%        rs4_overlap_extract_voxel_info -> V
-%        rs4_overlap_visualize_bounds   -> B  (no plots)
-%        rs4_voxel_traj_extract         -> T  (before-DC arcs + true DV)
-%        rs4_diffcorr                   -> Tc (after-DC arcs)
+% Two modes (set NUM_WORKERS below):
 %
-% All family structs live in memory — NO file I/O inside the loop.
+%   SERIAL  (NUM_WORKERS <= 1)
+%     All 13 families loaded into memory once.  Passed directly to the for
+%     loop — no file I/O per pair.  Checkpoint saved after every pair so a
+%     run can be safely interrupted and resumed by re-running the script.
+%
+%   PARALLEL (NUM_WORKERS >= 2)
+%     Uses a PROCESS-BASED pool (parpool 'Processes') so workers have full
+%     MATLAB: Java is available, V7.3 .mat files load fine.
+%     Each worker loads only its 2 needed families from disk — no large
+%     struct broadcast, no OOM.
+%     Cache paths are pre-computed in the serial warm-up phase (where Java
+%     is available) and passed to workers as plain strings.
 %
 % Outputs  (saved to rs3_results/<tag>/rs4_dc_sweep/rs4_dc_sweep_results.mat)
 %   before_mat   [nPairs x 13]  pre-DC metrics
@@ -38,8 +47,8 @@ rehash;
 % =========================================================================
 % USER SETTINGS
 % =========================================================================
-NUM_WORKERS = 0;   % 0 or 1 = serial (with checkpoint), >=2 = parallel
-                   % parallel uses process-based pool (not threads)
+NUM_WORKERS = 0;   % 0 or 1 = serial with checkpoint
+                   % >= 2    = process-based parfor (each worker loads 2 families)
 
 families = {
     'Lyapunov L1',
@@ -66,14 +75,12 @@ cfg.io.save_figs          = false;
 cfg.io.save_fig           = false;
 cfg.io.fig_visible        = 'off';
 cfg.diffcorr.display      = 'off';   % suppress fmincon iteration output
-cfg.plot.rs4.bounds_lb    = false;   % no plots inside visualize_bounds
+cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = false;
 
 % -------------------------------------------------------------------------
-% CACHE SETTINGS — MUST MATCH EXACTLY WHAT WAS USED TO BUILD THE FAMILY
-% CACHES.  If these differ from the cache build, rs3_prepare_or_load_family
-% will reject the cache and recompute the full FRS/BRS from scratch.
+% CACHE SETTINGS — must match exactly what was used to build the caches
 % -------------------------------------------------------------------------
 cfg.grid.dx               = 0.0005;
 cfg.grid.dy               = 0.0005;
@@ -90,34 +97,11 @@ cfg.log.maxstep_factor    = 2;
 
 rs3_cfg_validate(cfg);
 
-N = numel(families);
+N      = numel(families);
+relTol = cfg.propag.relTol;
+absTol = cfg.propag.absTol;
 
-% ---- output folder -------------------------------------------------------
-dcRoot = fullfile(cfg.io.out_root, cfg.io.tag, 'rs4_dc_sweep');
-if ~exist(dcRoot, 'dir'), mkdir(dcRoot); end
-fprintf('[dc_sweep] Output : %s\n\n', dcRoot);
-
-% =========================================================================
-% 1. BUILD GRID + PRE-LOAD ALL FAMILIES (serial, main process)
-%    This is the same pattern as run_rs4_voxel_trajectories.m lines 60-63.
-%    Everything happens in the main process where Java and V7.3 work fine.
-% =========================================================================
-grid3 = rs3_grid_make(cfg);
-
-fprintf('[dc_sweep] Loading %d families into memory ...\n', N);
-Sall = cell(N, 1);
-for k = 1:N
-    fprintf('  [%2d/%2d]  %s ...', k, N, families{k});
-    tLoad = tic;
-    [Sall{k}, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
-    Sall{k} = local_ensure_xpo(Sall{k}, cfg.propag.relTol, cfg.propag.absTol, 1001);
-    fprintf('  done (%.1fs)  Nseeds_upper=%d\n', toc(tLoad), size(Sall{k}.SeedsUpper, 1));
-end
-fprintf('[dc_sweep] All families loaded.\n\n');
-
-% =========================================================================
-% 2. ENUMERATE ALL N*(N-1)/2 PAIRS
-% =========================================================================
+% ---- enumerate pairs early (needed to set use_par) -----------------------
 pairs_ij = zeros(0, 2);
 for ii = 1:N
     for jj = ii+1:N
@@ -125,10 +109,56 @@ for ii = 1:N
     end
 end
 nPairs = size(pairs_ij, 1);
-fprintf('[dc_sweep] %d pairs to process  (%d families).\n\n', nPairs, N);
+
+use_par = NUM_WORKERS >= 2 && ...
+          license('test', 'Distrib_Computing_Toolbox') && ...
+          nPairs > 1;
+
+% ---- output folder -------------------------------------------------------
+dcRoot = fullfile(cfg.io.out_root, cfg.io.tag, 'rs4_dc_sweep');
+if ~exist(dcRoot, 'dir'), mkdir(dcRoot); end
+fprintf('[dc_sweep] Output   : %s\n', dcRoot);
+fprintf('[dc_sweep] Mode     : %s\n\n', ...
+    ternary(use_par, sprintf('PARALLEL (%d workers)', min(NUM_WORKERS,nPairs)), 'SERIAL'));
 
 % =========================================================================
-% 3. PRE-ALLOCATE OUTPUT
+% 1. WARM CACHE + GET FILE PATHS  (serial, main process)
+%    rs3_prepare_or_load_family uses Java for MD5 — must run here.
+%    Captures the exact .mat path for each family.
+%
+%    SERIAL MODE:  keep the loaded struct in Sall{k}  (in-memory pass-through)
+%    PARALLEL MODE: discard the struct — workers will load per-pair from disk
+% =========================================================================
+grid3 = rs3_grid_make(cfg);
+
+fprintf('[dc_sweep] Warming %d family caches ...\n', N);
+cache_fpaths = cell(N, 1);
+Sall         = cell(N, 1);   % used only in serial mode
+
+for k = 1:N
+    fprintf('  [%2d/%2d]  %s ...', k, N, families{k});
+    tL = tic;
+    [Stmp, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
+    info = rs3_cache_get_path(families{k}, Stmp.mu, Stmp.CJ, cfg);
+    cache_fpaths{k} = info.fpath;
+    if ~use_par
+        Sall{k} = local_ensure_xpo(Stmp, relTol, absTol, 1001);
+    end
+    fprintf('  %.1fs  Nseeds_upper=%d\n', toc(tL), size(Stmp.SeedsUpper, 1));
+    clear Stmp info;
+end
+
+if use_par
+    clear Sall;   % not needed — keep memory free before launching workers
+    fprintf('[dc_sweep] Cache warmed. Family structs released (workers load per-pair).\n\n');
+else
+    fprintf('[dc_sweep] Families in memory.\n\n');
+end
+
+fprintf('[dc_sweep] %d pairs to process.\n\n', nPairs);
+
+% =========================================================================
+% 2. PRE-ALLOCATE OUTPUT
 % =========================================================================
 BEFORE_COLS = { ...
     'pair_idx',      'fam_i',        'fam_j',         'vid', ...
@@ -150,46 +180,49 @@ after_mat  = NaN(nPairs, nAC);
 traj_cell  = cell(nPairs, 1);
 
 % =========================================================================
-% 4. MAIN LOOP
+% 3. MAIN LOOP
 % =========================================================================
 ckptFile = fullfile(dcRoot, 'rs4_dc_sweep_checkpoint.mat');
 
-use_par = NUM_WORKERS >= 2 && ...
-          license('test', 'Distrib_Computing_Toolbox') && ...
-          nPairs > 1;
-
 if use_par
     % ------------------------------------------------------------------
-    % PARALLEL — process-based pool (not threads!)
-    % Family structs are broadcast from main process — no file I/O in
-    % workers.  Process-based pools support Java + V7.3 if ever needed.
+    % PARALLEL — process-based pool.
+    %   Broadcast: only small data (path strings, cfg, family names).
+    %   Each worker loads ONLY its 2 families from disk.
+    %   Process-based workers support Java + V7.3 MAT loading.
     % ------------------------------------------------------------------
     nW = min(NUM_WORKERS, nPairs);
-    fprintf('[dc_sweep] Mode: PARALLEL (%d process-based workers).\n', nW);
-    fprintf('           Family structs are in memory — no file I/O in workers.\n\n');
 
-    % Ensure we have a process-based pool of the right size
-    pool = gcp('nocreate');
-    if isempty(pool) || pool.NumWorkers ~= nW || ...
-            ~strcmp(pool.Cluster.Profile, 'Processes')
-        delete(gcp('nocreate'));
-        parpool('Processes', nW);
-    end
+    % Create a fresh process-based pool
+    delete(gcp('nocreate'));
+    parpool('Processes', nW);
 
-    % Broadcast variables (read-only inside parfor)
-    Sall_par = Sall;
-    cfg_par  = cfg;
-    dcRoot_par = dcRoot;
-    fam_cell = families;
-    pij = pairs_ij;
+    % tiny broadcasts
+    fpaths   = cache_fpaths;
+    cfg_p    = cfg;
+    dcR      = dcRoot;
+    fams     = families;
+    pij      = pairs_ij;
+    rT       = relTol;
+    aT       = absTol;
 
     parfor p = 1:nPairs
         ii = pij(p, 1);
         jj = pij(p, 2);
+
+        % Each worker loads only 2 families (no OOM from broadcasting)
+        % Process-based workers can load V7.3 and use Java fine.
+        dA = load(fpaths{ii}, 'S');
+        SA = local_ensure_xpo(dA.S, rT, aT, 1001);
+        clear dA;
+
+        dB = load(fpaths{jj}, 'S');
+        SB = local_ensure_xpo(dB.S, rT, aT, 1001);
+        clear dB;
+
         [br, ar, tr] = local_process_pair( ...
-            Sall_par{ii}, Sall_par{jj}, ...
-            fam_cell{ii}, fam_cell{jj}, ii, jj, p, ...
-            cfg_par, dcRoot_par);
+            SA, SB, fams{ii}, fams{jj}, ii, jj, p, cfg_p, dcR);
+
         before_mat(p, :) = br; %#ok<PFPIE>
         after_mat(p, :)  = ar; %#ok<PFPIE>
         traj_cell{p}     = tr; %#ok<PFPIE>
@@ -197,11 +230,10 @@ if use_par
 
 else
     % ------------------------------------------------------------------
-    % SERIAL — checkpoint after every pair for safe resume.
+    % SERIAL — families already in memory, checkpoint after every pair.
     % ------------------------------------------------------------------
-    fprintf('[dc_sweep] Mode: SERIAL (checkpoint: %s).\n\n', ckptFile);
+    fprintf('[dc_sweep] Checkpoint: %s\n\n', ckptFile);
 
-    % Resume from checkpoint if available
     if exist(ckptFile, 'file')
         ck = load(ckptFile, 'before_mat', 'after_mat', 'traj_cell');
         before_mat = ck.before_mat;
@@ -217,9 +249,8 @@ else
         ii = pairs_ij(p, 1);
         jj = pairs_ij(p, 2);
 
-        % col 1 = pair_idx — finite means this pair was already tried
         if isfinite(before_mat(p, 1))
-            fprintf('  [%2d/%2d]  SKIP (done): %s -> %s\n', ...
+            fprintf('  [%2d/%2d]  SKIP: %s -> %s\n', ...
                 p, nPairs, families{ii}, families{jj});
             continue;
         end
@@ -227,33 +258,30 @@ else
         fprintf('  [%2d/%2d]  %s -> %s ...', p, nPairs, families{ii}, families{jj});
         tStart = tic;
 
+        % Families already in memory — no file I/O here
         [before_mat(p,:), after_mat(p,:), traj_cell{p}] = ...
             local_process_pair(Sall{ii}, Sall{jj}, ...
                                families{ii}, families{jj}, ii, jj, p, ...
                                cfg, dcRoot);
 
-        % Write pair_idx sentinel even for no-overlap pairs so they are
-        % not retried on resume.
         if ~isfinite(before_mat(p, 1))
-            before_mat(p, 1) = p;
+            before_mat(p, 1) = p;   % sentinel for no-overlap pairs
         end
 
-        % Progress summary
         tr = traj_cell{p};
         if ~isempty(tr)
-            fprintf('  conv=%d  DV: %.1f -> %.1f m/s  (%.1fs)\n', ...
+            fprintf('  conv=%d  DV: %.1f->%.1f m/s  (%.1fs)\n', ...
                 tr.converged, tr.T_DV_total_mps, tr.DV_total_mps, toc(tStart));
         else
-            fprintf('  no overlap / no winner  (%.1fs)\n', toc(tStart));
+            fprintf('  no overlap  (%.1fs)\n', toc(tStart));
         end
 
-        % Checkpoint
         save(ckptFile, 'before_mat', 'after_mat', 'traj_cell', '-v7.3');
     end
 end
 
 % =========================================================================
-% 5. TABULATE RESULTS
+% 4. TABULATE RESULTS
 % =========================================================================
 ac_ef = find(strcmp(AFTER_COLS, 'exitflag'),  1);
 ac_cv = find(strcmp(AFTER_COLS, 'converged'), 1);
@@ -280,7 +308,7 @@ if n_dc > 0
 end
 
 % =========================================================================
-% 6. SAVE RESULTS
+% 5. SAVE RESULTS
 % =========================================================================
 resultsFile = fullfile(dcRoot, 'rs4_dc_sweep_results.mat');
 save(resultsFile, ...
@@ -289,7 +317,6 @@ save(resultsFile, ...
     '-v7.3');
 fprintf('\n[dc_sweep] Saved -> %s\n', resultsFile);
 
-% Remove checkpoint on clean serial finish
 if ~use_par && exist(ckptFile, 'file')
     delete(ckptFile);
     fprintf('[dc_sweep] Checkpoint removed.\n');
@@ -304,47 +331,38 @@ fprintf('[dc_sweep] Done.\n');
 function [before_row, after_row, traj] = local_process_pair( ...
         SA, SB, famA, famB, ii, jj, p, cfg, dcRoot)
 %LOCAL_PROCESS_PAIR  Full pipeline for one pair.
-%   Receives family structs SA, SB directly from the caller (in-memory).
-%   NO file I/O — no load(), no rs3_md5, no Java calls.
-%   Exactly mirrors run_rs4_voxel_trajectories.m lines 66-112.
+%   SA, SB already in memory (pre-loaded by caller or by worker).
+%   Mirrors run_rs4_voxel_trajectories.m lines 66-112 exactly.
 
 before_row = NaN(1, 13);
 after_row  = NaN(1, 14);
 traj       = [];
 
 try
-    % ---- Overlap (same as run_rs4_voxel_trajectories.m line 66) ----------
     O = rs4_overlap_pair(SA, SB, cfg);
-    if isempty(O.ids)
-        return;
-    end
+    if isempty(O.ids), return; end
 
-    % ---- Voxel metadata (line 67) ----------------------------------------
     V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
 
-    % ---- Winner voxel B (line 70) — CORRECT signature: V, SA, SB, O, ... -
     pairTag = sprintf('pair_%02d_%02d', ii, jj);
     B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, dcRoot, pairTag);
 
-    if ~isfield(B, 'imin') || ~isfinite(B.imin) || ...
+    if ~isfield(B,'imin') || ~isfinite(B.imin) || ...
             isempty(B.dv_proxy) || ~any(isfinite(B.dv_proxy))
         return;
     end
 
-    % ---- True trajectory (line 76) ---------------------------------------
-    T = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
-
-    % ---- Differential correction (line 97) -------------------------------
+    T  = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
     Tc = rs4_diffcorr(T, SA, SB, cfg);
 
-    % ---- Pack before row (13 cols) ---------------------------------------
+    % --- before row (13 cols) ---
     before_row = [ ...
         p, ii, jj, T.vid, ...
-        T.DV_turn_A_mps,  T.DV_patch_mps,  T.DV_turn_B_mps,  T.DV_total_true_mps, ...
+        T.DV_turn_A_mps, T.DV_patch_mps, T.DV_turn_B_mps, T.DV_total_true_mps, ...
         T.dA_nd, T.dB_nd, rad2deg(T.delta_th_rad), ...
         T.tof_A_days, T.tof_B_days];
 
-    % ---- Pack after row (14 cols) ----------------------------------------
+    % --- after row (14 cols) ---
     r_norm = norm(Tc.r_final);
     after_row = [ ...
         p, ii, jj, T.vid, ...
@@ -352,7 +370,7 @@ try
         rad2deg(Tc.delta_th_rad), Tc.tof_A_days, Tc.tof_B_days, ...
         Tc.exitflag, double(Tc.converged), r_norm];
 
-    % ---- Trajectory struct for plot replay -------------------------------
+    % --- traj struct for plot replay ---
     traj = struct();
     traj.famA            = famA;
     traj.famB            = famB;
@@ -404,8 +422,7 @@ try
     traj.r_norm_scaled   = r_norm;
 
 catch ME
-    fprintf('    [pair %d] ERROR %s -> %s:\n      %s\n', ...
-        p, famA, famB, ME.message);
+    fprintf('    [pair %d] ERROR %s->%s: %s\n', p, famA, famB, ME.message);
 end
 end
 
@@ -413,15 +430,20 @@ end
 
 function S = local_ensure_xpo(S, relTol, absTol, N_po)
 % Re-integrate the periodic orbit if Xpo was stripped from cache.
-    if isfield(S, 'Xpo') && ~isempty(S.Xpo) && ...
-       isfield(S, 't_dense') && ~isempty(S.t_dense)
+    if isfield(S,'Xpo') && ~isempty(S.Xpo) && ...
+       isfield(S,'t_dense') && ~isempty(S.t_dense)
         return;
     end
-    fprintf('    [ensure_xpo] rebuilding Xpo for "%s" ...\n', S.name);
     opts    = odeset('RelTol', relTol, 'AbsTol', absTol);
     solPO   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,S.CJ,S.mu,true), ...
                      [0, S.Tf_PO], S.X0, opts);
     t_dense = linspace(0, S.Tf_PO, N_po)';
     S.t_dense = t_dense;
     S.Xpo     = deval(solPO, t_dense)';
+end
+
+% -------------------------------------------------------------------------
+
+function out = ternary(cond, a, b)
+    if cond, out = a; else, out = b; end
 end
