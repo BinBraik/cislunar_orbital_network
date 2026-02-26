@@ -214,11 +214,9 @@ if use_par
         % Process-based workers can load V7.3 and use Java fine.
         dA = load(fpaths{ii}, 'S');
         SA = local_ensure_xpo(dA.S, rT, aT, 1001);
-        clear dA;
 
         dB = load(fpaths{jj}, 'S');
         SB = local_ensure_xpo(dB.S, rT, aT, 1001);
-        clear dB;
 
         [br, ar, tr] = local_process_pair( ...
             SA, SB, fams{ii}, fams{jj}, ii, jj, p, cfg_p, dcR);
