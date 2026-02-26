@@ -149,11 +149,21 @@ if exist(batchSummaryFile, 'file')
         fprintf('[dc_sweep] Loaded minDVproxyMat from batch summary.\n');
     end
 
-    n_finite = sum(isfinite(dvFilter(:)));
-    n_upper  = sum(sum(isfinite(triu(dvFilter, 1))));
-    fprintf('[dc_sweep] dvFilter: %d finite entries total, %d in upper triangle.\n', ...
-        n_finite, n_upper);
-    has_batch_summary = true;
+    % Count finite entries only in the strict upper triangle (exclude diagonal
+    % and lower triangle — triu() fills those with 0 which isfinite() counts).
+    n_finite_upper = sum(isfinite(dvFilter(triu(true(N), 1))));
+    fprintf('[dc_sweep] dvFilter upper-triangle: %d / %d finite entries.\n', ...
+        n_finite_upper, N*(N-1)/2);
+
+    if n_finite_upper > 0
+        has_batch_summary = true;
+    else
+        % Matrix is all NaN (batch run may have failed to record overlaps).
+        % Fall back to checking every pair via file I/O — 78 stat() calls
+        % is negligible and avoids blocking everything.
+        fprintf('[dc_sweep] WARNING: dvFilter all-NaN — ignoring filter, trying all pairs.\n');
+        dvFilter = zeros(N, N);   % 0 is finite → all pairs pass the filter
+    end
 else
     fprintf('[dc_sweep] batch_summary_workspace.mat not found — will attempt all pairs.\n');
 end
