@@ -275,8 +275,14 @@ else
             % ── Derive in-memory subset atlases ───────────────────────────────
             fprintf('[sweep] Deriving subset atlases...\n');
             Sall_sub = cell(N, 1);
-            for i = 1:N
-                Sall_sub{i} = rs3_atlas_derive_subset(Sall_base{i}, cfg_sub);
+            if N_WORKERS > 0
+                parfor i = 1:N
+                    Sall_sub{i} = rs3_atlas_derive_subset(Sall_base{i}, cfg_sub);
+                end
+            else
+                for i = 1:N
+                    Sall_sub{i} = rs3_atlas_derive_subset(Sall_base{i}, cfg_sub);
+                end
             end
 
             % ── Pre-extract per-pair atlas pointers (required for parfor) ─────
