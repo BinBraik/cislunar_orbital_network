@@ -46,6 +46,7 @@ VU_mps    = local_cfg_get(cfg, 'units.VU_mps',       1.0);
 TU_days   = local_cfg_get(cfg, 'units.TU_days',      1.0);
 Tmax      = local_cfg_get(cfg, 'propag.Tmax',        pi/2);
 tol_patch = local_cfg_get(cfg, 'diffcorr.tol_patch', 1e-6);
+dc_display = local_cfg_get(cfg, 'diffcorr.display',  'iter');  % 'off' for batch
 
 odeOpts = odeset('RelTol', relTol, 'AbsTol', absTol);
 
@@ -91,12 +92,14 @@ r_scale = [grid3.dx; grid3.dy; grid3.dtheta];
 % Step 4 — Diagnostic: evaluate warm-start residual
 % -------------------------------------------------------------------------
 r0 = local_residual(z0, SA, SB, odeOpts);
-fprintf('\n[diffcorr] ---- Differential Correction ----\n');
-fprintf('[diffcorr] Warm start:\n');
-fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
-    T.DV_total_true_mps, T.DV_turn_A_mps, T.DV_patch_mps, T.DV_turn_B_mps);
-fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r0(1), r0(2), r0(3));
-fprintf('[diffcorr]   residual (scaled)  = %.3e\n', norm(r0 ./ r_scale));
+if ~strcmp(dc_display, 'off')
+    fprintf('\n[diffcorr] ---- Differential Correction ----\n');
+    fprintf('[diffcorr] Warm start:\n');
+    fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
+        T.DV_total_true_mps, T.DV_turn_A_mps, T.DV_patch_mps, T.DV_turn_B_mps);
+    fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r0(1), r0(2), r0(3));
+    fprintf('[diffcorr]   residual (scaled)  = %.3e\n', norm(r0 ./ r_scale));
+end
 
 % -------------------------------------------------------------------------
 % Step 5 — fmincon (pass 1)
@@ -109,8 +112,8 @@ con_fun = @(z) local_constraints(z, SA, SB, odeOpts, r_scale);
 typX = [SA.Tf_PO/2; pi/6; Tmax/2; SB.Tf_PO/2; pi/6; Tmax/2];
 
 opts_fmin = optimoptions('fmincon', ...
-    'Algorithm',               'sqp',   ...
-    'Display',                 'iter',  ...
+    'Algorithm',               'sqp',        ...
+    'Display',                 dc_display,   ...
     'ConstraintTolerance',     tol_patch, ...
     'OptimalityTolerance',     1e-7,    ...
     'StepTolerance',           1e-10,   ...
@@ -123,8 +126,10 @@ opts_fmin = optimoptions('fmincon', ...
 [z_star, ~, exitflag, output] = fmincon( ...
     obj_fun, z0, [], [], [], [], lb, ub, con_fun, opts_fmin);
 
-fprintf('[diffcorr] fmincon pass 1: exitflag=%d  iter=%d  fevals=%d\n', ...
-    exitflag, output.iterations, output.funcCount);
+if ~strcmp(dc_display, 'off')
+    fprintf('[diffcorr] fmincon pass 1: exitflag=%d  iter=%d  fevals=%d\n', ...
+        exitflag, output.iterations, output.funcCount);
+end
 
 % -------------------------------------------------------------------------
 % Step 5b — Pre-feasibility fallback
@@ -145,8 +150,10 @@ z_best      = z_star;
 r_best_norm = r_pass1_norm;
 
 if (exitflag == -2 || exitflag == 0) && r_pass1_norm > tol_patch
-    fprintf('[diffcorr] Pass 1 infeasible (||r_sc||=%.2e). Running lsqnonlin ...\n', ...
-        r_pass1_norm);
+    if ~strcmp(dc_display, 'off')
+        fprintf('[diffcorr] Pass 1 infeasible (||r_sc||=%.2e). Running lsqnonlin ...\n', ...
+            r_pass1_norm);
+    end
 
     % Warm-start: from z_star when pass 1 made progress (exitflag=0),
     % otherwise fall back to the original warm start z0.
@@ -163,21 +170,27 @@ if (exitflag == -2 || exitflag == 0) && r_pass1_norm > tol_patch
     z_feas      = lsqnonlin(@(z) local_residual(z, SA, SB, odeOpts) ./ r_scale, ...
                              z_lsq0, lb, ub, opts_lsq);
     r_feas_norm = norm(local_residual(z_feas, SA, SB, odeOpts) ./ r_scale);
-    fprintf('[diffcorr] lsqnonlin: ||r_sc||=%.2e\n', r_feas_norm);
+    if ~strcmp(dc_display, 'off')
+        fprintf('[diffcorr] lsqnonlin: ||r_sc||=%.2e\n', r_feas_norm);
+    end
 
     if r_feas_norm < r_best_norm
         z_best      = z_feas;
         r_best_norm = r_feas_norm;
 
         % Restart fmincon from the feasible point to optimise DV.
-        fprintf('[diffcorr] Restarting fmincon from feasible point ...\n');
+        if ~strcmp(dc_display, 'off')
+            fprintf('[diffcorr] Restarting fmincon from feasible point ...\n');
+        end
         opts_fmin2 = optimoptions(opts_fmin, 'Display', 'off');
         [z_star2, ~, exitflag2, output2] = fmincon( ...
             obj_fun, z_feas, [], [], [], [], lb, ub, con_fun, opts_fmin2);
 
         r_pass2_norm = norm(local_residual(z_star2, SA, SB, odeOpts) ./ r_scale);
-        fprintf('[diffcorr] fmincon pass 2: exitflag=%d  iter=%d  ||r_sc||=%.2e\n', ...
-            exitflag2, output2.iterations, r_pass2_norm);
+        if ~strcmp(dc_display, 'off')
+            fprintf('[diffcorr] fmincon pass 2: exitflag=%d  iter=%d  ||r_sc||=%.2e\n', ...
+                exitflag2, output2.iterations, r_pass2_norm);
+        end
 
         if r_pass2_norm <= r_best_norm + tol_patch
             z_best      = z_star2;
@@ -236,14 +249,16 @@ DV_patch_nd  = 2 * v_patch * sin(delta_th / 2);
 r_final   = local_residual(z_star, SA, SB, odeOpts);
 converged = norm(r_final ./ r_scale) <= tol_patch;
 
-fprintf('[diffcorr] Corrected solution:\n');
-fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
-    (DV_turn_A_nd + DV_patch_nd + DV_turn_B_nd)*VU_mps, ...
-    DV_turn_A_nd*VU_mps, DV_patch_nd*VU_mps, DV_turn_B_nd*VU_mps);
-fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r_final(1), r_final(2), r_final(3));
-fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol=%.2e)  %s\n', ...
-    norm(r_final ./ r_scale), tol_patch, local_conv_str(converged));
-fprintf('[diffcorr]   delta_th at patch  = %.4f deg\n', rad2deg(delta_th));
+if ~strcmp(dc_display, 'off')
+    fprintf('[diffcorr] Corrected solution:\n');
+    fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
+        (DV_turn_A_nd + DV_patch_nd + DV_turn_B_nd)*VU_mps, ...
+        DV_turn_A_nd*VU_mps, DV_patch_nd*VU_mps, DV_turn_B_nd*VU_mps);
+    fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r_final(1), r_final(2), r_final(3));
+    fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol=%.2e)  %s\n', ...
+        norm(r_final ./ r_scale), tol_patch, local_conv_str(converged));
+    fprintf('[diffcorr]   delta_th at patch  = %.4f deg\n', rad2deg(delta_th));
+end
 
 if ~converged
     warning('[diffcorr] Patch constraint NOT satisfied (||r_sc||=%.2e > tol=%.2e, exitflag=%d).', ...
