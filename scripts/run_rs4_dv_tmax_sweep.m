@@ -42,6 +42,12 @@ rehash;
 %   N → parfor with N workers
 N_WORKERS = 4;
 
+
+% Output controls
+% NOTE: With a fine sweep grid, the per-combination Excel-sheet approach can create
+% hundreds of sheets and become slow/heavy. The .mat file is the authoritative output.
+WRITE_EXCEL    = false;   % true → write Excel workbooks (one sheet per combination)
+WRITE_FLAT_CSV = true;    % true → write a single flat CSV from winners_sweep
 % Families — must match the base cached atlases.
 families = { ...
     'Lyapunov L1', ...
@@ -65,11 +71,13 @@ OUTPUT_DIR      = fullfile(repoRoot, 'rs3_sweep_results');
 SWEEP_CACHE_DIR = fullfile(repoRoot, 'rs3_cache_sweep');   % derived caches (if ever saved)
 
 % ── Sweep grid ────────────────────────────────────────────────────────────────
-DV_cap_list = (0.025 : 0.025 : 0.200)';   % 8 values
-Tmax_list   = [pi/4; pi/3; pi/2; 2*pi/3; 3*pi/4; pi];   % 6 values
+DV_cap_list = linspace(0.025, 0.200, 20)';   % 20 values  (0.025 → 0.200)
+Tmax_list   = linspace(pi/4,  pi,    20)';   % 20 values  (pi/4  → pi)
 
 % Short labels for Excel sheet names  (≤31 chars; keep them compact)
-Tmax_labels = {'Tpi4', 'Tpi3', 'Tpi2', 'T2pi3', 'T3pi4', 'Tpi'};
+% Encode Tmax as a multiple of pi, rounded to 3 decimals: e.g., Tp0p250 = 0.250*pi
+Tmax_labels = arrayfun(@(t) strrep(sprintf('Tp%0.3f', t/pi), '.', 'p'), ...
+                       Tmax_list, 'UniformOutput', false);
 
 % ══════════════════════════════════════════════════════════════════════════════
 %  BASE CONFIGURATION  (must match your full cached atlases exactly)
@@ -359,27 +367,48 @@ save(outMat, ...
 fprintf('\n[sweep] Final .mat saved:\n  %s\n', outMat);
 
 % ══════════════════════════════════════════════════════════════════════════════
-%  WRITE EXCEL WORKBOOKS
+%  WRITE EXCEL WORKBOOKS (OPTIONAL)
 % ══════════════════════════════════════════════════════════════════════════════
-fprintf('[sweep] Writing Excel files...\n');
+if WRITE_EXCEL
+    fprintf('[sweep] Writing Excel files...\n');
 
-local_write_matrix_excel(OUTPUT_DIR, 'sweep_DVmatrix.xlsx', ...
-    families, DV_cap_list, Tmax_list, Tmax_labels, DVmatrix_sweep);
+    local_write_matrix_excel(OUTPUT_DIR, 'sweep_DVmatrix.xlsx', ...
+        families, DV_cap_list, Tmax_list, Tmax_labels, DVmatrix_sweep);
 
-local_write_matrix_excel(OUTPUT_DIR, 'sweep_TOFmatrix.xlsx', ...
-    families, DV_cap_list, Tmax_list, Tmax_labels, TOFmatrix_sweep);
+    local_write_matrix_excel(OUTPUT_DIR, 'sweep_TOFmatrix.xlsx', ...
+        families, DV_cap_list, Tmax_list, Tmax_labels, TOFmatrix_sweep);
 
-local_write_winners_excel(OUTPUT_DIR, 'sweep_winners.xlsx', ...
-    DV_cap_list, Tmax_list, Tmax_labels, winners_sweep);
+    local_write_winners_excel(OUTPUT_DIR, 'sweep_winners.xlsx', ...
+        DV_cap_list, Tmax_list, Tmax_labels, winners_sweep);
+else
+    fprintf('[sweep] Skipping Excel output (WRITE_EXCEL=false).\n');
+end
+
+% ══════════════════════════════════════════════════════════════════════════════
+%  WRITE FLAT SUMMARY (OPTIONAL)
+% ══════════════════════════════════════════════════════════════════════════════
+if WRITE_FLAT_CSV
+    fprintf('[sweep] Writing flat winners CSV...\n');
+    Tall   = local_flatten_winners(DV_cap_list, Tmax_list, winners_sweep);
+    outCsv = fullfile(OUTPUT_DIR, 'sweep_winners_flat.csv');
+    writetable(Tall, outCsv);
+    fprintf('[sweep]   Written: %s\n', outCsv);
+end
 
 fprintf('\n[sweep] ══════════ SWEEP COMPLETE ══════════\n');
 fprintf('  Output dir : %s\n', OUTPUT_DIR);
 fprintf('  Final .mat : %s\n', outMat);
-fprintf('  DVmatrix   : sweep_DVmatrix.xlsx\n');
-fprintf('  TOFmatrix  : sweep_TOFmatrix.xlsx\n');
-fprintf('  Winners    : sweep_winners.xlsx\n');
+if WRITE_EXCEL
+    fprintf('  DVmatrix   : sweep_DVmatrix.xlsx\n');
+    fprintf('  TOFmatrix  : sweep_TOFmatrix.xlsx\n');
+    fprintf('  Winners    : sweep_winners.xlsx\n');
+end
+if WRITE_FLAT_CSV
+    fprintf('  Flat CSV   : sweep_winners_flat.csv\n');
+end
 
 % ══════════════════════════════════════════════════════════════════════════════
+
 %  LOCAL FUNCTIONS
 % ══════════════════════════════════════════════════════════════════════════════
 
@@ -552,6 +581,41 @@ ok = true;
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────────
+function Tall = local_flatten_winners(DV_cap_list, Tmax_list, winners_sweep)
+%LOCAL_FLATTEN_WINNERS  Combine per-cell winners tables into one flat table.
+nDV   = numel(DV_cap_list);
+nTmax = numel(Tmax_list);
+
+Ts = cell(nDV * nTmax, 1);
+k  = 0;
+
+for di = 1:nDV
+    for dj = 1:nTmax
+        T = winners_sweep{di, dj};
+        if isempty(T), continue; end
+
+        T.DV_cap_nd = repmat(DV_cap_list(di), height(T), 1);
+        T.Tmax      = repmat(Tmax_list(dj),   height(T), 1);
+
+        % Put sweep axes first (if movevars exists)
+        if exist('movevars', 'file') == 2
+            T = movevars(T, {'DV_cap_nd','Tmax'}, 'Before', 1);
+        end
+
+        k = k + 1;
+        Ts{k} = T;
+    end
+end
+
+Ts = Ts(1:k);
+if isempty(Ts)
+    Tall = table();
+else
+    Tall = vertcat(Ts{:});
+end
+end
+
 function local_write_matrix_excel(outdir, fname, families, ...
         DV_cap_list, Tmax_list, Tmax_labels, data_sweep)
 %LOCAL_WRITE_MATRIX_EXCEL  Write N×N matrices to an Excel workbook.
