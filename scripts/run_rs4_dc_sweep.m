@@ -100,17 +100,22 @@ if ~exist(dcRoot, 'dir'), mkdir(dcRoot); end
 fprintf('[dc_sweep] Output : %s\n\n', dcRoot);
 
 % =========================================================================
-% 1. VERIFY / WARM CACHE
-%    Load each family once (serial) so cache files definitely exist before
-%    parallel workers try to read them concurrently.
+% 1. VERIFY / WARM CACHE AND CAPTURE FILE PATHS
+%    Load each family once (serial, where Java is available) so cache
+%    files definitely exist before parallel workers touch them.
+%    Capture the exact .mat path for each family — workers will call
+%    load(path,'S') directly, bypassing rs3_md5 / Java entirely.
 % =========================================================================
 grid3 = rs3_grid_make(cfg);
 fprintf('[dc_sweep] Verifying %d family caches ...\n', N);
+cache_fpaths = cell(N, 1);
 for k = 1:N
     [Stmp, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
+    ci = rs3_cache_get_path(families{k}, Stmp.mu, Stmp.CJ, cfg);
+    cache_fpaths{k} = ci.fpath;
     fprintf('  [%2d/%2d]  %-30s  Nseeds_upper=%d\n', k, N, ...
         families{k}, size(Stmp.SeedsUpper, 1));
-    clear Stmp;
+    clear Stmp ci;
 end
 fprintf('[dc_sweep] Cache verified.\n\n');
 
@@ -163,18 +168,19 @@ if use_par
     % Only tiny things are broadcast: cfg, grid3, families, dcRoot.
     % ------------------------------------------------------------------
     fprintf('[dc_sweep] Mode: PARALLEL (parfor).\n');
-    fprintf('           Each worker loads family caches independently.\n\n');
+    fprintf('           Workers use pre-computed cache paths — no Java required.\n\n');
 
-    fam_cell   = families;   % cell of strings — tiny
-    cfg_par    = cfg;
-    grid3_par  = grid3;
-    dcRoot_par = dcRoot;
+    fam_cell    = families;      % cell of strings — tiny
+    fpaths_par  = cache_fpaths;  % cell of strings — tiny
+    cfg_par     = cfg;
+    dcRoot_par  = dcRoot;
 
     parfor p = 1:nPairs
         ii = pairs_ij(p, 1);
         jj = pairs_ij(p, 2);
         [br, ar, tr] = local_process_pair( ...
-            fam_cell{ii}, fam_cell{jj}, ii, jj, p, cfg_par, grid3_par, dcRoot_par);
+            fam_cell{ii}, fam_cell{jj}, ii, jj, p, ...
+            cfg_par, dcRoot_par, fpaths_par{ii}, fpaths_par{jj});
         before_mat(p, :) = br; %#ok<PFPIE>
         after_mat(p, :)  = ar; %#ok<PFPIE>
         traj_cell{p}     = tr; %#ok<PFPIE>
@@ -215,7 +221,7 @@ else
 
         [before_mat(p,:), after_mat(p,:), traj_cell{p}] = ...
             local_process_pair(families{ii}, families{jj}, ii, jj, p, ...
-                               cfg, grid3, dcRoot);
+                               cfg, dcRoot, cache_fpaths{ii}, cache_fpaths{jj});
 
         % Write pair_idx sentinel even for no-overlap pairs so they are
         % not retried on resume (they are fast but still wasteful).
@@ -285,22 +291,22 @@ end
 % =========================================================================
 
 function [before_row, after_row, traj] = local_process_pair( ...
-        famA, famB, ii, jj, p, cfg, grid3, dcRoot)
+        famA, famB, ii, jj, p, cfg, dcRoot, cache_pathA, cache_pathB)
 % Full pipeline for one pair.
-% Loads family structs from cache here (not passed in) so this function
-% can safely run inside a parfor worker without broadcasting the heavy
-% Step4.rows_FRS_* arrays.
+% Receives pre-computed cache file paths so workers can load(path,'S')
+% directly — no call to rs3_md5 / java.security inside the worker.
 
 before_row = NaN(1, 13);
 after_row  = NaN(1, 14);
 traj       = [];
 
 try
-    % ---- Load family structs from cache ----------------------------------
-    [SA] = rs3_prepare_or_load_family(famA, cfg, grid3);
-    SA   = local_ensure_xpo(SA, cfg.propag.relTol, cfg.propag.absTol, 1001);
-    [SB] = rs3_prepare_or_load_family(famB, cfg, grid3);
-    SB   = local_ensure_xpo(SB, cfg.propag.relTol, cfg.propag.absTol, 1001);
+    % ---- Load family structs from pre-computed cache paths ---------------
+    % Direct load avoids rs3_md5 -> java.security (unavailable in parfor).
+    d  = load(cache_pathA, 'S');  SA = d.S;  clear d;
+    SA = local_ensure_xpo(SA, cfg.propag.relTol, cfg.propag.absTol, 1001);
+    d  = load(cache_pathB, 'S');  SB = d.S;  clear d;
+    SB = local_ensure_xpo(SB, cfg.propag.relTol, cfg.propag.absTol, 1001);
 
     % ---- Overlap ---------------------------------------------------------
     O = rs4_overlap_pair(SA, SB, cfg);
