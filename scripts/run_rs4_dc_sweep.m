@@ -1,31 +1,38 @@
 %% RUN_RS4_DC_SWEEP
-% Batch differential correction over every valid pair of the 13 periodic-
-% orbit families, starting from the overlap / pair-result caches produced
-% by run_rs4_all_pairs_summary.m.
+% Self-contained batch differential correction over every pair of the 13
+% periodic-orbit families.
 %
-% Workflow
-%   1. Load all 13 family structs from cache; rebuild dense Xpo for each.
-%   2. Enumerate valid pairs (filtered by minDVproxyMat from the batch
-%      summary so pairs with no overlap are skipped without I/O).
-%   3. Serial pre-loop: load O, compute V for each pair.
-%      (Needs SA.Step4.rows_FRS_* — the large arrays — only here.)
-%   4. Strip rows_FRS_* from family structs to make slim broadcast copies.
-%   5. parfor (or serial-with-checkpoint): for each pair
-%        load B  →  rs4_voxel_traj_extract  →  rs4_diffcorr
-%   6. Tabulate exit flags and convergence.
-%   7. Save results.mat + (in serial) checkpoint file.
+% Does NOT rely on cached pair_result.mat files from
+% run_rs4_all_pairs_summary.m.  Computes everything from scratch:
 %
-% Outputs  (saved to <dcRoot>/rs4_dc_sweep_results.mat)
-%   before_mat   [nPairs × 13]  numeric, pre-DC metrics
-%   after_mat    [nPairs × 14]  numeric, post-DC metrics + solver metadata
-%   traj_cell    {nPairs × 1}   struct per pair, sufficient for plot replay
-%   pairs_ij     [nPairs × 2]   family index pairs (i < j)
-%   families     {13 × 1}       family name strings
+%   For each pair (i, j):
+%     1. rs4_overlap_pair               -> O  (overlap voxel IDs)
+%     2. rs4_overlap_extract_voxel_info -> V  (per-voxel DV metadata)
+%     3. rs4_overlap_visualize_bounds   -> B  (winner voxel, no plots)
+%     4. rs4_voxel_traj_extract         -> T  (before-DC arcs + true DV)
+%     5. rs4_diffcorr                   -> Tc (after-DC arcs)
+%
+% Parallelism (USE_PARFOR = true):
+%   Each parfor worker loads its two family structs from cache
+%   independently — the heavy Step4.rows_FRS_* arrays are NOT broadcast.
+%   Requires Parallel Computing Toolbox.
+%
+% Serial mode (USE_PARFOR = false):
+%   Saves a checkpoint after every pair so a run can be safely interrupted
+%   and resumed by re-running the script.
+%
+% Outputs  (saved to rs3_results/<tag>/rs4_dc_sweep/rs4_dc_sweep_results.mat)
+%   before_mat   [nPairs x 13]  pre-DC metrics
+%   after_mat    [nPairs x 14]  post-DC metrics + solver metadata
+%   traj_cell    {nPairs x 1}   struct per pair — sufficient for plot replay
+%   pairs_ij     [nPairs x 2]   family index pairs (i < j)
+%   families     {13 x 1}       family name strings
 %   BEFORE_COLS / AFTER_COLS    column-name cell arrays
+%   cfg                         config used for this run
 
 clear; clc;
 
-% ---- path setup (mirrors run_rs4_all_pairs_summary.m) -------------------
+% ---- path setup ----------------------------------------------------------
 thisFile = mfilename('fullpath');
 repoRoot = fileparts(fileparts(thisFile));
 restoredefaultpath; rehash toolboxcache;
@@ -36,11 +43,8 @@ rehash;
 
 % =========================================================================
 % USER SETTINGS
-% Set PAIR_OUTPUT_ROOT to the folder that contains the per-pair sub-folders
-% (e.g. .../rs3_results/20250110_143022/rs4_pairs_13fam).
-% Leave empty to auto-detect the newest matching folder.
 % =========================================================================
-PAIR_OUTPUT_ROOT = '';   % <-- fill in if auto-detection misses it
+USE_PARFOR = true;    % false = serial with per-pair checkpoint saves
 
 families = {
     'Lyapunov L1',
@@ -58,13 +62,19 @@ families = {
     'Distant Prograde Orbit'
     };
 
-% ---- config (must match what run_rs4_all_pairs_summary.m used) ----------
 cfg = rs3_cfg_defaults();
 cfg.cache.rebuild         = false;
+
+% No figures anywhere in this runner
 cfg.io.save_figs          = false;
 cfg.io.save_fig           = false;
 cfg.io.fig_visible        = 'off';
-cfg.diffcorr.display      = 'off';   % suppress fmincon output in batch
+cfg.diffcorr.display      = 'off';   % suppress fmincon iteration output
+cfg.plot.rs4.bounds_lb    = false;   % no plots inside visualize_bounds
+cfg.plot.rs4.bounds_ub    = false;
+cfg.plot.rs4.bounds_proxy = false;
+
+% Grid / propagation settings (must match the family caches)
 cfg.grid.dx               = 0.01;
 cfg.grid.dy               = 0.01;
 cfg.grid.dtheta           = deg2rad(2);
@@ -75,298 +85,192 @@ cfg.fan.dtheta_fan        = deg2rad(1.0);
 cfg.propag.absTol         = 1e-9;
 cfg.propag.relTol         = 1e-9;
 
-N        = numel(families);
-batchTag = sprintf('rs4_pairs_%dfam', N);   % 'rs4_pairs_13fam'
+N = numel(families);
 
-% ---- resolve pair output root -------------------------------------------
-if isempty(PAIR_OUTPUT_ROOT)
-    resultsRoot = fullfile(repoRoot, 'rs3_results');
-    d = dir(resultsRoot);
-    d = d([d.isdir] & ~strncmp({d.name}, '.', 1));
-    [~, ord] = sort([d.datenum], 'descend');
-    d = d(ord);
-    for kd = 1:numel(d)
-        candidate = fullfile(resultsRoot, d(kd).name, batchTag);
-        if exist(candidate, 'dir')
-            PAIR_OUTPUT_ROOT = candidate;
-            break;
-        end
-    end
-    if isempty(PAIR_OUTPUT_ROOT)
-        error('[dc_sweep] Cannot auto-detect pair output root. Set PAIR_OUTPUT_ROOT manually.');
-    end
-end
-fprintf('[dc_sweep] Pair output root : %s\n', PAIR_OUTPUT_ROOT);
-
-% DC results go into a sibling folder so they don't pollute the pair cache
-dcRoot = fullfile(fileparts(PAIR_OUTPUT_ROOT), 'rs4_dc_sweep');
+% ---- output folder -------------------------------------------------------
+dcRoot = fullfile(cfg.io.out_root, cfg.io.tag, 'rs4_dc_sweep');
 if ~exist(dcRoot, 'dir'), mkdir(dcRoot); end
-fprintf('[dc_sweep] DC results dir   : %s\n\n', dcRoot);
+fprintf('[dc_sweep] Output : %s\n\n', dcRoot);
 
 % =========================================================================
-% 1. LOAD ALL 13 FAMILIES AND REBUILD Xpo
+% 1. VERIFY / WARM CACHE
+%    Load each family once (serial) so cache files definitely exist before
+%    parallel workers try to read them concurrently.
 % =========================================================================
 grid3 = rs3_grid_make(cfg);
-fprintf('[dc_sweep] Loading %d family structs ...\n', N);
-
-family_list = cell(N, 1);
+fprintf('[dc_sweep] Verifying %d family caches ...\n', N);
 for k = 1:N
-    [family_list{k}, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
-    family_list{k} = local_ensure_xpo(family_list{k}, ...
-        cfg.propag.relTol, cfg.propag.absTol, 1001);
+    [Stmp, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
     fprintf('  [%2d/%2d]  %-30s  Nseeds_upper=%d\n', k, N, ...
-        families{k}, size(family_list{k}.SeedsUpper, 1));
+        families{k}, size(Stmp.SeedsUpper, 1));
+    clear Stmp;
 end
+fprintf('[dc_sweep] Cache verified.\n\n');
 
 % =========================================================================
-% 2. ENUMERATE VALID PAIRS
+% 2. ENUMERATE ALL N*(N-1)/2 PAIRS
 % =========================================================================
-% Load batch summary to skip no-overlap pairs without touching disk.
-% IMPORTANT: also load 'families' from the summary so the matrix row/column
-% indices are correctly remapped to our local families list, regardless of
-% the order they were saved in.
-has_batch_summary = false;
-dvFilter = zeros(N, N);   % default: try all pairs (0 = finite → passes filter)
-batchSummaryFile = fullfile(PAIR_OUTPUT_ROOT, 'Summary', 'batch_summary_workspace.mat');
-if exist(batchSummaryFile, 'file')
-    bw = load(batchSummaryFile, 'minDVproxyMat', 'families');
-    bw_mat = bw.minDVproxyMat;
-
-    if isfield(bw, 'families') && ~isequal(bw.families(:), families(:))
-        % The saved family order may differ → remap to local order.
-        [~, loc] = ismember(families, bw.families);
-        dvFilter = NaN(N, N);
-        for ki = 1:N
-            if loc(ki) == 0, continue; end
-            for kj = 1:N
-                if loc(kj) == 0, continue; end
-                dvFilter(ki, kj) = bw_mat(loc(ki), loc(kj));
-            end
-        end
-        fprintf('[dc_sweep] Loaded minDVproxyMat (remapped family order).\n');
-    else
-        dvFilter = bw_mat;
-        fprintf('[dc_sweep] Loaded minDVproxyMat from batch summary.\n');
-    end
-
-    % Count finite entries only in the strict upper triangle (exclude diagonal
-    % and lower triangle — triu() fills those with 0 which isfinite() counts).
-    n_finite_upper = sum(isfinite(dvFilter(triu(true(N), 1))));
-    fprintf('[dc_sweep] dvFilter upper-triangle: %d / %d finite entries.\n', ...
-        n_finite_upper, N*(N-1)/2);
-
-    if n_finite_upper > 0
-        has_batch_summary = true;
-    else
-        % Matrix is all NaN (batch run may have failed to record overlaps).
-        % Fall back to checking every pair via file I/O — 78 stat() calls
-        % is negligible and avoids blocking everything.
-        fprintf('[dc_sweep] WARNING: dvFilter all-NaN — ignoring filter, trying all pairs.\n');
-        dvFilter = zeros(N, N);   % 0 is finite → all pairs pass the filter
-    end
-else
-    fprintf('[dc_sweep] batch_summary_workspace.mat not found — will attempt all pairs.\n');
-end
-
-pairs_ij   = zeros(0, 2);
-n_no_ovlap = 0;
-n_no_file  = 0;
-n_no_win   = 0;
+pairs_ij = zeros(0, 2);
 for ii = 1:N
     for jj = ii+1:N
-        % Skip pairs confirmed to have no overlap (check both triangles for safety).
-        if has_batch_summary && ~isfinite(dvFilter(ii,jj)) && ~isfinite(dvFilter(jj,ii))
-            n_no_ovlap = n_no_ovlap + 1;
-            continue;
-        end
-        pairTag  = sprintf('%s__TO__%s', families{ii}, families{jj});
-        pairSafe = rs3_sanitize_fname(pairTag);
-        pairDir  = fullfile(PAIR_OUTPUT_ROOT, pairSafe);
-        prFile   = fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']);
-        if ~exist(prFile, 'file')
-            n_no_file = n_no_file + 1;
-            continue;
-        end
-        pr = load(prFile);
-        if ~isfield(pr, 'winnerMeta') || ~isfield(pr, 'B')
-            n_no_win = n_no_win + 1;
-            continue;
-        end
         pairs_ij(end+1, :) = [ii, jj]; %#ok<AGROW>
     end
 end
 nPairs = size(pairs_ij, 1);
-fprintf('\n[dc_sweep] Pair enumeration: %d valid | %d no-overlap | %d missing file | %d no winner\n', ...
-    nPairs, n_no_ovlap, n_no_file, n_no_win);
-fprintf('[dc_sweep] %d valid pairs to process  (%d total possible).\n\n', ...
-    nPairs, N*(N-1)/2);
-
-if nPairs == 0
-    error('[dc_sweep] No valid pairs found. Check PAIR_OUTPUT_ROOT.');
-end
+fprintf('[dc_sweep] %d pairs to process  (%d families).\n\n', nPairs, N);
 
 % =========================================================================
-% 3. SERIAL PRE-LOOP: compute V and load B for every pair
-%    This step needs SA.Step4.rows_FRS_*, which are large.
-%    We do it once here, serially, before parfor.
-% =========================================================================
-fprintf('[dc_sweep] Pre-computing voxel metadata V for all pairs ...\n');
-V_cell = cell(nPairs, 1);
-B_cell = cell(nPairs, 1);
-
-for p = 1:nPairs
-    ii = pairs_ij(p, 1);  jj = pairs_ij(p, 2);
-    pairTag  = sprintf('%s__TO__%s', families{ii}, families{jj});
-    pairSafe = rs3_sanitize_fname(pairTag);
-    pairDir  = fullfile(PAIR_OUTPUT_ROOT, pairSafe);
-    ovFile   = fullfile(pairDir, ['rs4_' pairSafe '_overlap.mat']);
-    prFile   = fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']);
-    try
-        ov = load(ovFile, 'O');
-        pr = load(prFile, 'B');
-        V_cell{p} = rs4_overlap_extract_voxel_info(family_list{ii}, family_list{jj}, ov.O, cfg);
-        B_cell{p} = pr.B;
-        fprintf('  [%2d/%2d]  %-26s → %s   (%d voxels)\n', p, nPairs, ...
-            families{ii}, families{jj}, numel(V_cell{p}.ids));
-    catch ME
-        fprintf('  [%2d/%2d]  WARNING: V/B load failed for %s → %s: %s\n', ...
-            p, nPairs, families{ii}, families{jj}, ME.message);
-    end
-end
-
-% =========================================================================
-% 4. SLIM FAMILY STRUCTS FOR PARFOR BROADCAST
-%    Strip rows_FRS_upper/lower from Step4 — not needed after V is computed,
-%    and they can be hundreds of MB per family.
-% =========================================================================
-slim_list = cell(N, 1);
-for k = 1:N
-    S = family_list{k};
-    if isfield(S, 'Step4')
-        if isfield(S.Step4, 'rows_FRS_upper'), S.Step4 = rmfield(S.Step4, 'rows_FRS_upper'); end
-        if isfield(S.Step4, 'rows_FRS_lower'), S.Step4 = rmfield(S.Step4, 'rows_FRS_lower'); end
-    end
-    slim_list{k} = S;
-end
-clear family_list;   % free the heavy structs
-
-% =========================================================================
-% 5. PRE-ALLOCATE OUTPUT ARRAYS
+% 3. PRE-ALLOCATE OUTPUT
 % =========================================================================
 BEFORE_COLS = { ...
-    'pair_idx',  'fam_i',        'fam_j',       'vid', ...
+    'pair_idx',      'fam_i',        'fam_j',         'vid', ...
     'DV_turn_A_mps', 'DV_patch_mps', 'DV_turn_B_mps', 'DV_total_mps', ...
-    'dA_nd',     'dB_nd',        'delta_th_deg', ...
-    'tof_A_days','tof_B_days'};
+    'dA_nd',         'dB_nd',        'delta_th_deg', ...
+    'tof_A_days',    'tof_B_days'};                              % 13 cols
 
 AFTER_COLS = { ...
-    'pair_idx',  'fam_i',        'fam_j',       'vid', ...
+    'pair_idx',      'fam_i',        'fam_j',         'vid', ...
     'DV_turn_A_mps', 'DV_patch_mps', 'DV_turn_B_mps', 'DV_total_mps', ...
     'delta_th_deg',  'tof_A_days',   'tof_B_days', ...
-    'exitflag',  'converged',    'r_norm_scaled'};
+    'exitflag',      'converged',    'r_norm'};                   % 14 cols
 
-nBC = numel(BEFORE_COLS);
-nAC = numel(AFTER_COLS);
+nBC = numel(BEFORE_COLS);   % 13
+nAC = numel(AFTER_COLS);    % 14
 
 before_mat = NaN(nPairs, nBC);
 after_mat  = NaN(nPairs, nAC);
 traj_cell  = cell(nPairs, 1);
 
 % =========================================================================
-% 6. PARALLEL / SERIAL SETUP
+% 4. MAIN LOOP
 % =========================================================================
-use_par = license('test', 'Distrib_Computing_Toolbox') && nPairs > 1;
-if use_par
-    try
-        if isempty(gcp('nocreate'))
-            parpool('local');
-        end
-    catch ME
-        warning('[dc_sweep] parpool failed (%s); falling back to serial.', ME.message);
-        use_par = false;
-    end
-end
-fprintf('\n[dc_sweep] Running in %s mode.\n\n', local_mode_str(use_par));
+ckptFile = fullfile(dcRoot, 'rs4_dc_sweep_checkpoint.mat');
 
-% =========================================================================
-% 7. MAIN LOOP
-% =========================================================================
-chkFile = fullfile(dcRoot, 'rs4_dc_sweep_checkpoint.mat');
+use_par = USE_PARFOR && ...
+          license('test', 'Distrib_Computing_Toolbox') && ...
+          nPairs > 1;
 
 if use_par
     % ------------------------------------------------------------------
-    % PARALLEL  — slim_list and cfg broadcast; V/B/pairs sliced per iter
+    % PARALLEL — each worker loads its two families from cache.
+    % Only tiny things are broadcast: cfg, grid3, families, dcRoot.
     % ------------------------------------------------------------------
+    fprintf('[dc_sweep] Mode: PARALLEL (parfor).\n');
+    fprintf('           Each worker loads family caches independently.\n\n');
+
+    fam_cell   = families;   % cell of strings — tiny
+    cfg_par    = cfg;
+    grid3_par  = grid3;
+    dcRoot_par = dcRoot;
+
     parfor p = 1:nPairs
+        ii = pairs_ij(p, 1);
+        jj = pairs_ij(p, 2);
         [br, ar, tr] = local_process_pair( ...
-            pairs_ij(p,:), p, families, slim_list, V_cell{p}, B_cell{p}, cfg, nBC, nAC);
-        before_mat(p,:) = br;
-        after_mat(p,:)  = ar;
-        traj_cell{p}    = tr;
+            fam_cell{ii}, fam_cell{jj}, ii, jj, p, cfg_par, grid3_par, dcRoot_par);
+        before_mat(p, :) = br; %#ok<PFPIE>
+        after_mat(p, :)  = ar; %#ok<PFPIE>
+        traj_cell{p}     = tr; %#ok<PFPIE>
     end
 
 else
     % ------------------------------------------------------------------
-    % SERIAL  — print progress, checkpoint after every pair
+    % SERIAL — checkpoint after every pair for safe resume.
+    % Re-run the script to continue from where it stopped.
     % ------------------------------------------------------------------
+    fprintf('[dc_sweep] Mode: SERIAL (checkpoint: %s).\n\n', ckptFile);
+
+    % Resume from checkpoint if available
+    if exist(ckptFile, 'file')
+        ck = load(ckptFile, 'before_mat', 'after_mat', 'traj_cell');
+        before_mat = ck.before_mat;
+        after_mat  = ck.after_mat;
+        traj_cell  = ck.traj_cell;
+        n_done = sum(isfinite(before_mat(:, 1)));
+        fprintf('[dc_sweep] Resumed from checkpoint (%d / %d done).\n\n', ...
+            n_done, nPairs);
+        clear ck;
+    end
+
     for p = 1:nPairs
-        ii = pairs_ij(p,1);  jj = pairs_ij(p,2);
-        fprintf('[dc_sweep] %3d/%d  %-26s → %s\n', p, nPairs, ...
-            families{ii}, families{jj});
+        ii = pairs_ij(p, 1);
+        jj = pairs_ij(p, 2);
 
-        [br, ar, tr] = local_process_pair( ...
-            pairs_ij(p,:), p, families, slim_list, V_cell{p}, B_cell{p}, cfg, nBC, nAC);
-        before_mat(p,:) = br;
-        after_mat(p,:)  = ar;
-        traj_cell{p}    = tr;
+        % col 1 = pair_idx — finite means this pair was already tried
+        if isfinite(before_mat(p, 1))
+            fprintf('  [%2d/%2d]  SKIP: %s -> %s\n', ...
+                p, nPairs, families{ii}, families{jj});
+            continue;
+        end
 
-        save(chkFile, 'before_mat', 'after_mat', 'traj_cell', 'pairs_ij', 'p', '-v7.3');
+        fprintf('  [%2d/%2d]  %s -> %s\n', p, nPairs, families{ii}, families{jj});
+        tStart = tic;
+
+        [before_mat(p,:), after_mat(p,:), traj_cell{p}] = ...
+            local_process_pair(families{ii}, families{jj}, ii, jj, p, ...
+                               cfg, grid3, dcRoot);
+
+        % Write pair_idx sentinel even for no-overlap pairs so they are
+        % not retried on resume (they are fast but still wasteful).
+        if ~isfinite(before_mat(p, 1))
+            before_mat(p, 1) = p;
+        end
+
+        % Progress summary
+        tr = traj_cell{p};
+        if ~isempty(tr)
+            fprintf('    -> conv=%d  DV: %.1f -> %.1f m/s  (%.1fs)\n', ...
+                tr.converged, tr.T_DV_total_mps, tr.DV_total_mps, toc(tStart));
+        else
+            fprintf('    -> no overlap / no winner  (%.1fs)\n', toc(tStart));
+        end
+
+        % Checkpoint
+        save(ckptFile, 'before_mat', 'after_mat', 'traj_cell', '-v7.3');
     end
 end
 
 % =========================================================================
-% 8. EXIT-FLAG TABULATION
+% 5. TABULATE RESULTS
 % =========================================================================
-ef_col   = find(strcmp(AFTER_COLS, 'exitflag'),    1);
-conv_col = find(strcmp(AFTER_COLS, 'converged'),   1);
+ac_ef = find(strcmp(AFTER_COLS, 'exitflag'),  1);
+ac_cv = find(strcmp(AFTER_COLS, 'converged'), 1);
 
-ef_all   = after_mat(:, ef_col);
-conv_all = after_mat(:, conv_col);
-solved   = ~isnan(ef_all);
+ef_col = after_mat(:, ac_ef);
+cv_col = after_mat(:, ac_cv);
+valid  = isfinite(ef_col);
+n_dc   = sum(valid);
 
-ef_vals   = ef_all(solved);
-conv_vals = conv_all(solved);
-
-fprintf('\n[dc_sweep] =========== EXIT FLAG SUMMARY ===========\n');
-fprintf('[dc_sweep] %d of %d pairs solved.\n\n', sum(solved), nPairs);
-fprintf('  %-12s  %6s   %16s   %7s\n', 'exitflag', 'count', 'converged / total', '%total');
-fprintf('  %s\n', repmat('-', 1, 52));
-
-for ef = sort(unique(ef_vals))'
-    mask   = ef_vals == ef;
-    n_conv = sum(conv_vals(mask) == 1);
-    fprintf('  %+3d           %4d    %4d / %4d            %5.1f%%\n', ...
-        ef, sum(mask), n_conv, sum(mask), 100*sum(mask)/sum(solved));
+fprintf('\n[dc_sweep] ===== RESULTS =====\n');
+fprintf('  Total pairs            : %d\n', nPairs);
+fprintf('  Pairs with overlap+DC  : %d\n', n_dc);
+fprintf('  Pairs with no overlap  : %d\n', nPairs - n_dc);
+if n_dc > 0
+    fprintf('  Converged (res<tol)    : %d  (%.1f%%)\n', ...
+        sum(cv_col(valid) == 1), 100 * mean(cv_col(valid) == 1));
+    fprintf('\n  Exit flag breakdown:\n');
+    for ef = [-2, -1, 0, 1, 2, 3]
+        n_ef = sum(ef_col(valid) == ef);
+        if n_ef > 0
+            fprintf('    exitflag %2d : %d  (%.1f%%)\n', ef, n_ef, 100*n_ef/n_dc);
+        end
+    end
 end
 
-fprintf('  %s\n', repmat('-', 1, 52));
-fprintf('  TOTAL          %4d    %4d / %4d            %5.1f%%\n', ...
-    sum(solved), sum(conv_vals==1), sum(solved), 100*sum(conv_vals==1)/sum(solved));
-fprintf('  Failed (NaN)   %4d\n', sum(~solved));
-
 % =========================================================================
-% 9. SAVE RESULTS
+% 6. SAVE RESULTS
 % =========================================================================
-resFile = fullfile(dcRoot, 'rs4_dc_sweep_results.mat');
-save(resFile, ...
+resultsFile = fullfile(dcRoot, 'rs4_dc_sweep_results.mat');
+save(resultsFile, ...
     'before_mat', 'after_mat', 'traj_cell', ...
-    'pairs_ij', 'families', ...
-    'BEFORE_COLS', 'AFTER_COLS', ...
-    'cfg', '-v7.3');
-fprintf('\n[dc_sweep] Results saved → %s\n', resFile);
+    'pairs_ij',   'families',  'BEFORE_COLS', 'AFTER_COLS', 'cfg', ...
+    '-v7.3');
+fprintf('\n[dc_sweep] Saved -> %s\n', resultsFile);
 
-if ~use_par && exist(chkFile, 'file')
-    delete(chkFile);
+% Remove checkpoint on clean serial finish
+if ~use_par && exist(ckptFile, 'file')
+    delete(ckptFile);
+    fprintf('[dc_sweep] Checkpoint removed.\n');
 end
 
 % =========================================================================
@@ -374,123 +278,131 @@ end
 % =========================================================================
 
 function [before_row, after_row, traj] = local_process_pair( ...
-        ij, p, families, slim_list, V, B, cfg, nBC, nAC)
-% Run DC for one pair and pack results.  Called from both parfor and for.
+        famA, famB, ii, jj, p, cfg, grid3, dcRoot)
+% Full pipeline for one pair.
+% Loads family structs from cache here (not passed in) so this function
+% can safely run inside a parfor worker without broadcasting the heavy
+% Step4.rows_FRS_* arrays.
 
-    before_row = NaN(1, nBC);
-    after_row  = NaN(1, nAC);
-    traj       = [];
+before_row = NaN(1, 13);
+after_row  = NaN(1, 14);
+traj       = [];
 
-    if isempty(V) || isempty(B)
+try
+    % ---- Load family structs from cache ----------------------------------
+    [SA] = rs3_prepare_or_load_family(famA, cfg, grid3);
+    SA   = local_ensure_xpo(SA, cfg.propag.relTol, cfg.propag.absTol, 1001);
+    [SB] = rs3_prepare_or_load_family(famB, cfg, grid3);
+    SB   = local_ensure_xpo(SB, cfg.propag.relTol, cfg.propag.absTol, 1001);
+
+    % ---- Overlap ---------------------------------------------------------
+    O = rs4_overlap_pair(SA, SB, cfg);
+    if isempty(O.ids)
         return;
     end
 
-    ii = ij(1);  jj = ij(2);
-    SA = slim_list{ii};
-    SB = slim_list{jj};
+    % ---- Voxel metadata --------------------------------------------------
+    V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
 
-    try
-        % --- warm-start trajectory ----------------------------------------
-        T = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
+    % ---- Winner voxel (B) — correct signature: (V, SA, SB, O, cfg, ...) --
+    pairTag = sprintf('pair_%02d_%02d', ii, jj);
+    B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, dcRoot, pairTag);
 
-        % --- before-DC row ------------------------------------------------
-        before_row = [ ...
-            p, ii, jj, T.vid, ...
-            T.DV_turn_A_mps, T.DV_patch_mps, T.DV_turn_B_mps, T.DV_total_true_mps, ...
-            T.dA_nd, T.dB_nd, rad2deg(T.delta_th_rad), ...
-            T.tof_A_days, T.tof_B_days];
-
-        % --- differential correction --------------------------------------
-        Tc = rs4_diffcorr(T, SA, SB, cfg);
-
-        % --- after-DC row -------------------------------------------------
-        r_sc = norm(Tc.r_final ./ [SA.grid3.dx; SA.grid3.dy; SA.grid3.dtheta]);
-        after_row = [ ...
-            p, ii, jj, T.vid, ...
-            Tc.DV_turn_A_mps, Tc.DV_patch_mps, Tc.DV_turn_B_mps, Tc.DV_total_mps, ...
-            rad2deg(Tc.delta_th_rad), Tc.tof_A_days, Tc.tof_B_days, ...
-            Tc.exitflag, double(Tc.converged), r_sc];
-
-        % --- trajectory struct for later plotting -------------------------
-        traj = struct();
-        % identification
-        traj.famA_idx        = ii;
-        traj.famB_idx        = jj;
-        traj.famA            = families{ii};
-        traj.famB            = families{jj};
-        traj.vid             = T.vid;
-        % before DC
-        traj.T_IC_A          = T.IC_A;
-        traj.T_IC_B_frs      = T.IC_B_frs;
-        traj.T_seed_A        = T.seed_A;
-        traj.T_seed_B_frs    = T.seed_B_frs;
-        traj.T_XA            = T.XA;
-        traj.T_x_B           = T.x_B;
-        traj.T_y_B           = T.y_B;
-        traj.T_th_B          = T.th_B;
-        traj.T_DV_turn_A_mps = T.DV_turn_A_mps;
-        traj.T_DV_patch_mps  = T.DV_patch_mps;
-        traj.T_DV_turn_B_mps = T.DV_turn_B_mps;
-        traj.T_DV_total_mps  = T.DV_total_true_mps;
-        traj.T_tof_A_days    = T.tof_A_days;
-        traj.T_tof_B_days    = T.tof_B_days;
-        % before-DC visualisation fields (for plot replay)
-        traj.T_i_star        = T.i_star;
-        traj.T_j_star        = T.j_star;
-        traj.T_xc            = T.xc;
-        traj.T_yc            = T.yc;
-        traj.T_dA_nd         = T.dA_nd;
-        traj.T_dB_nd         = T.dB_nd;
-        traj.T_delta_th_rad  = T.delta_th_rad;
-        traj.T_DV_proxy_mps  = T.DV_proxy_mps;
-        % after DC
-        traj.IC_A            = Tc.IC_A;
-        traj.IC_B_frs        = Tc.IC_B_frs;
-        traj.seed_A          = Tc.seed_A;
-        traj.seed_B_frs      = Tc.seed_B_frs;
-        traj.XA              = Tc.XA;
-        traj.x_B             = Tc.x_B;
-        traj.y_B             = Tc.y_B;
-        traj.th_B            = Tc.th_B;
-        traj.xp              = Tc.xp;
-        traj.yp              = Tc.yp;
-        traj.DV_turn_A_mps   = Tc.DV_turn_A_mps;
-        traj.DV_patch_mps    = Tc.DV_patch_mps;
-        traj.DV_turn_B_mps   = Tc.DV_turn_B_mps;
-        traj.DV_total_mps    = Tc.DV_total_mps;
-        traj.tof_A_days      = Tc.tof_A_days;
-        traj.tof_B_days      = Tc.tof_B_days;
-        traj.exitflag        = Tc.exitflag;
-        traj.converged       = Tc.converged;
-        traj.r_norm_scaled   = r_sc;
-        % after-DC visualisation fields (for plot replay)
-        traj.delta_th_rad    = Tc.delta_th_rad;
-        traj.r_final         = Tc.r_final;
-
-    catch ME
-        warning('[dc_sweep] pair (%d,%d) %s → %s failed: %s', ...
-            ii, jj, families{ii}, families{jj}, ME.message);
+    if ~isfield(B, 'imin') || ~isfinite(B.imin) || ...
+            isempty(B.dv_proxy) || ~any(isfinite(B.dv_proxy))
+        return;
     end
+
+    % ---- True trajectory -------------------------------------------------
+    T  = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
+
+    % ---- Differential correction -----------------------------------------
+    Tc = rs4_diffcorr(T, SA, SB, cfg);
+
+    % ---- Pack before row (13 cols) ---------------------------------------
+    before_row = [ ...
+        p, ii, jj, T.vid, ...
+        T.DV_turn_A_mps,  T.DV_patch_mps,  T.DV_turn_B_mps,  T.DV_total_true_mps, ...
+        T.dA_nd, T.dB_nd, rad2deg(T.delta_th_rad), ...
+        T.tof_A_days, T.tof_B_days];
+
+    % ---- Pack after row (14 cols) ----------------------------------------
+    r_norm = norm(Tc.r_final);
+    after_row = [ ...
+        p, ii, jj, T.vid, ...
+        Tc.DV_turn_A_mps, Tc.DV_patch_mps, Tc.DV_turn_B_mps, Tc.DV_total_mps, ...
+        rad2deg(Tc.delta_th_rad), Tc.tof_A_days, Tc.tof_B_days, ...
+        Tc.exitflag, double(Tc.converged), r_norm];
+
+    % ---- Trajectory struct for plot replay -------------------------------
+    traj = struct();
+    traj.famA            = famA;
+    traj.famB            = famB;
+    traj.vid             = T.vid;
+    % before DC
+    traj.T_IC_A          = T.IC_A;
+    traj.T_IC_B_frs      = T.IC_B_frs;
+    traj.T_seed_A        = T.seed_A;
+    traj.T_seed_B_frs    = T.seed_B_frs;
+    traj.T_XA            = T.XA;
+    traj.T_x_B           = T.x_B;
+    traj.T_y_B           = T.y_B;
+    traj.T_th_B          = T.th_B;
+    traj.T_DV_turn_A_mps = T.DV_turn_A_mps;
+    traj.T_DV_patch_mps  = T.DV_patch_mps;
+    traj.T_DV_turn_B_mps = T.DV_turn_B_mps;
+    traj.T_DV_total_mps  = T.DV_total_true_mps;
+    traj.T_tof_A_days    = T.tof_A_days;
+    traj.T_tof_B_days    = T.tof_B_days;
+    traj.T_i_star        = T.i_star;
+    traj.T_j_star        = T.j_star;
+    traj.T_xc            = T.xc;
+    traj.T_yc            = T.yc;
+    traj.T_dA_nd         = T.dA_nd;
+    traj.T_dB_nd         = T.dB_nd;
+    traj.T_delta_th_rad  = T.delta_th_rad;
+    traj.T_DV_proxy_mps  = T.DV_proxy_mps;
+    % after DC
+    traj.IC_A            = Tc.IC_A;
+    traj.IC_B_frs        = Tc.IC_B_frs;
+    traj.seed_A          = Tc.seed_A;
+    traj.seed_B_frs      = Tc.seed_B_frs;
+    traj.XA              = Tc.XA;
+    traj.x_B             = Tc.x_B;
+    traj.y_B             = Tc.y_B;
+    traj.th_B            = Tc.th_B;
+    traj.xp              = Tc.xp;
+    traj.yp              = Tc.yp;
+    traj.DV_turn_A_mps   = Tc.DV_turn_A_mps;
+    traj.DV_patch_mps    = Tc.DV_patch_mps;
+    traj.DV_turn_B_mps   = Tc.DV_turn_B_mps;
+    traj.DV_total_mps    = Tc.DV_total_mps;
+    traj.tof_A_days      = Tc.tof_A_days;
+    traj.tof_B_days      = Tc.tof_B_days;
+    traj.delta_th_rad    = Tc.delta_th_rad;
+    traj.r_final         = Tc.r_final;
+    traj.exitflag        = Tc.exitflag;
+    traj.converged       = Tc.converged;
+    traj.r_norm_scaled   = r_norm;
+
+catch ME
+    fprintf('    [pair %d] ERROR %s -> %s:\n      %s\n', ...
+        p, famA, famB, ME.message);
+end
 end
 
 % -------------------------------------------------------------------------
 
 function S = local_ensure_xpo(S, relTol, absTol, N_po)
-    if isfield(S,'Xpo') && ~isempty(S.Xpo) && ...
-       isfield(S,'t_dense') && ~isempty(S.t_dense)
+% Re-integrate the periodic orbit if Xpo was stripped from cache.
+    if isfield(S, 'Xpo') && ~isempty(S.Xpo) && ...
+       isfield(S, 't_dense') && ~isempty(S.t_dense)
         return;
     end
-    fprintf('    [ensure_xpo] rebuilding Xpo for "%s" ...\n', S.name);
     opts    = odeset('RelTol', relTol, 'AbsTol', absTol);
     solPO   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,S.CJ,S.mu,true), ...
                      [0, S.Tf_PO], S.X0, opts);
     t_dense = linspace(0, S.Tf_PO, N_po)';
     S.t_dense = t_dense;
     S.Xpo     = deval(solPO, t_dense)';
-end
-
-% -------------------------------------------------------------------------
-
-function s = local_mode_str(use_par)
-    if use_par, s = 'PARALLEL'; else, s = 'SERIAL (with checkpoint)'; end
 end
