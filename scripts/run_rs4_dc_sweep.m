@@ -74,16 +74,23 @@ cfg.plot.rs4.bounds_lb    = false;   % no plots inside visualize_bounds
 cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = false;
 
-% Grid / propagation settings (must match the family caches)
-cfg.grid.dx               = 0.01;
-cfg.grid.dy               = 0.01;
-cfg.grid.dtheta           = deg2rad(2);
-cfg.seed.ds_seed          = 0.02;
+% -------------------------------------------------------------------------
+% CACHE SETTINGS — MUST MATCH EXACTLY WHAT WAS USED TO BUILD THE FAMILY
+% CACHES.  If these differ from the cache build, rs3_prepare_or_load_family
+% will reject the cache and recompute the full FRS/BRS from scratch.
+% -------------------------------------------------------------------------
+cfg.grid.dx               = 0.0005;
+cfg.grid.dy               = 0.0005;
+cfg.grid.dtheta           = deg2rad(0.5);
+cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;
-cfg.fan.dtheta_fan        = deg2rad(1.0);
-cfg.propag.absTol         = 1e-9;
-cfg.propag.relTol         = 1e-9;
+cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.propag.absTol         = 1e-8;
+cfg.propag.relTol         = 1e-8;
+cfg.propag.v2tol          = 1e-8;
+cfg.log.step_len_factor   = 0.75;
+cfg.log.maxstep_factor    = 2;
 
 N = numel(families);
 
