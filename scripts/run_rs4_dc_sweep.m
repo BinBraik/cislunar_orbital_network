@@ -2,24 +2,18 @@
 % Self-contained batch differential correction over every pair of the 13
 % periodic-orbit families.
 %
-% Does NOT rely on cached pair_result.mat files from
-% run_rs4_all_pairs_summary.m.  Computes everything from scratch:
+% This script follows the exact same pipeline as run_rs4_voxel_trajectories.m
+% but loops over all N*(N-1)/2 pairs:
 %
-%   For each pair (i, j):
-%     1. rs4_overlap_pair               -> O  (overlap voxel IDs)
-%     2. rs4_overlap_extract_voxel_info -> V  (per-voxel DV metadata)
-%     3. rs4_overlap_visualize_bounds   -> B  (winner voxel, no plots)
-%     4. rs4_voxel_traj_extract         -> T  (before-DC arcs + true DV)
-%     5. rs4_diffcorr                   -> Tc (after-DC arcs)
+%   1. Pre-load ALL families into memory (main process, serial)
+%   2. For each pair (i, j) — serial or parfor:
+%        rs4_overlap_pair               -> O
+%        rs4_overlap_extract_voxel_info -> V
+%        rs4_overlap_visualize_bounds   -> B  (no plots)
+%        rs4_voxel_traj_extract         -> T  (before-DC arcs + true DV)
+%        rs4_diffcorr                   -> Tc (after-DC arcs)
 %
-% Parallelism (USE_PARFOR = true):
-%   Each parfor worker loads its two family structs from cache
-%   independently — the heavy Step4.rows_FRS_* arrays are NOT broadcast.
-%   Requires Parallel Computing Toolbox.
-%
-% Serial mode (USE_PARFOR = false):
-%   Saves a checkpoint after every pair so a run can be safely interrupted
-%   and resumed by re-running the script.
+% All family structs live in memory — NO file I/O inside the loop.
 %
 % Outputs  (saved to rs3_results/<tag>/rs4_dc_sweep/rs4_dc_sweep_results.mat)
 %   before_mat   [nPairs x 13]  pre-DC metrics
@@ -44,7 +38,8 @@ rehash;
 % =========================================================================
 % USER SETTINGS
 % =========================================================================
-USE_PARFOR = true;    % false = serial with per-pair checkpoint saves
+NUM_WORKERS = 0;   % 0 or 1 = serial (with checkpoint), >=2 = parallel
+                   % parallel uses process-based pool (not threads)
 
 families = {
     'Lyapunov L1',
@@ -63,6 +58,7 @@ families = {
     };
 
 cfg = rs3_cfg_defaults();
+cfg.cache.enable          = true;
 cfg.cache.rebuild         = false;
 
 % No figures anywhere in this runner
@@ -92,6 +88,8 @@ cfg.propag.v2tol          = 1e-8;
 cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 
+rs3_cfg_validate(cfg);
+
 N = numel(families);
 
 % ---- output folder -------------------------------------------------------
@@ -100,24 +98,22 @@ if ~exist(dcRoot, 'dir'), mkdir(dcRoot); end
 fprintf('[dc_sweep] Output : %s\n\n', dcRoot);
 
 % =========================================================================
-% 1. VERIFY / WARM CACHE AND CAPTURE FILE PATHS
-%    Load each family once (serial, where Java is available) so cache
-%    files definitely exist before parallel workers touch them.
-%    Capture the exact .mat path for each family — workers will call
-%    load(path,'S') directly, bypassing rs3_md5 / Java entirely.
+% 1. BUILD GRID + PRE-LOAD ALL FAMILIES (serial, main process)
+%    This is the same pattern as run_rs4_voxel_trajectories.m lines 60-63.
+%    Everything happens in the main process where Java and V7.3 work fine.
 % =========================================================================
 grid3 = rs3_grid_make(cfg);
-fprintf('[dc_sweep] Verifying %d family caches ...\n', N);
-cache_fpaths = cell(N, 1);
+
+fprintf('[dc_sweep] Loading %d families into memory ...\n', N);
+Sall = cell(N, 1);
 for k = 1:N
-    [Stmp, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
-    ci = rs3_cache_get_path(families{k}, Stmp.mu, Stmp.CJ, cfg);
-    cache_fpaths{k} = ci.fpath;
-    fprintf('  [%2d/%2d]  %-30s  Nseeds_upper=%d\n', k, N, ...
-        families{k}, size(Stmp.SeedsUpper, 1));
-    clear Stmp ci;
+    fprintf('  [%2d/%2d]  %s ...', k, N, families{k});
+    tLoad = tic;
+    [Sall{k}, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
+    Sall{k} = local_ensure_xpo(Sall{k}, cfg.propag.relTol, cfg.propag.absTol, 1001);
+    fprintf('  done (%.1fs)  Nseeds_upper=%d\n', toc(tLoad), size(Sall{k}.SeedsUpper, 1));
 end
-fprintf('[dc_sweep] Cache verified.\n\n');
+fprintf('[dc_sweep] All families loaded.\n\n');
 
 % =========================================================================
 % 2. ENUMERATE ALL N*(N-1)/2 PAIRS
@@ -158,29 +154,42 @@ traj_cell  = cell(nPairs, 1);
 % =========================================================================
 ckptFile = fullfile(dcRoot, 'rs4_dc_sweep_checkpoint.mat');
 
-use_par = USE_PARFOR && ...
+use_par = NUM_WORKERS >= 2 && ...
           license('test', 'Distrib_Computing_Toolbox') && ...
           nPairs > 1;
 
 if use_par
     % ------------------------------------------------------------------
-    % PARALLEL — each worker loads its two families from cache.
-    % Only tiny things are broadcast: cfg, grid3, families, dcRoot.
+    % PARALLEL — process-based pool (not threads!)
+    % Family structs are broadcast from main process — no file I/O in
+    % workers.  Process-based pools support Java + V7.3 if ever needed.
     % ------------------------------------------------------------------
-    fprintf('[dc_sweep] Mode: PARALLEL (parfor).\n');
-    fprintf('           Workers use pre-computed cache paths — no Java required.\n\n');
+    nW = min(NUM_WORKERS, nPairs);
+    fprintf('[dc_sweep] Mode: PARALLEL (%d process-based workers).\n', nW);
+    fprintf('           Family structs are in memory — no file I/O in workers.\n\n');
 
-    fam_cell    = families;      % cell of strings — tiny
-    fpaths_par  = cache_fpaths;  % cell of strings — tiny
-    cfg_par     = cfg;
-    dcRoot_par  = dcRoot;
+    % Ensure we have a process-based pool of the right size
+    pool = gcp('nocreate');
+    if isempty(pool) || pool.NumWorkers ~= nW || ...
+            ~strcmp(pool.Cluster.Profile, 'Processes')
+        delete(gcp('nocreate'));
+        parpool('Processes', nW);
+    end
+
+    % Broadcast variables (read-only inside parfor)
+    Sall_par = Sall;
+    cfg_par  = cfg;
+    dcRoot_par = dcRoot;
+    fam_cell = families;
+    pij = pairs_ij;
 
     parfor p = 1:nPairs
-        ii = pairs_ij(p, 1);
-        jj = pairs_ij(p, 2);
+        ii = pij(p, 1);
+        jj = pij(p, 2);
         [br, ar, tr] = local_process_pair( ...
+            Sall_par{ii}, Sall_par{jj}, ...
             fam_cell{ii}, fam_cell{jj}, ii, jj, p, ...
-            cfg_par, dcRoot_par, fpaths_par{ii}, fpaths_par{jj});
+            cfg_par, dcRoot_par);
         before_mat(p, :) = br; %#ok<PFPIE>
         after_mat(p, :)  = ar; %#ok<PFPIE>
         traj_cell{p}     = tr; %#ok<PFPIE>
@@ -189,7 +198,6 @@ if use_par
 else
     % ------------------------------------------------------------------
     % SERIAL — checkpoint after every pair for safe resume.
-    % Re-run the script to continue from where it stopped.
     % ------------------------------------------------------------------
     fprintf('[dc_sweep] Mode: SERIAL (checkpoint: %s).\n\n', ckptFile);
 
@@ -211,20 +219,21 @@ else
 
         % col 1 = pair_idx — finite means this pair was already tried
         if isfinite(before_mat(p, 1))
-            fprintf('  [%2d/%2d]  SKIP: %s -> %s\n', ...
+            fprintf('  [%2d/%2d]  SKIP (done): %s -> %s\n', ...
                 p, nPairs, families{ii}, families{jj});
             continue;
         end
 
-        fprintf('  [%2d/%2d]  %s -> %s\n', p, nPairs, families{ii}, families{jj});
+        fprintf('  [%2d/%2d]  %s -> %s ...', p, nPairs, families{ii}, families{jj});
         tStart = tic;
 
         [before_mat(p,:), after_mat(p,:), traj_cell{p}] = ...
-            local_process_pair(families{ii}, families{jj}, ii, jj, p, ...
-                               cfg, dcRoot, cache_fpaths{ii}, cache_fpaths{jj});
+            local_process_pair(Sall{ii}, Sall{jj}, ...
+                               families{ii}, families{jj}, ii, jj, p, ...
+                               cfg, dcRoot);
 
         % Write pair_idx sentinel even for no-overlap pairs so they are
-        % not retried on resume (they are fast but still wasteful).
+        % not retried on resume.
         if ~isfinite(before_mat(p, 1))
             before_mat(p, 1) = p;
         end
@@ -232,10 +241,10 @@ else
         % Progress summary
         tr = traj_cell{p};
         if ~isempty(tr)
-            fprintf('    -> conv=%d  DV: %.1f -> %.1f m/s  (%.1fs)\n', ...
+            fprintf('  conv=%d  DV: %.1f -> %.1f m/s  (%.1fs)\n', ...
                 tr.converged, tr.T_DV_total_mps, tr.DV_total_mps, toc(tStart));
         else
-            fprintf('    -> no overlap / no winner  (%.1fs)\n', toc(tStart));
+            fprintf('  no overlap / no winner  (%.1fs)\n', toc(tStart));
         end
 
         % Checkpoint
@@ -286,38 +295,34 @@ if ~use_par && exist(ckptFile, 'file')
     fprintf('[dc_sweep] Checkpoint removed.\n');
 end
 
+fprintf('[dc_sweep] Done.\n');
+
 % =========================================================================
 % LOCAL FUNCTIONS
 % =========================================================================
 
 function [before_row, after_row, traj] = local_process_pair( ...
-        famA, famB, ii, jj, p, cfg, dcRoot, cache_pathA, cache_pathB)
-% Full pipeline for one pair.
-% Receives pre-computed cache file paths so workers can load(path,'S')
-% directly — no call to rs3_md5 / java.security inside the worker.
+        SA, SB, famA, famB, ii, jj, p, cfg, dcRoot)
+%LOCAL_PROCESS_PAIR  Full pipeline for one pair.
+%   Receives family structs SA, SB directly from the caller (in-memory).
+%   NO file I/O — no load(), no rs3_md5, no Java calls.
+%   Exactly mirrors run_rs4_voxel_trajectories.m lines 66-112.
 
 before_row = NaN(1, 13);
 after_row  = NaN(1, 14);
 traj       = [];
 
 try
-    % ---- Load family structs from pre-computed cache paths ---------------
-    % Direct load avoids rs3_md5 -> java.security (unavailable in parfor).
-    d  = load(cache_pathA, 'S');  SA = d.S;  clear d;
-    SA = local_ensure_xpo(SA, cfg.propag.relTol, cfg.propag.absTol, 1001);
-    d  = load(cache_pathB, 'S');  SB = d.S;  clear d;
-    SB = local_ensure_xpo(SB, cfg.propag.relTol, cfg.propag.absTol, 1001);
-
-    % ---- Overlap ---------------------------------------------------------
+    % ---- Overlap (same as run_rs4_voxel_trajectories.m line 66) ----------
     O = rs4_overlap_pair(SA, SB, cfg);
     if isempty(O.ids)
         return;
     end
 
-    % ---- Voxel metadata --------------------------------------------------
+    % ---- Voxel metadata (line 67) ----------------------------------------
     V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
 
-    % ---- Winner voxel (B) — correct signature: (V, SA, SB, O, cfg, ...) --
+    % ---- Winner voxel B (line 70) — CORRECT signature: V, SA, SB, O, ... -
     pairTag = sprintf('pair_%02d_%02d', ii, jj);
     B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, dcRoot, pairTag);
 
@@ -326,10 +331,10 @@ try
         return;
     end
 
-    % ---- True trajectory -------------------------------------------------
-    T  = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
+    % ---- True trajectory (line 76) ---------------------------------------
+    T = rs4_voxel_traj_extract(SA, SB, V, B, cfg);
 
-    % ---- Differential correction -----------------------------------------
+    % ---- Differential correction (line 97) -------------------------------
     Tc = rs4_diffcorr(T, SA, SB, cfg);
 
     % ---- Pack before row (13 cols) ---------------------------------------
@@ -412,6 +417,7 @@ function S = local_ensure_xpo(S, relTol, absTol, N_po)
        isfield(S, 't_dense') && ~isempty(S.t_dense)
         return;
     end
+    fprintf('    [ensure_xpo] rebuilding Xpo for "%s" ...\n', S.name);
     opts    = odeset('RelTol', relTol, 'AbsTol', absTol);
     solPO   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,S.CJ,S.mu,true), ...
                      [0, S.Tf_PO], S.X0, opts);

@@ -304,7 +304,7 @@ fprintf(fid, 'TOF_B          : %8.3f  days\n', ga('tof_B_days'));
 fprintf(fid, 'delta_theta    : %8.4f  deg\n',  ga('delta_th_deg'));
 fprintf(fid, 'exitflag       : %d\n',           ga('exitflag'));
 fprintf(fid, 'converged      : %d\n',           ga('converged'));
-fprintf(fid, 'r_norm_scaled  : %.4e\n',         ga('r_norm_scaled'));
+fprintf(fid, 'r_norm         : %.4e\n',         ga('r_norm'));
 
 dv_improve = gb('DV_total_mps') - ga('DV_total_mps');
 fprintf(fid, '\nDV improvement : %+.2f  m/s\n', dv_improve);
@@ -330,7 +330,7 @@ fprintf(fid, ['pair_idx,fam_A,fam_B,' ...
     'bef_tof_A_days,bef_tof_B_days,bef_delta_th_deg,bef_dA_nd,bef_dB_nd,' ...
     'aft_DV_turn_A,aft_DV_patch,aft_DV_turn_B,aft_DV_total,' ...
     'aft_tof_A_days,aft_tof_B_days,aft_delta_th_deg,' ...
-    'exitflag,converged,r_norm_scaled,DV_improvement\n']);
+    'exitflag,converged,r_norm,DV_improvement\n']);
 
 bc = @(name) find(strcmp(BEFORE_COLS, name), 1);
 ac = @(name) find(strcmp(AFTER_COLS,  name), 1);
@@ -356,7 +356,7 @@ for p = 1:size(pairs_ij, 1)
     fprintf(fid, '%.4f,%.4f,%.4f,', ...
         a(ac('tof_A_days')), a(ac('tof_B_days')), a(ac('delta_th_deg')));
     fprintf(fid, '%d,%d,%.4e,%.3f\n', ...
-        a(ac('exitflag')), a(ac('converged')), a(ac('r_norm_scaled')), dv_improve);
+        a(ac('exitflag')), a(ac('converged')), a(ac('r_norm')), dv_improve);
 end
 
 fclose(fid);
