@@ -89,7 +89,26 @@ fprintf('\n  TOF_A = %.2f days,  TOF_B = %.2f days\n', T.tof_A_days, T.tof_B_day
 fprintf('  miss dA = %.5f nd,  dB = %.5f nd\n', T.dA_nd, T.dB_nd);
 fprintf('=================================================\n\n');
 
-% ===================== PLOT =====================
+% ===================== PLOT (original arcs) =====================
 rs4_voxel_traj_visualize_single(T, SA, SB, cfg, outdir, tag);
+
+% ===================== DIFFERENTIAL CORRECTION =====================
+fprintf('\n[traj] Running differential correction ...\n');
+Tc = rs4_diffcorr(T, SA, SB, cfg);
+
+% ===================== PRINT DC SUMMARY =====================
+fprintf('\n========== Differential Correction Summary (%s -> %s) ==========\n', famA, famB);
+fprintf('  BEFORE:  DV_turn_A=%8.3f  +  DV_patch=%8.3f  +  DV_turn_B=%8.3f  =  %8.3f m/s\n', ...
+    T.DV_turn_A_mps,  T.DV_patch_mps,  T.DV_turn_B_mps,  T.DV_total_true_mps);
+fprintf('  AFTER:   DV_turn_A=%8.3f  +  DV_patch=%8.3f  +  DV_turn_B=%8.3f  =  %8.3f m/s\n', ...
+    Tc.DV_turn_A_mps, Tc.DV_patch_mps, Tc.DV_turn_B_mps, Tc.DV_total_mps);
+fprintf('  Reduction: %.3f m/s  |  fmincon exitflag=%d  iterations=%d\n', ...
+    T.DV_total_true_mps - Tc.DV_total_mps, Tc.exitflag, Tc.iterations);
+fprintf('  TOF_A: %.2f -> %.2f days  |  TOF_B: %.2f -> %.2f days\n', ...
+    T.tof_A_days, Tc.tof_A_days, T.tof_B_days, Tc.tof_B_days);
+fprintf('=================================================================\n\n');
+
+% ===================== COMPARISON PLOT =====================
+rs4_diffcorr_visualize(T, Tc, SA, SB, cfg, outdir, tag);
 
 fprintf('[traj] Done. Output: %s\n', outdir);
