@@ -153,11 +153,11 @@ if doProxy
     hold(ax,'on'); axis(ax,'equal'); grid(ax,'on');
         % Faint non-overlap points (only when full row data is available)
     if ~isempty(Ax)
-        scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.r', ...
+        scatter(ax, Ax, Ay, 10, [0.20 0.45 0.95], '.', ...
             'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
     end
     if ~isempty(Bx)
-        scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.b', ...
+        scatter(ax, Bx, By, 10, [0.92 0.35 0.15], '.', ...
             'MarkerEdgeAlpha', 0.12, 'MarkerFaceAlpha', 0.12);
     end
     scatter(ax, x, y, 20, dv_proxy, 'filled', 'MarkerFaceAlpha', 0.94, 'MarkerEdgeAlpha', 0.30);

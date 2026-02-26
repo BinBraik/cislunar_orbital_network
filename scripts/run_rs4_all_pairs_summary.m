@@ -165,7 +165,7 @@ for i = 1:N
             tVizCombo = toc(tStage);
 
             tStage = tic;
-            B = rs4_overlap_visualize_bounds(V, SA, SB, cfg, pairDir, pairTag);
+            B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, pairDir, pairTag);
             tBounds = toc(tStage);
 
             % Winner selection by DVproxy

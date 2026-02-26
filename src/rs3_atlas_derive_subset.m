@@ -110,23 +110,34 @@ end
 ihead_remap = cell(Nseeds, 1);
 for s = 1:Nseeds
     mask = valid_head{s};
-    nH = numel(mask);
-    remap = zeros(nH, 1, 'uint16');
-    newIdx = uint16(0);
-    for h = 1:nH
-        if mask(h)
-            newIdx = newIdx + uint16(1);
-            remap(h) = newIdx;
-        end
-    end
+    remap = cumsum(uint16(mask));
+    remap(~mask) = uint16(0);
     ihead_remap{s} = remap;
+end
+
+% Pre-expand cells to 2-D matrices for vectorized lookup in local_filter_rows.
+% valid_head_mat(s,h)  = true  if heading h of seed s passes DV_cap filter.
+% ihead_remap_mat(s,h) = new iHead index (0 = dropped).
+if Nseeds > 0
+    max_h = max(cellfun(@numel, delta_lists_orig));
+else
+    max_h = 1;
+end
+valid_head_mat  = false(Nseeds, max_h);
+ihead_remap_mat = zeros(Nseeds, max_h, 'uint16');
+for s = 1:Nseeds
+    nh = numel(valid_head{s});
+    valid_head_mat(s,  1:nh) = valid_head{s};
+    ihead_remap_mat(s, 1:nh) = ihead_remap{s};
 end
 
 % =====================================================================
 %  2. Filter rows: Tmax + DV_cap
 % =====================================================================
-rows_FRS_sub     = local_filter_rows(S.Step4.rows_FRS_upper, Tmax_sub, valid_head, ihead_remap);
-rows_FRS_lower_sub = local_filter_rows(S.Step4.rows_FRS_lower, Tmax_sub, valid_head, ihead_remap);
+rows_FRS_sub       = local_filter_rows(S.Step4.rows_FRS_upper, Tmax_sub, ...
+                         valid_head_mat, ihead_remap_mat, Nseeds, max_h);
+rows_FRS_lower_sub = local_filter_rows(S.Step4.rows_FRS_lower, Tmax_sub, ...
+                         valid_head_mat, ihead_remap_mat, Nseeds, max_h);
 
 fprintf('[rs3_subset] FRS_upper: %d → %d rows (%.1f%%)\n', ...
     double(S.Step4.rows_FRS_upper.n), double(rows_FRS_sub.n), ...
@@ -172,34 +183,27 @@ fprintf('[rs3_subset] Done. Derived atlas ready (family: %s).\n', S_sub.name);
 end
 
 % =========================================================================
-function rows_out = local_filter_rows(rows_in, Tmax_sub, valid_head, ihead_remap)
-% Apply Tmax and DV_cap masks to a packed rows struct.
+function rows_out = local_filter_rows(rows_in, Tmax_sub, ...
+        valid_head_mat, ihead_remap_mat, Nseeds, max_h)
+% Apply Tmax and DV_cap masks to a packed rows struct (vectorized).
 n = double(rows_in.n);
 if n == 0
     rows_out = rows_in;
     return;
 end
 
-t    = double(rows_in.t(1:n));
-iS   = double(rows_in.iSeed(1:n));
-iH   = double(rows_in.iHead(1:n));
+t  = double(rows_in.t(1:n));
+iS = double(rows_in.iSeed(1:n));
+iH = double(rows_in.iHead(1:n));
 
 % Tmax mask
 mask_t = abs(t) <= Tmax_sub + 1e-12;
 
-% DV_cap mask: per row, check if its heading is still valid
-mask_dv = false(n, 1);
-for r = 1:n
-    s = iS(r);  h = iH(r);
-    if s >= 1 && s <= numel(valid_head)
-        vh = valid_head{s};
-        if h >= 1 && h <= numel(vh)
-            mask_dv(r) = vh(h);
-        end
-    end
-end
+% DV_cap mask: vectorized lookup into 2-D matrix
+lin_idx = sub2ind([Nseeds, max_h], iS, iH);
+mask_dv = valid_head_mat(lin_idx);
 
-keep = mask_t & mask_dv;
+keep  = mask_t & mask_dv;
 nKeep = sum(keep);
 
 rows_out = rs3_rows_empty(nKeep);
@@ -208,29 +212,16 @@ if nKeep == 0, return; end
 
 idx = find(keep);
 rows_out.iSeed(1:nKeep)    = rows_in.iSeed(idx);
-rows_out.iHead(1:nKeep)    = local_remap_ihead(rows_in.iSeed(idx), rows_in.iHead(idx), ihead_remap);
+% iHead remap: vectorized lookup into 2-D matrix
+lin_k = sub2ind([Nseeds, max_h], ...
+    double(rows_in.iSeed(idx)), double(rows_in.iHead(idx)));
+rows_out.iHead(1:nKeep)    = ihead_remap_mat(lin_k);
 rows_out.leg(1:nKeep)      = rows_in.leg(idx);
 rows_out.halfFlag(1:nKeep) = rows_in.halfFlag(idx);
 rows_out.t(1:nKeep)        = rows_in.t(idx);
 rows_out.ix(1:nKeep)       = rows_in.ix(idx);
 rows_out.iy(1:nKeep)       = rows_in.iy(idx);
 rows_out.it(1:nKeep)       = rows_in.it(idx);
-end
-
-function new_ihead = local_remap_ihead(iSeed_kept, iHead_kept, ihead_remap)
-% Remap iHead values after DV_cap filtering (delta_lists are now re-indexed).
-n = numel(iSeed_kept);
-new_ihead = zeros(n, 1, 'uint16');
-for r = 1:n
-    s = double(iSeed_kept(r));
-    h = double(iHead_kept(r));
-    if s >= 1 && s <= numel(ihead_remap)
-        rm = ihead_remap{s};
-        if h >= 1 && h <= numel(rm)
-            new_ihead(r) = rm(h);
-        end
-    end
-end
 end
 
 % =========================================================================
