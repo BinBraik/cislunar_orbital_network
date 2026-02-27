@@ -126,7 +126,8 @@ if exist('rs3_cfg_validate', 'file') == 2
 end
 
 % ── Derived constants ─────────────────────────────────────────────────────────
-VU_mps = cfg_base.units.VU_mps;
+VU_mps  = cfg_base.units.VU_mps;
+TU_days = cfg_base.units.TU_days;
 N      = numel(families);
 nDV    = numel(DV_cap_list);
 nTmax  = numel(Tmax_list);
@@ -245,9 +246,11 @@ else
 
     % ══════════════════════════════════════════════════════════════════════════
     %  MAIN SWEEP LOOP  — serial over (DV_cap, Tmax) combinations
+    %  NOTE: reversed order (large→small) so workers see peak-size data on
+    %  cell 1 and their heap never grows beyond that for the rest of the sweep.
     % ══════════════════════════════════════════════════════════════════════════
-    for di = 1:nDV
-        for dj = 1:nTmax
+    for di = nDV:-1:1
+        for dj = nTmax:-1:1
 
             if done_mask(di, dj)
                 fprintf('[sweep] (%d,%d) DV=%.3f  Tmax=%s — already done, skipping.\n', ...
@@ -285,14 +288,33 @@ else
                 end
             end
 
-            % ── Pre-extract per-pair atlas pointers (required for parfor) ─────
-            SA_arr = cell(nPairs, 1);
-            SB_arr = cell(nPairs, 1);
-            for p = 1:nPairs
-                SA_arr{p} = Sall_sub{pairI(p)};
-                SB_arr{p} = Sall_sub{pairJ(p)};
+            % ── Build compact per-family voxel footprints ─────────────────────
+            % Each footprint is ~5-25 MB (unique voxel IDs + per-voxel dv_min/t_mean)
+            % vs. full atlas ~0.5-2 GB.  Workers in the pair parfor receive footprints
+            % instead of full row structs → drastically reduces worker heap growth.
+            fprintf('[sweep] Building voxel footprints...\n');
+            Fall_sub = cell(N, 1);
+            if N_WORKERS > 0
+                parfor i = 1:N
+                    Fall_sub{i} = local_compute_footprint( ...
+                        Sall_sub{i}, grid3_base, VU_mps, TU_days);
+                end
+            else
+                for i = 1:N
+                    Fall_sub{i} = local_compute_footprint( ...
+                        Sall_sub{i}, grid3_base, VU_mps, TU_days);
+                end
             end
-            clear Sall_sub   % free memory — pairs hold only what they need
+            clear Sall_sub   % row data no longer needed — footprints hold all pair needs
+
+            % ── Pre-extract per-pair footprint pointers (required for parfor) ──
+            FA_arr = cell(nPairs, 1);
+            FB_arr = cell(nPairs, 1);
+            for p = 1:nPairs
+                FA_arr{p} = Fall_sub{pairI(p)};
+                FB_arr{p} = Fall_sub{pairJ(p)};
+            end
+            clear Fall_sub   % individual footprints held by FA/FB_arr
 
             % ── Run pair loop ─────────────────────────────────────────────────
             pair_minDV   = nan(nPairs, 1);
@@ -302,11 +324,11 @@ else
             pair_voxelId = nan(nPairs, 1);
 
             if N_WORKERS > 0
-                % parfor over pairs — SA_arr/SB_arr are sliced, cfg_sub/VU_mps broadcast
+                % parfor over pairs — FA/FB_arr sliced, grid3_base/cfg_sub/VU_mps broadcast
                 parfor p = 1:nPairs
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
                         pair_TOF(p), pair_voxelId(p)] = ...
-                        local_run_pair(SA_arr{p}, SB_arr{p}, cfg_sub, VU_mps);
+                        local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             else
                 for p = 1:nPairs
@@ -314,11 +336,11 @@ else
                         p, nPairs, families{pairI(p)}, families{pairJ(p)});
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
                         pair_TOF(p), pair_voxelId(p)] = ...
-                        local_run_pair(SA_arr{p}, SB_arr{p}, cfg_sub, VU_mps);
+                        local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             end
 
-            clear SA_arr SB_arr   % free pair-atlas memory
+            clear FA_arr FB_arr   % free pair-footprint memory
 
             % ── Assemble N×N matrices ─────────────────────────────────────────
             minDVproxyMat = nan(N, N);
@@ -420,42 +442,232 @@ end
 
 % ─────────────────────────────────────────────────────────────────────────────
 function [minDV, dvlb, dvpatch, tof, voxelId] = ...
-        local_run_pair(SA, SB, cfg, VU_mps)
-%LOCAL_RUN_PAIR  Compute DV proxy and TOF for one pair — no files, no figures.
+        local_run_pair(FA, FB, grid3, cfg, VU_mps)
+%LOCAL_RUN_PAIR  Compute DV proxy and TOF for one pair using pre-computed footprints.
+%
+% FA / FB are compact structs produced by local_compute_footprint; they contain
+% unique sorted voxel-ID vectors + per-voxel dv_min and t_mean for FRS and BRS.
+% No full row data is needed — workers only receive ~5-25 MB instead of ~1-3 GB.
+%
+% Results are numerically identical to the rs4_overlap_pair +
+% rs4_overlap_extract_voxel_info + inline-proxy pipeline.
 minDV = NaN;  dvlb = NaN;  dvpatch = NaN;  tof = NaN;  voxelId = NaN;
 try
-    O = rs4_overlap_pair(SA, SB, cfg);
-    if isempty(O.ids), return; end
+    % ── 1. Intersect FRS(A) with BRS(B) (both already sorted unique) ──────
+    idsO = intersect(FA.uid_frs, FB.uid_brs);
+    if isempty(idsO), return; end
 
-    V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
-    if isempty(V.x), return; end
+    % ── 2. Unpack voxel grid indices ───────────────────────────────────────
+    Ny = numel(grid3.y_centers);
+    Nx = numel(grid3.x_centers);
+    Nt = numel(grid3.th_centers);
+    [iy, ix, ~] = ind2sub([Ny, Nx, Nt], idsO);
 
-    % Inline DV-proxy calculation (mirrors rs4_overlap_visualize_bounds, no plots)
-    CJstar = min(SA.CJ, SB.CJ);
-    pot    = rs3_core_cr3bp_U_and_derivs(V.x(:), V.y(:), SA.mu);
-    v_box  = sqrt(max(2 * pot.U - CJstar, 0));
-    dv_patch_vec = 2 * v_box .* sin(abs(SA.grid3.dtheta) / 2) * VU_mps;
-    dv_lb_vec    = V.dv_turn_mps_min_A + V.dv_turn_mps_min_B;
+    % ── 3. Keep + primary-buffer filter (mirrors rs4_overlap_pair) ─────────
+    bufFrac = 0.05;
+    if isfield(cfg,'overlap') && isfield(cfg.overlap,'primary_buffer_frac') ...
+            && ~isempty(cfg.overlap.primary_buffer_frac)
+        bufFrac = cfg.overlap.primary_buffer_frac;
+    end
+    if ~(isfield(cfg,'sys') && isfield(cfg.sys,'RE_nd') && isfield(cfg.sys,'RM_nd'))
+        error('cfg.sys.RE_nd and cfg.sys.RM_nd required for primary buffer filter.');
+    end
+    RE = cfg.sys.RE_nd;
+    RM = cfg.sys.RM_nd;
+    mu = FA.mu;
+
+    % Keep mask — all families share grid3_base so keepA = keepB = grid3.Keep
+    if isfield(grid3,'Keep') && ~isempty(grid3.Keep)
+        keepXY = logical(grid3.Keep);
+        if ~isequal(size(keepXY), [Ny, Nx]), keepXY = keepXY.'; end
+        okKeep = keepXY(sub2ind([Ny, Nx], iy, ix));
+    else
+        okKeep = true(numel(idsO), 1);
+    end
+
+    x = grid3.x_centers(ix);
+    y = grid3.y_centers(iy);
+    okEarth = hypot(x + mu, y)     > (1 + bufFrac) * RE;
+    okMoon  = hypot(x - (1-mu), y) > (1 + bufFrac) * RM;
+    ok = okKeep(:) & okEarth(:) & okMoon(:);
+
+    idsO = idsO(ok);
+    if isempty(idsO), return; end
+    ix = ix(ok);  iy = iy(ok);
+
+    % ── 4. Look up pre-computed per-voxel DV and TOF ──────────────────────
+    % FA.uid_frs and FB.uid_brs are sorted → ismember is fast
+    [~, locA] = ismember(idsO, FA.uid_frs);
+    [~, locB] = ismember(idsO, FB.uid_brs);
+    dv_min_A = FA.dv_min_frs(locA);
+    dv_min_B = FB.dv_min_brs(locB);
+    t_mean_A = FA.t_mean_frs(locA);
+    t_mean_B = FB.t_mean_brs(locB);
+
+    % ── 5. DV proxy (identical formula to original local_run_pair) ─────────
+    x_ok = grid3.x_centers(ix);
+    y_ok = grid3.y_centers(iy);
+    CJstar = min(FA.CJ, FB.CJ);
+    pot = rs3_core_cr3bp_U_and_derivs(x_ok(:), y_ok(:), mu);
+    v_box = sqrt(max(2 * pot.U - CJstar, 0));
+    dv_patch_vec = 2 * v_box .* sin(abs(grid3.dtheta) / 2) * VU_mps;
+    dv_lb_vec    = dv_min_A(:) + dv_min_B(:);
     dv_proxy     = dv_lb_vec + dv_patch_vec;
 
     valid = isfinite(dv_proxy);
     if ~any(valid), return; end
 
-    idxValid   = find(valid);
-    [~, iLoc]  = min(dv_proxy(idxValid));
-    iWin       = idxValid(iLoc);
+    idxValid  = find(valid);
+    [~, iLoc] = min(dv_proxy(idxValid));
+    iWin      = idxValid(iLoc);
 
     minDV   = dv_proxy(iWin);
     dvlb    = dv_lb_vec(iWin);
     dvpatch = dv_patch_vec(iWin);
-
-    if iWin >= 1 && iWin <= numel(V.ids)
-        voxelId = V.ids(iWin);
-        tof     = V.t_days_mean_A(iWin) + V.t_days_mean_B(iWin);
-    end
+    voxelId = idsO(iWin);
+    tof     = t_mean_A(iWin) + t_mean_B(iWin);
 catch ME
     warning('[sweep:pair] %s', ME.message);
 end
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function F = local_compute_footprint(S, grid3, VU_mps, TU_days)
+%LOCAL_COMPUTE_FOOTPRINT  Build compact per-voxel summary for one atlas family.
+%
+% Computes, for FRS and BRS separately:
+%   uid       — sorted unique voxel IDs  (linear index into [Ny,Nx,Nt])
+%   dv_min    — min dv_turn (m/s) over all rows in that voxel
+%   t_mean    — mean |TOF| (days) over all rows in that voxel
+%
+% FRS  = direct rows (FRS_upper + FRS_lower).
+% BRS  = R(FRS): mirror of FRS_upper + mirror of FRS_lower.
+%        Mirror: iy → Ny-iy+1,  it → it_lut(it)  (same as rs4_overlap_pair).
+%
+% DV reuse: since U(x,y)=U(x,-y) in CR3BP, the DV computed at a seed and at
+% its y-mirror are identical.  BRS voxels therefore reuse the DV values from
+% the corresponding FRS rows — no extra potential evaluation needed.
+
+Ny = numel(grid3.y_centers);
+Nx = numel(grid3.x_centers);
+Nt = numel(grid3.th_centers);
+
+% ── Theta mirror LUT (identical formula to rs4_overlap_pair) ───────────────
+thm = rs3_wrapToPi(pi - grid3.th_centers(:));
+lut = discretize(thm, grid3.th_edges);
+lut(isnan(lut)) = 0;
+it_lut = uint16(lut);
+
+% ── Pre-build delta-angle lookup matrix (vectorised, avoids cell loop) ──────
+dlists = S.Step4.delta_lists;
+Ns     = numel(dlists);
+max_h  = max(1, max(cellfun(@numel, dlists)));
+delta_mat = zeros(Ns, max_h);
+for s = 1:Ns
+    v = double(dlists{s});
+    delta_mat(s, 1:numel(v)) = v;
+end
+
+% ── Process FRS_upper rows ─────────────────────────────────────────────────
+nu = double(S.Step4.rows_FRS_upper.n);
+if nu > 0
+    [ids_u, dv_u, t_u, ix_u, iy_u, it_u] = local_fp_rows( ...
+        S.Step4.rows_FRS_upper, nu, S.SeedsUpper, S.CJ, S.mu, ...
+        delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
+else
+    ids_u=zeros(0,1); dv_u=zeros(0,1); t_u=zeros(0,1);
+    ix_u=zeros(0,1);  iy_u=zeros(0,1); it_u=zeros(0,1);
+end
+
+% ── Process FRS_lower rows ─────────────────────────────────────────────────
+nl = double(S.Step4.rows_FRS_lower.n);
+if nl > 0
+    if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
+        seeds_lo = S.SeedsLower;
+    else
+        seeds_lo = S.SeedsUpper;   % symmetric grid: v0 same either way
+    end
+    [ids_l, dv_l, t_l, ix_l, iy_l, it_l] = local_fp_rows( ...
+        S.Step4.rows_FRS_lower, nl, seeds_lo, S.CJ, S.mu, ...
+        delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
+else
+    ids_l=zeros(0,1); dv_l=zeros(0,1); t_l=zeros(0,1);
+    ix_l=zeros(0,1);  iy_l=zeros(0,1); it_l=zeros(0,1);
+end
+
+% ── Aggregate FRS voxels ───────────────────────────────────────────────────
+[F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
+    [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
+
+% ── BRS: mirror FRS_upper ──────────────────────────────────────────────────
+if ~isempty(ix_u)
+    biy_u = Ny - iy_u + 1;
+    bit_u = double(it_lut(it_u));
+    ok_u  = bit_u > 0;
+    ids_brs_u = sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), ...
+        max(1, min(Nt, bit_u(ok_u))));
+    dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
+else
+    ids_brs_u = zeros(0,1);  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
+end
+
+% ── BRS: mirror FRS_lower ──────────────────────────────────────────────────
+if ~isempty(ix_l)
+    biy_l = Ny - iy_l + 1;
+    bit_l = double(it_lut(it_l));
+    ok_l  = bit_l > 0;
+    ids_brs_l = sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), ...
+        max(1, min(Nt, bit_l(ok_l))));
+    dv_bl = dv_l(ok_l);  t_bl = t_l(ok_l);
+else
+    ids_brs_l = zeros(0,1);  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
+end
+
+% ── Aggregate BRS voxels ───────────────────────────────────────────────────
+[F.uid_brs, F.dv_min_brs, F.t_mean_brs] = local_fp_agg( ...
+    [ids_brs_u; ids_brs_l], [dv_bu; dv_bl], [t_bu; t_bl]);
+
+F.CJ   = S.CJ;
+F.mu   = S.mu;
+F.name = S.name;
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
+        rows, n, seeds, CJ, mu, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
+%LOCAL_FP_ROWS  Extract voxel IDs, DV (m/s), and |TOF| (days) for n packed rows.
+ix_out = double(rows.ix(1:n));
+iy_out = double(rows.iy(1:n));
+it_out = double(rows.it(1:n));
+ids    = sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out);
+
+iSeed = double(rows.iSeed(1:n));
+iHead = double(rows.iHead(1:n));
+t_nd  = double(rows.t(1:n));
+
+% Vectorised delta-angle lookup
+lin   = sub2ind([Ns, max_h], iSeed, iHead);
+delta = delta_mat(lin);
+
+% DV turn at seed position
+sx = seeds(iSeed, 1);
+sy = seeds(iSeed, 2);
+pot    = rs3_core_cr3bp_U_and_derivs(sx(:), sy(:), mu);
+v0     = sqrt(max(2 * pot.U - CJ, 0));
+dv_mps = 2 * v0 .* sin(abs(delta(:)) / 2) * VU_mps;
+t_days = abs(t_nd(:)) * TU_days;
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function [uid, dv_min, t_mean] = local_fp_agg(ids, dv, t)
+%LOCAL_FP_AGG  Aggregate per-voxel min DV and mean TOF from raw row arrays.
+if isempty(ids)
+    uid = zeros(0,1);  dv_min = zeros(0,1);  t_mean = zeros(0,1);
+    return;
+end
+[uid, ~, ic] = unique(ids(:));
+dv_min = accumarray(ic, dv(:), [], @min,  NaN);
+t_mean = accumarray(ic, t(:),  [], @mean, NaN);
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
