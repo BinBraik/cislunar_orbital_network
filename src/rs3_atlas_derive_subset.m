@@ -271,24 +271,17 @@ iS  = double(rows_in.iSeed(1:n));
 iH  = double(rows_in.iHead(1:n));
 t_s = double(rows_in.t(1:n));
 
-% sort by abs(t) ascending so first occurrence = smallest t
-[~, sortOrd] = sort(abs(t_s));
-
 % group key = (iSeed, iHead, vid_new) — use a combined hash
 % iSeed/iHead are uint16 (0..65535), vid_new can be large
 key = int64(iS) * int64(2^32) + int64(iH) * int64(2^20) + int64(vid_new);
 
-seen = containers.Map('KeyType','int64','ValueType','logical');
+% Vectorized dedup: for each unique key keep the row with smallest |t|
+% that also passes inKeep — replaces the containers.Map scalar loop.
+[~, sortOrd] = sort(abs(t_s));           % ascending |t|
+sortOrd_valid = sortOrd(inKeep(sortOrd)); % drop ~inKeep rows, preserve |t| order
+[~, firstIdx] = unique(key(sortOrd_valid), 'first');  % first (= min |t|) per key
 keepMask = false(n, 1);
-for ri = 1:n
-    r = sortOrd(ri);
-    if ~inKeep(r), continue; end
-    k = key(r);
-    if ~isKey(seen, k)
-        seen(k) = true;
-        keepMask(r) = true;
-    end
-end
+keepMask(sortOrd_valid(firstIdx)) = true;
 
 idx = find(keepMask);
 nKeep = numel(idx);
