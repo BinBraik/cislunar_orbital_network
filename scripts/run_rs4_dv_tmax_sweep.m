@@ -674,8 +674,8 @@ if isempty(ids)
     return;
 end
 [uid, ~, ic] = unique(ids(:));
-dv_min = accumarray(ic, dv(:), [], @min,  NaN);
-t_mean = accumarray(ic, t(:),  [], @mean, NaN);
+dv_min = accumarray(ic, dv(:), [], @min);          % @min has a native built-in path
+t_mean = accumarray(ic, t(:)) ./ accumarray(ic, ones(numel(ic), 1)); % @mean does not → use sum/count
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
