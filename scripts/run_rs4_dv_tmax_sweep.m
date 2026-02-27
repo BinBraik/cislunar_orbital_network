@@ -568,11 +568,24 @@ for s = 1:Ns
     delta_mat(s, 1:numel(v)) = v;
 end
 
+% ── Pre-compute v0 per unique seed (avoids per-row potential evaluation) ────
+% rs3_core_cr3bp_U_and_derivs on ~1000 seeds is O(1000x) faster than on
+% millions of rows.  Per-row v0 is then a cheap index lookup: v0(iSeed).
+pot_u = rs3_core_cr3bp_U_and_derivs(S.SeedsUpper(:,1), S.SeedsUpper(:,2), S.mu);
+v0_upper = sqrt(max(2*pot_u.U(:) - S.CJ, 0));   % [Nseeds_upper, 1]
+
+if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
+    pot_l = rs3_core_cr3bp_U_and_derivs(S.SeedsLower(:,1), S.SeedsLower(:,2), S.mu);
+    v0_lower = sqrt(max(2*pot_l.U(:) - S.CJ, 0));
+else
+    v0_lower = v0_upper;
+end
+
 % ── Process FRS_upper rows ─────────────────────────────────────────────────
 nu = double(S.Step4.rows_FRS_upper.n);
 if nu > 0
     [ids_u, dv_u, t_u, ix_u, iy_u, it_u] = local_fp_rows( ...
-        S.Step4.rows_FRS_upper, nu, S.SeedsUpper, S.CJ, S.mu, ...
+        S.Step4.rows_FRS_upper, nu, v0_upper, ...
         delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
 else
     ids_u=zeros(0,1); dv_u=zeros(0,1); t_u=zeros(0,1);
@@ -582,13 +595,8 @@ end
 % ── Process FRS_lower rows ─────────────────────────────────────────────────
 nl = double(S.Step4.rows_FRS_lower.n);
 if nl > 0
-    if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
-        seeds_lo = S.SeedsLower;
-    else
-        seeds_lo = S.SeedsUpper;   % symmetric grid: v0 same either way
-    end
     [ids_l, dv_l, t_l, ix_l, iy_l, it_l] = local_fp_rows( ...
-        S.Step4.rows_FRS_lower, nl, seeds_lo, S.CJ, S.mu, ...
+        S.Step4.rows_FRS_lower, nl, v0_lower, ...
         delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
 else
     ids_l=zeros(0,1); dv_l=zeros(0,1); t_l=zeros(0,1);
@@ -634,8 +642,11 @@ end
 
 % ─────────────────────────────────────────────────────────────────────────────
 function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
-        rows, n, seeds, CJ, mu, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
+        rows, n, v0_per_seed, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
 %LOCAL_FP_ROWS  Extract voxel IDs, DV (m/s), and |TOF| (days) for n packed rows.
+% v0_per_seed  [Nseeds,1] — pre-computed sqrt(max(2U-CJ,0)) per seed position.
+%   Caller computes this once with rs3_core_cr3bp_U_and_derivs on the seeds
+%   matrix (~hundreds of evals) so this function avoids per-row pot evaluation.
 ix_out = double(rows.ix(1:n));
 iy_out = double(rows.iy(1:n));
 it_out = double(rows.it(1:n));
@@ -649,12 +660,9 @@ t_nd  = double(rows.t(1:n));
 lin   = sub2ind([Ns, max_h], iSeed, iHead);
 delta = delta_mat(lin);
 
-% DV turn at seed position
-sx = seeds(iSeed, 1);
-sy = seeds(iSeed, 2);
-pot    = rs3_core_cr3bp_U_and_derivs(sx(:), sy(:), mu);
-v0     = sqrt(max(2 * pot.U - CJ, 0));
-dv_mps = 2 * v0 .* sin(abs(delta(:)) / 2) * VU_mps;
+% Per-row v0 via seed lookup (O(n) index, no potential evaluation)
+v0     = v0_per_seed(iSeed);
+dv_mps = 2 * v0(:) .* sin(abs(delta(:)) / 2) * VU_mps;
 t_days = abs(t_nd(:)) * TU_days;
 end
 
