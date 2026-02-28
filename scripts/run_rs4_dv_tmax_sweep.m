@@ -307,6 +307,12 @@ else
             end
             clear Sall_sub   % row data no longer needed — footprints hold all pair needs
 
+            % ── Diagnostic: report footprint sizes so empty FRS/BRS is visible ─
+            for i = 1:N
+                fprintf('[sweep]   fp %-30s  FRS=%d vox  BRS=%d vox\n', ...
+                    families{i}, numel(Fall_sub{i}.uid_frs), numel(Fall_sub{i}.uid_brs));
+            end
+
             % ── Pre-extract per-pair footprint pointers (required for parfor) ──
             FA_arr = cell(nPairs, 1);
             FB_arr = cell(nPairs, 1);
@@ -317,17 +323,18 @@ else
             clear Fall_sub   % individual footprints held by FA/FB_arr
 
             % ── Run pair loop ─────────────────────────────────────────────────
-            pair_minDV   = nan(nPairs, 1);
-            pair_DVlb    = nan(nPairs, 1);
-            pair_DVpatch = nan(nPairs, 1);
-            pair_TOF     = nan(nPairs, 1);
-            pair_voxelId = nan(nPairs, 1);
+            pair_minDV    = nan(nPairs, 1);
+            pair_DVlb     = nan(nPairs, 1);
+            pair_DVpatch  = nan(nPairs, 1);
+            pair_TOF      = nan(nPairs, 1);
+            pair_voxelId  = nan(nPairs, 1);
+            pair_nanReason = repmat({''}, nPairs, 1);
 
             if N_WORKERS > 0
                 % parfor over pairs — FA/FB_arr sliced, grid3_base/cfg_sub/VU_mps broadcast
                 parfor p = 1:nPairs
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                        pair_TOF(p), pair_voxelId(p)] = ...
+                        pair_TOF(p), pair_voxelId(p), pair_nanReason{p}] = ...
                         local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             else
@@ -335,12 +342,24 @@ else
                     fprintf('[sweep]   pair %d/%d: %-30s → %s\n', ...
                         p, nPairs, families{pairI(p)}, families{pairJ(p)});
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                        pair_TOF(p), pair_voxelId(p)] = ...
+                        pair_TOF(p), pair_voxelId(p), pair_nanReason{p}] = ...
                         local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             end
 
             clear FA_arr FB_arr   % free pair-footprint memory
+
+            % ── Diagnostic: summarise NaN reasons ─────────────────────────────
+            nanMask = isnan(pair_minDV);
+            if any(nanMask)
+                reasons = pair_nanReason(nanMask);
+                uReasons = unique(reasons);
+                fprintf('[sweep]   WARNING: %d/%d pairs are NaN.\n', sum(nanMask), nPairs);
+                for r = 1:numel(uReasons)
+                    cnt = sum(strcmp(reasons, uReasons{r}));
+                    fprintf('[sweep]     reason="%s"  count=%d\n', uReasons{r}, cnt);
+                end
+            end
 
             % ── Assemble N×N matrices ─────────────────────────────────────────
             minDVproxyMat = nan(N, N);
@@ -441,7 +460,7 @@ end
 % ══════════════════════════════════════════════════════════════════════════════
 
 % ─────────────────────────────────────────────────────────────────────────────
-function [minDV, dvlb, dvpatch, tof, voxelId] = ...
+function [minDV, dvlb, dvpatch, tof, voxelId, nanReason] = ...
         local_run_pair(FA, FB, grid3, cfg, VU_mps)
 %LOCAL_RUN_PAIR  Compute DV proxy and TOF for one pair using pre-computed footprints.
 %
@@ -452,10 +471,11 @@ function [minDV, dvlb, dvpatch, tof, voxelId] = ...
 % Results are numerically identical to the rs4_overlap_pair +
 % rs4_overlap_extract_voxel_info + inline-proxy pipeline.
 minDV = NaN;  dvlb = NaN;  dvpatch = NaN;  tof = NaN;  voxelId = NaN;
+nanReason = 'error';   % updated below to identify which early-exit was hit
 try
     % ── 1. Intersect FRS(A) with BRS(B) (both already sorted unique) ──────
     idsO = intersect(FA.uid_frs, FB.uid_brs);
-    if isempty(idsO), return; end
+    if isempty(idsO), nanReason = 'empty_intersection'; return; end
 
     % ── 2. Unpack voxel grid indices ───────────────────────────────────────
     Ny = numel(grid3.y_centers);
@@ -492,7 +512,7 @@ try
     ok = okKeep(:) & okEarth(:) & okMoon(:);
 
     idsO = idsO(ok);
-    if isempty(idsO), return; end
+    if isempty(idsO), nanReason = 'all_filtered_by_buffer'; return; end
     ix = ix(ok);  iy = iy(ok);
 
     % ── 4. Look up pre-computed per-voxel DV and TOF ──────────────────────
@@ -515,19 +535,20 @@ try
     dv_proxy     = dv_lb_vec + dv_patch_vec;
 
     valid = isfinite(dv_proxy);
-    if ~any(valid), return; end
+    if ~any(valid), nanReason = 'no_finite_dv_proxy'; return; end
 
     idxValid  = find(valid);
     [~, iLoc] = min(dv_proxy(idxValid));
     iWin      = idxValid(iLoc);
 
-    minDV   = dv_proxy(iWin);
-    dvlb    = dv_lb_vec(iWin);
-    dvpatch = dv_patch_vec(iWin);
-    voxelId = idsO(iWin);
-    tof     = t_mean_A(iWin) + t_mean_B(iWin);
+    minDV     = dv_proxy(iWin);
+    dvlb      = dv_lb_vec(iWin);
+    dvpatch   = dv_patch_vec(iWin);
+    voxelId   = idsO(iWin);
+    tof       = t_mean_A(iWin) + t_mean_B(iWin);
+    nanReason = '';   % success — clear the reason
 catch ME
-    warning('[sweep:pair] %s', ME.message);
+    warning('[sweep:pair] %s → %s', ME.identifier, ME.message);
 end
 end
 
