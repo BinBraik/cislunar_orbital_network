@@ -61,7 +61,7 @@ if ~exist(OUT_DIR, 'dir'), mkdir(OUT_DIR); end
 
 % Load unit constants — never hardcode these
 cfg     = rs3_cfg_defaults();
-VU_mps  = cfg.units.VU_mps;    % ~1000.8 m/s
+VU_mps  = cfg.units.VU_mps;    % ~1023.2 m/s
 TU_days = cfg.units.TU_days;   % ~4.348 days
 
 TIE_TOL_ABS = TIE_TOL_ABS_SCALE * VU_mps;   % ~10 m/s floor

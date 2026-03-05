@@ -127,8 +127,8 @@ switch plot_type
                           'EdgeColor', 'none', ...
                           'DisplayName', sprintf('%d', k));
         end
-        legend(ax, hp, 'Location', 'eastoutside', 'FontSize', 7, ...
-               'Title', 'LCC size (# nodes)', 'Box', 'on');
+        lgd = legend(ax, hp, 'Location', 'eastoutside', 'FontSize', 7, 'Box', 'on');
+        lgd.Title.String = 'LCC size (# nodes)';
 
         title(ax, 'Largest Connected Component Size', 'FontSize', 11);
 
@@ -175,8 +175,8 @@ switch plot_type
             hp(k) = patch(ax, NaN, NaN, ap_cmap(ci,:), 'EdgeColor', 'none', ...
                           'DisplayName', sprintf('%d', ci-1));
         end
-        legend(ax, hp, 'Location', 'eastoutside', 'FontSize', 7, ...
-               'Title', '# articulation pts', 'Box', 'on');
+        lgd = legend(ax, hp, 'Location', 'eastoutside', 'FontSize', 7, 'Box', 'on');
+        lgd.Title.String = '# articulation pts';
 
         title(ax, 'Articulation-Point Count per Snapshot', 'FontSize', 11);
 
