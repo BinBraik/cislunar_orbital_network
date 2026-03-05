@@ -41,7 +41,8 @@ RMIN_GUARD = 0.75;
 
 % Tie tolerances
 TIE_TOL_REL         = 1e-4;    % relative tolerance
-TIE_TOL_ABS_SCALE   = 1e-2;   % absolute floor = TIE_TOL_ABS_SCALE * VU_mps
+TIE_TOL_ABS_SCALE   = 0;       % absolute floor disabled — hub/reach are in (m/s)^-1,
+                                % not m/s, so a fixed m/s floor would swamp the metric
 
 % GIF animation settings
 GIF_ENABLE      = false;   % set true to generate animated GIF

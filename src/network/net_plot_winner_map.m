@@ -97,8 +97,17 @@ switch plot_type
         lcc_size = map_data.lcc_size;   % [nDV×nTmax] integer 1-N (0=skip)
         skip_map = (lcc_size == 0);
 
-        % N distinct colours for integer values 1..N_fam
-        lcc_cmap = i_lcc_colors(N_fam);   % [N_fam×3]
+        % Find actual range of LCC sizes present in the data
+        valid_sz = lcc_size(~skip_map);
+        if isempty(valid_sz)
+            min_sz = 1;  max_sz = 1;
+        else
+            min_sz = min(valid_sz(:));
+            max_sz = max(valid_sz(:));
+        end
+
+        % Sequential, non-repeating colormap spanning 1..N_fam
+        lcc_cmap = i_lcc_colors(N_fam);   % [N_fam×3], parula-based
 
         % Build RGB image
         rgb = ones(nTmax, nDV, 3);
@@ -119,13 +128,15 @@ switch plot_type
         % Overlay lcc_full contour (on the LCC map itself too)
         i_overlay_lcc_contour(ax, DV_vec, Tmax_vec, lcc_full_map);
 
-        % Colourbar: patches with integer labels 1..N_fam
+        % Legend: only show sizes actually present (min_sz..max_sz)
         hold(ax, 'on');
-        hp = gobjects(N_fam, 1);
-        for k = 1:N_fam
-            hp(k) = patch(ax, NaN, NaN, lcc_cmap(k,:), ...
+        n_levels = max_sz - min_sz + 1;
+        hp = gobjects(n_levels, 1);
+        for k = 1:n_levels
+            sz_k = min_sz + k - 1;
+            hp(k) = patch(ax, NaN, NaN, lcc_cmap(sz_k,:), ...
                           'EdgeColor', 'none', ...
-                          'DisplayName', sprintf('%d', k));
+                          'DisplayName', sprintf('%d', sz_k));
         end
         lgd = legend(ax, hp, 'Location', 'eastoutside', 'FontSize', 7, 'Box', 'on');
         lgd.Title.String = 'LCC size (# nodes)';
@@ -233,12 +244,7 @@ end
 end
 
 function c = i_lcc_colors(N)
-%I_LCC_COLORS  N distinct colours for LCC-size values 1..N.
-% Use a fixed, perceptually varied palette.
-c = lines(max(N, 7));
-if N > size(c, 1)
-    c = hsv(N);
-else
-    c = c(1:N, :);
-end
+%I_LCC_COLORS  N distinct sequential colours for LCC-size values 1..N.
+% Uses parula so colours progress low→high without repeating.
+c = parula(max(N, 2));
 end
