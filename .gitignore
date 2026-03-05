@@ -33,6 +33,13 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# Generated pipeline output directories
+rs3_sweep_results/
+rs3_network_results/
+
+# Generated web output (template is tracked; built file is not)
+web/dv_map.html
+
 # Editor / IDE
 .vscode/
 .idea/
