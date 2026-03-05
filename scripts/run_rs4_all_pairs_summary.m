@@ -85,15 +85,23 @@ if exist('rs3_grid_validate','file')==2
     rs3_grid_validate(grid3, cfg);
 end
 
-% ===================== PREBUILD / LOAD ALL FAMILIES =====================
+% ===================== WARM CACHE + CAPTURE FILE PATHS =====================
+% Load each family once to ensure its cache file exists and capture the
+% path.  The struct itself is released immediately — the pair loop loads
+% only the 2 needed families at a time, keeping peak memory at ~2 structs
+% instead of all N simultaneously.
 N = numel(families);
-Sall = cell(N,1);
-InfoAll = cell(N,1);
+InfoAll      = cell(N,1);
+cache_fpaths = cell(N,1);
 for i = 1:N
     fam = families{i};
     fprintf('[rs4-batch] build/load family %d/%d: %s\n', i, N, fam);
-    [Sall{i}, InfoAll{i}] = rs3_prepare_or_load_family(fam, cfg, grid3);
+    [Stmp, InfoAll{i}] = rs3_prepare_or_load_family(fam, cfg, grid3);
+    info = rs3_cache_get_path(fam, Stmp.mu, Stmp.CJ, cfg);
+    cache_fpaths{i} = info.fpath;
+    clear Stmp info;
 end
+fprintf('[rs4-batch] Caches ready. Pair loop loads 2 families at a time.\n');
 
 % ===================== SUMMARY HOLDERS =====================
 minDVproxyMat = nan(N,N);
@@ -126,8 +134,9 @@ for i = 1:N
 
         fprintf('\n[rs4-batch] pair %d/%d: %s -> %s\n', pairRow, nPairs, famA, famB);
 
-        SA = Sall{i};
-        SB = Sall{j};
+        % Load only the 2 needed families — never hold all N in memory
+        dA = load(cache_fpaths{i}, 'S');   SA = dA.S;   clear dA;
+        dB = load(cache_fpaths{j}, 'S');   SB = dB.S;   clear dB;
 
         try
             tPair = tic;
@@ -232,6 +241,7 @@ for i = 1:N
                 'dv_patch_ub_mps', NaN, 'tof_est_days', NaN, 'voxel_id', NaN);
             save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', '-v7.3');
         end
+        clear SA SB O V B;   % release before next pair
     end
 end
 

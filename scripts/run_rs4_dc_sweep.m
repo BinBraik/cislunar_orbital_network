@@ -12,8 +12,8 @@
 % Two modes (set NUM_WORKERS below):
 %
 %   SERIAL  (NUM_WORKERS <= 1)
-%     All 13 families loaded into memory once.  Passed directly to the for
-%     loop — no file I/O per pair.  Checkpoint saved after every pair so a
+%     Each pair loads only its 2 needed families from disk — same low-memory
+%     strategy as parallel workers.  Checkpoint saved after every pair so a
 %     run can be safely interrupted and resumed by re-running the script.
 %
 %   PARALLEL (NUM_WORKERS >= 2)
@@ -131,9 +131,10 @@ fprintf('[dc_sweep] Mode     : %s\n\n', ...
 % =========================================================================
 grid3 = rs3_grid_make(cfg);
 
+% Both serial and parallel modes use file-based loading (2 families per
+% pair).  Warm-up only ensures cache files exist and captures their paths.
 fprintf('[dc_sweep] Warming %d family caches ...\n', N);
 cache_fpaths = cell(N, 1);
-Sall         = cell(N, 1);   % used only in serial mode
 
 for k = 1:N
     fprintf('  [%2d/%2d]  %s ...', k, N, families{k});
@@ -141,19 +142,11 @@ for k = 1:N
     [Stmp, ~] = rs3_prepare_or_load_family(families{k}, cfg, grid3);
     info = rs3_cache_get_path(families{k}, Stmp.mu, Stmp.CJ, cfg);
     cache_fpaths{k} = info.fpath;
-    if ~use_par
-        Sall{k} = local_ensure_xpo(Stmp, relTol, absTol, 1001);
-    end
     fprintf('  %.1fs  Nseeds_upper=%d\n', toc(tL), size(Stmp.SeedsUpper, 1));
     clear Stmp info;
 end
 
-if use_par
-    clear Sall;   % not needed — keep memory free before launching workers
-    fprintf('[dc_sweep] Cache warmed. Family structs released (workers load per-pair).\n\n');
-else
-    fprintf('[dc_sweep] Families in memory.\n\n');
-end
+fprintf('[dc_sweep] Cache warmed. Loading families 2-at-a-time during pair loop.\n\n');
 
 fprintf('[dc_sweep] %d pairs to process.\n\n', nPairs);
 
@@ -256,11 +249,19 @@ else
         fprintf('  [%2d/%2d]  %s -> %s ...', p, nPairs, families{ii}, families{jj});
         tStart = tic;
 
-        % Families already in memory — no file I/O here
+        % Load only 2 families per pair — same strategy as parallel workers
+        dA = load(cache_fpaths{ii}, 'S');
+        SA = local_ensure_xpo(dA.S, relTol, absTol, 1001);
+        clear dA;
+        dB = load(cache_fpaths{jj}, 'S');
+        SB = local_ensure_xpo(dB.S, relTol, absTol, 1001);
+        clear dB;
+
         [before_mat(p,:), after_mat(p,:), traj_cell{p}] = ...
-            local_process_pair(Sall{ii}, Sall{jj}, ...
+            local_process_pair(SA, SB, ...
                                families{ii}, families{jj}, ii, jj, p, ...
                                cfg, dcRoot);
+        clear SA SB;
 
         if ~isfinite(before_mat(p, 1))
             before_mat(p, 1) = p;   % sentinel for no-overlap pairs
