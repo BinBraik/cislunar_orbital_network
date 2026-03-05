@@ -36,3 +36,4 @@ __pycache__/
 # Editor / IDE
 .vscode/
 .idea/
+.claude/worktrees/epic-solomon/
