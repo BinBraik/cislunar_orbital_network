@@ -30,22 +30,18 @@ cfg.cache.enable  = true;
 cfg.cache.rebuild = false;
 
 % Grid (must match the cache that was built)
-cfg.grid.dx     = 0.01;
-cfg.grid.dy     = 0.01;
-cfg.grid.dtheta = deg2rad(4);
-
-cfg.seed.ds_seed   = 0.02;
-
-% Propagation / fan
-cfg.propag.Tmax    = pi/2;
-cfg.fan.DV_cap_nd  = 0.1;
-cfg.fan.dtheta_fan = deg2rad(2.0);
-cfg.propag.absTol  = 1e-9;
-cfg.propag.relTol  = 1e-9;
-cfg.propag.v2tol   = 1e-8;
-cfg.log.step_len_factor = 0.5;
-cfg.log.maxstep_factor  = 0.5;
-
+cfg.grid.dx               = 0.0005;
+cfg.grid.dy               = 0.0005;
+cfg.grid.dtheta           = deg2rad(0.5);
+cfg.seed.ds_seed          = 0.01;
+cfg.propag.Tmax           = pi;
+cfg.fan.DV_cap_nd         = 0.2;
+cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.propag.absTol         = 1e-8;
+cfg.propag.relTol         = 1e-8;
+cfg.propag.v2tol          = 1e-8;
+cfg.log.step_len_factor   = 0.75;
+cfg.log.maxstep_factor    = 2;
 % Disable all bound plots (we only need B.imin from visualize_bounds)
 cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;

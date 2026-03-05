@@ -44,21 +44,18 @@ cfg.cache.enable  = true;
 cfg.cache.rebuild = false;
 
 % grid settings (must match for both atlases)
-cfg.grid.dx     = 0.01;
-cfg.grid.dy     = 0.01;
-cfg.grid.dtheta = deg2rad(2);
-
-cfg.seed.ds_seed   = 0.02;
-
-% propagation/fan
-cfg.propag.Tmax    = pi;
-cfg.fan.DV_cap_nd  = 0.2;
-cfg.fan.dtheta_fan = deg2rad(1.0);
-cfg.propag.absTol  = 1e-9;
-cfg.propag.relTol  = 1e-9;
-cfg.propag.v2tol   = 1e-8;
-cfg.log.step_len_factor = 0.5;
-cfg.log.maxstep_factor  = 0.5;
+cfg.grid.dx               = 0.0005;
+cfg.grid.dy               = 0.0005;
+cfg.grid.dtheta           = deg2rad(0.5);
+cfg.seed.ds_seed          = 0.01;
+cfg.propag.Tmax           = pi;
+cfg.fan.DV_cap_nd         = 0.2;
+cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.propag.absTol         = 1e-8;
+cfg.propag.relTol         = 1e-8;
+cfg.propag.v2tol          = 1e-8;
+cfg.log.step_len_factor   = 0.75;
+cfg.log.maxstep_factor    = 2;
 
 % zoom optional
 cfg.diag.zoom.enable = false;

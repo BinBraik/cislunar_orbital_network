@@ -87,22 +87,18 @@ cfg_base = rs3_cfg_defaults();
 cfg_base.families.list      = families;
 cfg_base.families.test_only = false;
 
-cfg_base.grid.dx     = 0.001;
-cfg_base.grid.dy     = 0.001;
-cfg_base.grid.dtheta = deg2rad(0.5);
-
-cfg_base.seed.ds_seed = 0.01;
-
-cfg_base.propag.Tmax    = pi;    % base — largest Tmax in the sweep
-cfg_base.fan.DV_cap_nd  = 0.2;  % base — largest DV_cap in the sweep
-cfg_base.fan.dtheta_fan = deg2rad(0.5);
-
-cfg_base.propag.absTol = 1e-8;
-cfg_base.propag.relTol = 1e-8;
-cfg_base.propag.v2tol  = 1e-8;
-
-cfg_base.log.step_len_factor = 0.75;
-cfg_base.log.maxstep_factor  = 0.75;
+cfg.grid.dx               = 0.0005;
+cfg.grid.dy               = 0.0005;
+cfg.grid.dtheta           = deg2rad(0.5);
+cfg.seed.ds_seed          = 0.01;
+cfg.propag.Tmax           = pi;
+cfg.fan.DV_cap_nd         = 0.2;
+cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.propag.absTol         = 1e-8;
+cfg.propag.relTol         = 1e-8;
+cfg.propag.v2tol          = 1e-8;
+cfg.log.step_len_factor   = 0.75;
+cfg.log.maxstep_factor    = 2;
 
 cfg_base.cache.enable  = true;
 cfg_base.cache.dir     = fullfile(repoRoot, 'rs3_cache');
