@@ -243,12 +243,12 @@
       <div class="slider-row">
         <label>ΔV cap</label>
         <input type="range" id="sl-dv" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-dv">— nd</span>
+        <span class="slider-val" id="lbl-dv">— m/s</span>
       </div>
       <div class="slider-row">
         <label>T<sub>max</sub></label>
         <input type="range" id="sl-tmax" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-tmax">— TU</span>
+        <span class="slider-val" id="lbl-tmax">— days</span>
       </div>
     </div>
   </div>
@@ -659,9 +659,9 @@ function updateSliderLabels() {
   const tmax = DATA.tmaxList[djIdx];
   // physical budget = 2× (departure + arrival manoeuvre)
   document.getElementById('lbl-dv').textContent   =
-    dv.toFixed(3) + ' nd  (' + (2 * dv * VU_MPS).toFixed(0) + ' m/s budget)';
+    (2 * dv * VU_MPS).toFixed(0) + ' m/s';
   document.getElementById('lbl-tmax').textContent =
-    (tmax / Math.PI).toFixed(3) + 'π TU  (' + (2 * tmax * TU_DAYS).toFixed(1) + ' days budget)';
+    (2 * tmax * TU_DAYS).toFixed(1) + ' days';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
