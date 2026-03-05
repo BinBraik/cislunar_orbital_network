@@ -82,10 +82,10 @@ Tmax_labels = arrayfun(@(t) strrep(sprintf('Tp%0.3f', t/pi), '.', 'p'), ...
 % ══════════════════════════════════════════════════════════════════════════════
 %  BASE CONFIGURATION  (must match your full cached atlases exactly)
 % ══════════════════════════════════════════════════════════════════════════════
-cfg_base = rs3_cfg_defaults();
+cfg = rs3_cfg_defaults();
 
-cfg_base.families.list      = families;
-cfg_base.families.test_only = false;
+cfg.families.list      = families;
+cfg.families.test_only = false;
 
 cfg.grid.dx               = 0.0005;
 cfg.grid.dy               = 0.0005;
@@ -100,30 +100,30 @@ cfg.propag.v2tol          = 1e-8;
 cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 
-cfg_base.cache.enable  = true;
-cfg_base.cache.dir     = fullfile(repoRoot, 'rs3_cache');
-cfg_base.cache.rebuild = false;
+cfg.cache.enable  = true;
+cfg.cache.dir     = fullfile(repoRoot, 'rs3_cache');
+cfg.cache.rebuild = false;
 
 % Suppress all figure/file output from sub-functions
-cfg_base.io.save_figs   = false;
-cfg_base.io.save_fig    = false;
-cfg_base.io.fig_visible = 'off';
+cfg.io.save_figs   = false;
+cfg.io.save_fig    = false;
+cfg.io.fig_visible = 'off';
 
-cfg_base.plot.rs4.overlap_xy   = false;
-cfg_base.plot.rs4.overlap_xyz  = false;
-cfg_base.plot.rs4.combo_xy     = false;
-cfg_base.plot.rs4.combo_xyz    = false;
-cfg_base.plot.rs4.bounds_lb    = false;
-cfg_base.plot.rs4.bounds_ub    = false;
-cfg_base.plot.rs4.bounds_proxy = false;
+cfg.plot.rs4.overlap_xy   = false;
+cfg.plot.rs4.overlap_xyz  = false;
+cfg.plot.rs4.combo_xy     = false;
+cfg.plot.rs4.combo_xyz    = false;
+cfg.plot.rs4.bounds_lb    = false;
+cfg.plot.rs4.bounds_ub    = false;
+cfg.plot.rs4.bounds_proxy = false;
 
 if exist('rs3_cfg_validate', 'file') == 2
-    rs3_cfg_validate(cfg_base);
+    rs3_cfg_validate(cfg);
 end
 
 % ── Derived constants ─────────────────────────────────────────────────────────
-VU_mps  = cfg_base.units.VU_mps;
-TU_days = cfg_base.units.TU_days;
+VU_mps  = cfg.units.VU_mps;
+TU_days = cfg.units.TU_days;
 N      = numel(families);
 nDV    = numel(DV_cap_list);
 nTmax  = numel(Tmax_list);
@@ -183,8 +183,8 @@ end
 %  SCAN rs3_results FOR REUSABLE COMPLETED RUNS
 % ══════════════════════════════════════════════════════════════════════════════
 fprintf('[sweep] Scanning rs3_results for matching completed runs...\n');
-existing = local_scan_results(cfg_base.io.out_root, families, ...
-    DV_cap_list, Tmax_list, cfg_base);
+existing = local_scan_results(cfg.io.out_root, families, ...
+    DV_cap_list, Tmax_list, cfg);
 
 nFound = 0;
 for di = 1:nDV
@@ -217,11 +217,11 @@ else
     %  LOAD BASE ATLASES  (Tmax = pi, DV_cap = 0.2)  — once for the whole sweep
     % ══════════════════════════════════════════════════════════════════════════
     fprintf('[sweep] Loading base atlases (Tmax=π, DV_cap=0.2)...\n');
-    grid3_base = rs3_grid_make(cfg_base);
+    grid3_base = rs3_grid_make(cfg);
     Sall_base  = cell(N, 1);
     for i = 1:N
         fprintf('[sweep]   family %d/%d: %s\n', i, N, families{i});
-        [Sall_base{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg_base, grid3_base);
+        [Sall_base{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3_base);
     end
     fprintf('[sweep] Base atlases loaded.\n\n');
 
@@ -264,7 +264,7 @@ else
             tCell = tic;
 
             % ── Build cfg for this combination ────────────────────────────────
-            cfg_sub                = cfg_base;
+            cfg_sub                = cfg;
             cfg_sub.propag.Tmax    = tmax;
             cfg_sub.fan.DV_cap_nd  = dv_cap;
             % Note: derived atlases are NOT saved to disk (no rs3_cache_save_family call).
