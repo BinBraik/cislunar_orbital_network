@@ -146,20 +146,13 @@ for k = 1:N
     % Build extended footprint (Phase 1 — tiny, ~25 MB each)
     Fall{k} = local_compute_footprint_dc(Stmp, grid3, VU_mps, TU_days);
 
-    if ~use_par
-        Sall{k} = Stmp;   % keep in memory for serial Phase 2
-    end
+    Sall{k} = Stmp;   % keep for Phase 2 (thread pool shares memory, no copy)
     fprintf('  %.1fs  footprint: %d FRS voxels, %d BRS voxels\n', toc(tL), ...
         numel(Fall{k}.uid_frs), numel(Fall{k}.uid_brs));
     clear Stmp info;
 end
 
-if use_par
-    clear Sall;
-    fprintf('[dc_sweep] Footprints built. Family structs released (workers load per-pair).\n\n');
-else
-    fprintf('[dc_sweep] Footprints built. Families kept in memory for serial Phase 2.\n\n');
-end
+fprintf('[dc_sweep] Footprints built. Families in memory for Phase 2.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
 % 2. PHASE 1  — Pair intersection via footprints  (fast, low memory)
@@ -229,21 +222,26 @@ ckptFile = fullfile(dcRoot, 'rs4_dc_sweep_checkpoint.mat');
 
 if use_par
     % ── PARALLEL Phase 2 ─────────────────────────────────────────────────────
-    % Switch to process-based pool (Java + V7.3 MAT loading needed for disk load).
-    delete(gcp('nocreate'));
-    parpool('Processes', min(NUM_WORKERS, nPairs));
+    % Reuse the existing 'local' (thread) pool from Phase 1 — identical pattern
+    % to run_rs4_dc_sweep_tmax.m.  Slice SA_arr/SB_arr so MATLAB sends only
+    % each worker's 2 atlas slices via shared memory; no disk I/O, no OOM.
     fprintf('[dc_sweep] Phase 2: DC in parallel (%d workers)...\n', min(NUM_WORKERS,nPairs));
 
-    fpaths   = cache_fpaths;
-    cfg_p    = cfg;
-    grid3_p  = grid3;
-    fams     = families;
-    pij      = pairs_ij;
-    rT       = relTol;
-    aT       = absTol;
-    VU       = VU_mps;
-    TU       = TU_days;
-    tks      = tickets;
+    SA_arr = cell(nPairs, 1);
+    SB_arr = cell(nPairs, 1);
+    for p = 1:nPairs
+        SA_arr{p} = Sall{pairI(p)};
+        SB_arr{p} = Sall{pairJ(p)};
+    end
+    clear Sall;
+
+    cfg_p   = cfg;
+    grid3_p = grid3;
+    fams    = families;
+    pij     = pairs_ij;
+    VU      = VU_mps;
+    TU      = TU_days;
+    tks     = tickets;
 
     parfor p = 1:nPairs
         ii = pij(p, 1);
@@ -255,14 +253,8 @@ if use_par
             continue;
         end
 
-        % Load only the 2 needed families from disk (no OOM from broadcasting)
-        dA = load(fpaths{ii}, 'S');
-        SA = local_ensure_xpo(dA.S, rT, aT, 1001);
-        dB = load(fpaths{jj}, 'S');
-        SB = local_ensure_xpo(dB.S, rT, aT, 1001);
-
         [br, ar, tr] = local_process_pair_dc( ...
-            SA, SB, fams{ii}, fams{jj}, ii, jj, p, cfg_p, grid3_p, tks{p}, VU, TU);
+            SA_arr{p}, SB_arr{p}, fams{ii}, fams{jj}, ii, jj, p, cfg_p, grid3_p, tks{p}, VU, TU);
 
         before_mat(p, :) = br; %#ok<PFPIE>
         after_mat(p, :)  = ar; %#ok<PFPIE>
