@@ -122,6 +122,17 @@ fprintf('[rs4-batch] Mode  : %s\n\n', ...
 % ════════════════════════════════════════════════════════════════════════════
 %  1. LOAD ALL FAMILY ATLASES  (serial, main process — Java MD5 required)
 % ════════════════════════════════════════════════════════════════════════════
+% ── Parallel pool (create once, before heavy work) ───────────────────────────
+if N_WORKERS > 0
+    pool = gcp('nocreate');
+    if isempty(pool)
+        parpool('local', N_WORKERS);
+        fprintf('[rs4-batch] Started parpool with %d workers.\n', N_WORKERS);
+    else
+        fprintf('[rs4-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
+    end
+end
+
 fprintf('[rs4-batch] Loading %d family atlases...\n', N);
 grid3 = rs3_grid_make(cfg);
 Sall  = cell(N, 1);
@@ -132,20 +143,16 @@ end
 fprintf('[rs4-batch] Atlases loaded.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
-%  2. BUILD COMPACT FOOTPRINTS  (~5-25 MB each vs ~0.5-2 GB full atlas)
+%  2. BUILD COMPACT FOOTPRINTS  (always serial — each full atlas can need
+%     ~10 GB of temporaries inside local_fp_rows; N_WORKERS concurrent calls
+%     would multiply that by the worker count and OOM on full Tmax=pi atlases.
+%     The pair loop below is where parfor saves time, not here.)
 % ════════════════════════════════════════════════════════════════════════════
-fprintf('[rs4-batch] Building voxel footprints...\n');
+fprintf('[rs4-batch] Building voxel footprints (serial)...\n');
 Fall = cell(N, 1);
-if N_WORKERS > 0
-    pool = gcp('nocreate');
-    if isempty(pool), parpool('local', N_WORKERS); end
-    parfor i = 1:N
-        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
-    end
-else
-    for i = 1:N
-        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
-    end
+for i = 1:N
+    fprintf('[rs4-batch]   %d/%d  %s\n', i, N, families{i});
+    Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
 end
 clear Sall;
 fprintf('[rs4-batch] Footprints built. Full atlases released.\n\n');

@@ -241,17 +241,16 @@ for r = 1:nRunsTotal
         [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
     end
 
-    % ── Build compact footprints ─────────────────────────────────────────────
-    fprintf('[verify] Building footprints...\n');
+    % ── Build compact footprints (serial — avoids N_WORKERS × ~10 GB OOM) ─────
+    % local_fp_rows allocates ~10 GB of temporaries per full-atlas call.
+    % Running this in parfor would multiply that by the worker count → OOM.
+    % Serial processing handles one atlas at a time; pair parfor below is
+    % where parallelism actually matters (78 tiny footprint-pair computations).
+    fprintf('[verify] Building footprints (serial)...\n');
     Fall = cell(N, 1);
-    if N_WORKERS > 0
-        parfor i = 1:N
-            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
-        end
-    else
-        for i = 1:N
-            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
-        end
+    for i = 1:N
+        fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
     end
     clear Sall;
     fprintf('[verify] Footprints built. Atlases released.\n');
