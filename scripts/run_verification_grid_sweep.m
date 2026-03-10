@@ -270,16 +270,18 @@ for r = 1:nRunsTotal
     end
     fprintf('[verify] All footprints built.\n');
 
-    % ── Slice into per-pair arrays ────────────────────────────────────────────
-    FA_arr = cell(nPairs, 1);
-    FB_arr = cell(nPairs, 1);
+    % ── Pair intersection loop (no FA_arr/FB_arr copy — access Fall directly) ──
+    % Precompute the last pair index each family appears in, so footprints can
+    % be freed the moment their last pair is processed.  For N=13 this means
+    % family 1 is freed after pair (1,13), family 2 after (2,13), etc., so
+    % peak RAM during the pair loop is at most 13→1 footprints (monotonically
+    % decreasing) rather than a flat 13 throughout.
+    lastUse = zeros(N, 1);
     for p = 1:nPairs
-        FA_arr{p} = Fall{pairI(p)};
-        FB_arr{p} = Fall{pairJ(p)};
+        lastUse(pairI(p)) = p;
+        lastUse(pairJ(p)) = p;
     end
-    clear Fall;
 
-    % ── Pair intersection loop ────────────────────────────────────────────────
     pair_minDV   = nan(nPairs, 1);
     pair_DVlb    = nan(nPairs, 1);
     pair_DVpatch = nan(nPairs, 1);
@@ -296,9 +298,12 @@ for r = 1:nRunsTotal
     for p = 1:nPairs
         [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
             pair_TOF(p), pair_voxelId(p)] = ...
-            local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
+            local_run_pair(Fall{pairI(p)}, Fall{pairJ(p)}, grid3_p, cfg_p, VU_p);
+        % Free footprints as soon as all their pairs have been processed
+        if lastUse(pairI(p)) == p, Fall{pairI(p)} = []; end
+        if lastUse(pairJ(p)) == p, Fall{pairJ(p)} = []; end
     end
-    clear FA_arr FB_arr;
+    clear Fall;
 
     n_overlap = sum(isfinite(pair_minDV));
     fprintf('[verify] Pairs done in %.1f s — %d/%d have overlap.\n', ...
@@ -335,7 +340,7 @@ for r = 1:nRunsTotal
     fprintf('[verify] Output: %s\n', resultFile);
 
     % Free memory before next run
-    clear Sall Fall FA_arr FB_arr grid3 minDVproxyMat TOFmat T;
+    clear grid3 minDVproxyMat TOFmat T lastUse;
     clear pair_minDV pair_DVlb pair_DVpatch pair_TOF pair_voxelId;
 
 end  % for r
@@ -359,7 +364,7 @@ try
     Ny = numel(grid3.y_centers);
     Nx = numel(grid3.x_centers);
     Nt = numel(grid3.th_centers);
-    [iy, ix, ~] = ind2sub([Ny, Nx, Nt], idsO);
+    [iy, ix, ~] = ind2sub([Ny, Nx, Nt], double(idsO));
 
     bufFrac = 0.05;
     if isfield(cfg,'overlap') && isfield(cfg.overlap,'primary_buffer_frac') ...
@@ -453,47 +458,56 @@ else
     v0_lower = v0_upper;
 end
 
+% ── Upper FRS rows ──────────────────────────────────────────────────────────
 nu = double(S.Step4.rows_FRS_upper.n);
 if nu > 0
     [ids_u, dv_u, t_u, ix_u, iy_u, it_u] = local_fp_rows( ...
         S.Step4.rows_FRS_upper, nu, v0_upper, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
 else
-    ids_u=zeros(0,1); dv_u=zeros(0,1); t_u=zeros(0,1);
-    ix_u=zeros(0,1);  iy_u=zeros(0,1); it_u=zeros(0,1);
+    ids_u=zeros(0,1,'uint32'); dv_u=zeros(0,1); t_u=zeros(0,1);
+    ix_u=zeros(0,1);           iy_u=zeros(0,1); it_u=zeros(0,1);
 end
 
+% BRS upper — derived immediately so ix_u/iy_u/it_u can be freed before lower rows
+if ~isempty(ix_u)
+    biy_u = Ny - iy_u + 1;
+    bit_u = double(it_lut(it_u));
+    ok_u  = bit_u > 0;
+    ids_brs_u = uint32(sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), max(1,min(Nt,bit_u(ok_u)))));
+    dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
+else
+    ids_brs_u = zeros(0,1,'uint32');  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
+end
+clear ix_u iy_u it_u;
+
+% ── Lower FRS rows ──────────────────────────────────────────────────────────
 nl = double(S.Step4.rows_FRS_lower.n);
 if nl > 0
     [ids_l, dv_l, t_l, ix_l, iy_l, it_l] = local_fp_rows( ...
         S.Step4.rows_FRS_lower, nl, v0_lower, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
 else
-    ids_l=zeros(0,1); dv_l=zeros(0,1); t_l=zeros(0,1);
-    ix_l=zeros(0,1);  iy_l=zeros(0,1); it_l=zeros(0,1);
+    ids_l=zeros(0,1,'uint32'); dv_l=zeros(0,1); t_l=zeros(0,1);
+    ix_l=zeros(0,1);           iy_l=zeros(0,1); it_l=zeros(0,1);
 end
 
-[F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
-    [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
-
-if ~isempty(ix_u)
-    biy_u = Ny - iy_u + 1;
-    bit_u = double(it_lut(it_u));
-    ok_u  = bit_u > 0;
-    ids_brs_u = sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), max(1,min(Nt,bit_u(ok_u))));
-    dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
-else
-    ids_brs_u = zeros(0,1);  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
-end
-
+% BRS lower — same pattern: derive then free spatial index arrays
 if ~isempty(ix_l)
     biy_l = Ny - iy_l + 1;
     bit_l = double(it_lut(it_l));
     ok_l  = bit_l > 0;
-    ids_brs_l = sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), max(1,min(Nt,bit_l(ok_l))));
+    ids_brs_l = uint32(sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), max(1,min(Nt,bit_l(ok_l)))));
     dv_bl = dv_l(ok_l);  t_bl = t_l(ok_l);
 else
-    ids_brs_l = zeros(0,1);  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
+    ids_brs_l = zeros(0,1,'uint32');  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
 end
+clear ix_l iy_l it_l;
 
+% ── Aggregate FRS, then free raw rows ──────────────────────────────────────
+[F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
+    [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
+clear ids_u dv_u t_u ids_l dv_l t_l;
+
+% ── Aggregate BRS ──────────────────────────────────────────────────────────
 [F.uid_brs, F.dv_min_brs, F.t_mean_brs] = local_fp_agg( ...
     [ids_brs_u; ids_brs_l], [dv_bu; dv_bl], [t_bu; t_bl]);
 
@@ -508,7 +522,7 @@ function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
 ix_out = double(rows.ix(1:n));
 iy_out = double(rows.iy(1:n));
 it_out = double(rows.it(1:n));
-ids    = sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out);
+ids    = uint32(sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out));
 iSeed  = double(rows.iSeed(1:n));
 iHead  = double(rows.iHead(1:n));
 t_nd   = double(rows.t(1:n));
@@ -521,13 +535,16 @@ end
 
 % ─────────────────────────────────────────────────────────────────────────────
 function [uid, dv_min, t_mean] = local_fp_agg(ids, dv, t)
+% uid stored as uint32 (fits fine run: max ~900M < 2^32).
+% dv_min/t_mean stored as single — 4 bytes vs 8, sufficient precision.
 if isempty(ids)
-    uid = zeros(0,1);  dv_min = zeros(0,1);  t_mean = zeros(0,1);
+    uid = zeros(0,1,'uint32');  dv_min = zeros(0,1,'single');  t_mean = zeros(0,1,'single');
     return;
 end
 [uid, ~, ic] = unique(ids(:));
-dv_min = accumarray(ic, dv(:), [], @min);
-t_mean = accumarray(ic, t(:)) ./ accumarray(ic, ones(numel(ic), 1));
+uid    = uint32(uid);
+dv_min = single(accumarray(ic, double(dv(:)), [], @min));
+t_mean = single(accumarray(ic, double(t(:))) ./ accumarray(ic, ones(numel(ic), 1)));
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
