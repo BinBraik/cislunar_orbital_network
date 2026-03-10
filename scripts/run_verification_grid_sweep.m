@@ -241,16 +241,20 @@ for r = 1:nRunsTotal
         [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
     end
 
-    % ── Build compact footprints (serial — avoids N_WORKERS × ~10 GB OOM) ─────
-    % local_fp_rows allocates ~10 GB of temporaries per full-atlas call.
-    % Running this in parfor would multiply that by the worker count → OOM.
-    % Serial processing handles one atlas at a time; pair parfor below is
-    % where parallelism actually matters (78 tiny footprint-pair computations).
-    fprintf('[verify] Building footprints (serial)...\n');
+    % ── Build compact footprints ─────────────────────────────────────────────
+    % parfor keeps workers active between atlas loading and the pair loop.
+    % Serial footprint building leaves pool workers idle → HPC scheduler may
+    % reclaim them → pair parfor hits dead workers → crash.
+    fprintf('[verify] Building footprints...\n');
     Fall = cell(N, 1);
-    for i = 1:N
-        fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
-        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+    if N_WORKERS > 0
+        parfor i = 1:N
+            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+        end
+    else
+        for i = 1:N
+            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+        end
     end
     clear Sall;
     fprintf('[verify] Footprints built. Atlases released.\n');
@@ -359,6 +363,9 @@ try
             && ~isempty(cfg.overlap.primary_buffer_frac)
         bufFrac = cfg.overlap.primary_buffer_frac;
     end
+    if ~(isfield(cfg,'sys') && isfield(cfg.sys,'RE_nd') && isfield(cfg.sys,'RM_nd'))
+        error('cfg.sys.RE_nd and cfg.sys.RM_nd required for primary buffer filter.');
+    end
     RE = cfg.sys.RE_nd;
     RM = cfg.sys.RM_nd;
     mu = FA.mu;
@@ -373,9 +380,9 @@ try
 
     x = grid3.x_centers(ix);
     y = grid3.y_centers(iy);
-    ok = okKeep(:) & ...
-         (hypot(x + mu, y)     > (1+bufFrac)*RE) & ...
-         (hypot(x - (1-mu), y) > (1+bufFrac)*RM);
+    okEarth = hypot(x + mu, y)     > (1 + bufFrac) * RE;
+    okMoon  = hypot(x - (1-mu), y) > (1 + bufFrac) * RM;
+    ok = okKeep(:) & okEarth(:) & okMoon(:);
 
     idsO = idsO(ok);
     if isempty(idsO), return; end
@@ -383,14 +390,18 @@ try
 
     [~, locA] = ismember(idsO, FA.uid_frs);
     [~, locB] = ismember(idsO, FB.uid_brs);
+    dv_min_A = FA.dv_min_frs(locA);
+    dv_min_B = FB.dv_min_brs(locB);
+    t_mean_A = FA.t_mean_frs(locA);
+    t_mean_B = FB.t_mean_brs(locB);
 
     x_ok = grid3.x_centers(ix);
     y_ok = grid3.y_centers(iy);
     CJstar = min(FA.CJ, FB.CJ);
     pot    = rs3_core_cr3bp_U_and_derivs(x_ok(:), y_ok(:), mu);
     v_box  = sqrt(max(2*pot.U - CJstar, 0));
-    dv_patch_vec = 2*v_box .* sin(abs(grid3.dtheta)/2) * VU_mps;
-    dv_lb_vec    = FA.dv_min_frs(locA(:)) + FB.dv_min_brs(locB(:));
+    dv_patch_vec = 2 * v_box .* sin(abs(grid3.dtheta) / 2) * VU_mps;
+    dv_lb_vec    = dv_min_A(:) + dv_min_B(:);
     dv_proxy     = dv_lb_vec + dv_patch_vec;
 
     valid = isfinite(dv_proxy);
@@ -404,7 +415,7 @@ try
     dvlb    = dv_lb_vec(iWin);
     dvpatch = dv_patch_vec(iWin);
     voxelId = idsO(iWin);
-    tof     = FA.t_mean_frs(locA(iWin)) + FB.t_mean_brs(locB(iWin));
+    tof     = t_mean_A(iWin) + t_mean_B(iWin);
 catch ME
     warning('[verify:pair] %s', ME.message);
 end

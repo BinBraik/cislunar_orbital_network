@@ -143,16 +143,20 @@ end
 fprintf('[rs4-batch] Atlases loaded.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
-%  2. BUILD COMPACT FOOTPRINTS  (always serial — each full atlas can need
-%     ~10 GB of temporaries inside local_fp_rows; N_WORKERS concurrent calls
-%     would multiply that by the worker count and OOM on full Tmax=pi atlases.
-%     The pair loop below is where parfor saves time, not here.)
+%  2. BUILD COMPACT FOOTPRINTS  (~5-25 MB each vs ~0.5-2 GB full atlas)
+%     Workers must stay active between atlas loading and the pair parfor —
+%     serial footprint building leaves them idle and risks HPC scheduler kill.
 % ════════════════════════════════════════════════════════════════════════════
-fprintf('[rs4-batch] Building voxel footprints (serial)...\n');
+fprintf('[rs4-batch] Building voxel footprints...\n');
 Fall = cell(N, 1);
-for i = 1:N
-    fprintf('[rs4-batch]   %d/%d  %s\n', i, N, families{i});
-    Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+if N_WORKERS > 0
+    parfor i = 1:N
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+    end
+else
+    for i = 1:N
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+    end
 end
 clear Sall;
 fprintf('[rs4-batch] Footprints built. Full atlases released.\n\n');
@@ -297,6 +301,9 @@ try
             && ~isempty(cfg.overlap.primary_buffer_frac)
         bufFrac = cfg.overlap.primary_buffer_frac;
     end
+    if ~(isfield(cfg,'sys') && isfield(cfg.sys,'RE_nd') && isfield(cfg.sys,'RM_nd'))
+        error('cfg.sys.RE_nd and cfg.sys.RM_nd required for primary buffer filter.');
+    end
     RE = cfg.sys.RE_nd;
     RM = cfg.sys.RM_nd;
     mu = FA.mu;
@@ -311,9 +318,9 @@ try
 
     x = grid3.x_centers(ix);
     y = grid3.y_centers(iy);
-    ok = okKeep(:) & ...
-         (hypot(x + mu, y)     > (1+bufFrac)*RE) & ...
-         (hypot(x - (1-mu), y) > (1+bufFrac)*RM);
+    okEarth = hypot(x + mu, y)     > (1 + bufFrac) * RE;
+    okMoon  = hypot(x - (1-mu), y) > (1 + bufFrac) * RM;
+    ok = okKeep(:) & okEarth(:) & okMoon(:);
 
     idsO = idsO(ok);
     if isempty(idsO), return; end
