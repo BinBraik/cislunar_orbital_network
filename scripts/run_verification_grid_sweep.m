@@ -132,17 +132,26 @@ runs(8).dtheta_deg   = 1.5;
 runs(8).dtheta_fan_deg = 1.5;
 runs(8).ds_seed      = 0.03;
 
-% ── Optional test run — edit freely, then set INCLUDE_TEST = true ────────────
-% Change .id each time to avoid overwriting a previous test result.
-runs(9).id           = 'RunTest_Custom';
-runs(9).dx           = 0.0005;
-runs(9).dy           = 0.0005;
-runs(9).dtheta_deg   = 0.5;
-runs(9).dtheta_fan_deg = 0.5;
-runs(9).ds_seed      = 0.01;
+% ── Optional test runs — add/remove entries freely ───────────────────────────
+% Each entry needs a unique .id (= output folder name).
+% All entries are ignored unless INCLUDE_TEST = true.
+test_runs(1).id            = 'RunTest_A';
+test_runs(1).dx            = 0.0005;
+test_runs(1).dy            = 0.0005;
+test_runs(1).dtheta_deg    = 0.5;
+test_runs(1).dtheta_fan_deg = 0.5;
+test_runs(1).ds_seed       = 0.01;
+% Duplicate and extend for more test runs:
+% test_runs(2).id            = 'RunTest_B';
+% test_runs(2).dx            = ...;  etc.
 
 nRunsTotal = ternary(INCLUDE_RUN7, 8, 7);
-if INCLUDE_TEST, nRunsTotal = nRunsTotal + 1; end
+if INCLUDE_TEST
+    for k = 1:numel(test_runs)
+        runs(end+1) = test_runs(k);  %#ok<AGROW>
+    end
+    nRunsTotal = numel(runs);
+end
 
 % ── Output root ──────────────────────────────────────────────────────────────
 verifyRoot = fullfile(repoRoot, 'rs4_verification_runs');
