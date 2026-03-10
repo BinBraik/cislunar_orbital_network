@@ -35,6 +35,13 @@ rehash;
 % ════════════════════════════════════════════════════════════════════════════
 N_WORKERS = 4;   % 0 = fully serial; N ≥ 1 = parfor with N workers
 
+% POOL_AFTER_ATLAS — when to start the parallel pool:
+%   true  (default/safe): pool starts AFTER atlas loading, right before
+%         footprint parfor.  Safe for fresh atlas builds (can take hours).
+%   false : pool starts before atlas loading (only safe when all atlases
+%         are cached and idle-worker timeout is not a concern).
+POOL_AFTER_ATLAS = true;
+
 families = { ...
     'Lyapunov L1', ...
     'Lyapunov L2', ...
@@ -122,8 +129,7 @@ fprintf('[rs4-batch] Mode  : %s\n\n', ...
 % ════════════════════════════════════════════════════════════════════════════
 %  1. LOAD ALL FAMILY ATLASES  (serial, main process — Java MD5 required)
 % ════════════════════════════════════════════════════════════════════════════
-% ── Parallel pool (create once, before heavy work) ───────────────────────────
-if N_WORKERS > 0
+if ~POOL_AFTER_ATLAS && N_WORKERS > 0
     pool = gcp('nocreate');
     if isempty(pool)
         parpool('local', N_WORKERS);
@@ -144,9 +150,16 @@ fprintf('[rs4-batch] Atlases loaded.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
 %  2. BUILD COMPACT FOOTPRINTS  (~5-25 MB each vs ~0.5-2 GB full atlas)
-%     Workers must stay active between atlas loading and the pair parfor —
-%     serial footprint building leaves them idle and risks HPC scheduler kill.
 % ════════════════════════════════════════════════════════════════════════════
+if POOL_AFTER_ATLAS && N_WORKERS > 0
+    pool = gcp('nocreate');
+    if isempty(pool)
+        parpool('local', N_WORKERS);
+        fprintf('[rs4-batch] Started parpool with %d workers.\n', N_WORKERS);
+    else
+        fprintf('[rs4-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
+    end
+end
 fprintf('[rs4-batch] Building voxel footprints...\n');
 Fall = cell(N, 1);
 if N_WORKERS > 0

@@ -49,6 +49,16 @@ rehash;
 N_WORKERS    = 4;      % 0 = fully serial; N ≥ 1 = parfor with N workers
 INCLUDE_RUN7 = false;  % set true to include the stress-coarse Run 7
 
+% POOL_AFTER_ATLAS — when to start the parallel pool:
+%   true  (default/safe): pool is created AFTER atlas loading, right before
+%         the footprint parfor.  Workers never idle through a fresh atlas build
+%         (which can take hours).  Use this when building atlases for the
+%         first time or when HPC scheduler kills idle workers.
+%   false : pool is created once at script start, before any atlas work.
+%         Only safe when all atlases are already cached (fast load) and
+%         worker idle-timeout is not a concern.
+POOL_AFTER_ATLAS = true;
+
 % ── Fixed parameters (same across all verification runs) ────────────────────
 DV_CAP_ND = 0.2;
 TMAX_ND   = pi;
@@ -151,8 +161,8 @@ for ii = 1:N
     end
 end
 
-% ── Start parallel pool once (reused across all runs) ────────────────────────
-if N_WORKERS > 0
+% ── Parallel pool — start now only if POOL_AFTER_ATLAS=false ─────────────────
+if ~POOL_AFTER_ATLAS && N_WORKERS > 0
     pool = gcp('nocreate');
     if isempty(pool)
         parpool('local', N_WORKERS);
@@ -241,10 +251,21 @@ for r = 1:nRunsTotal
         [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
     end
 
+    % ── Start pool after atlas loading (if POOL_AFTER_ATLAS=true) ───────────
+    % Fresh atlas builds can take hours; creating the pool after avoids leaving
+    % workers idle through that time (HPC schedulers kill idle workers).
+    % On subsequent runs the pool is already alive and is reused immediately.
+    if POOL_AFTER_ATLAS && N_WORKERS > 0
+        pool = gcp('nocreate');
+        if isempty(pool)
+            parpool('local', N_WORKERS);
+            fprintf('[verify] Started parpool with %d workers.\n', N_WORKERS);
+        else
+            fprintf('[verify] Reusing parpool (%d workers).\n', pool.NumWorkers);
+        end
+    end
+
     % ── Build compact footprints ─────────────────────────────────────────────
-    % parfor keeps workers active between atlas loading and the pair loop.
-    % Serial footprint building leaves pool workers idle → HPC scheduler may
-    % reclaim them → pair parfor hits dead workers → crash.
     fprintf('[verify] Building footprints...\n');
     Fall = cell(N, 1);
     if N_WORKERS > 0
