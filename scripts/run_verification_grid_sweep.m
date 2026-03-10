@@ -46,18 +46,8 @@ rehash;
 % ════════════════════════════════════════════════════════════════════════════
 %  USER KNOBS
 % ════════════════════════════════════════════════════════════════════════════
-N_WORKERS    = 4;      % 0 = fully serial; N ≥ 1 = parfor with N workers
+N_WORKERS    = 4;      % 0 = fully serial; N ≥ 1 = parfor atlas building
 INCLUDE_RUN7 = false;  % set true to include the stress-coarse Run 7
-
-% POOL_AFTER_ATLAS — when to start the parallel pool:
-%   true  (default/safe): pool is created AFTER atlas loading, right before
-%         the footprint parfor.  Workers never idle through a fresh atlas build
-%         (which can take hours).  Use this when building atlases for the
-%         first time or when HPC scheduler kills idle workers.
-%   false : pool is created once at script start, before any atlas work.
-%         Only safe when all atlases are already cached (fast load) and
-%         worker idle-timeout is not a concern.
-POOL_AFTER_ATLAS = true;
 
 % ── Fixed parameters (same across all verification runs) ────────────────────
 DV_CAP_ND = 0.2;
@@ -161,17 +151,6 @@ for ii = 1:N
     end
 end
 
-% ── Parallel pool — start now only if POOL_AFTER_ATLAS=false ─────────────────
-if ~POOL_AFTER_ATLAS && N_WORKERS > 0
-    pool = gcp('nocreate');
-    if isempty(pool)
-        parpool('local', N_WORKERS);
-        fprintf('[verify] Started parpool with %d workers.\n\n', N_WORKERS);
-    else
-        fprintf('[verify] Using existing parpool (%d workers).\n\n', pool.NumWorkers);
-    end
-end
-
 fprintf('[verify] Verification sweep: %d runs  |  families: %d  |  pairs: %d\n', ...
     nRunsTotal, N, nPairs);
 fprintf('[verify] Output root: %s\n\n', verifyRoot);
@@ -243,19 +222,10 @@ for r = 1:nRunsTotal
     % ── Build grid ───────────────────────────────────────────────────────────
     grid3 = rs3_grid_make(cfg);
 
-    % ── Load / build all 13 family atlases (serial — Java MD5 required) ──────
-    fprintf('[verify] Loading/building %d atlases...\n', N);
-    Sall = cell(N, 1);
-    for i = 1:N
-        fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
-        [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
-    end
-
-    % ── Start pool after atlas loading (if POOL_AFTER_ATLAS=true) ───────────
-    % Fresh atlas builds can take hours; creating the pool after avoids leaving
-    % workers idle through that time (HPC schedulers kill idle workers).
-    % On subsequent runs the pool is already alive and is reused immediately.
-    if POOL_AFTER_ATLAS && N_WORKERS > 0
+    % ── Create/reuse pool right before atlas parfor ──────────────────────────
+    % Pool is started here (fresh per run) so workers are never left idle during
+    % long atlas builds on an HPC scheduler that reclaims idle workers.
+    if N_WORKERS > 0
         pool = gcp('nocreate');
         if isempty(pool)
             parpool('local', N_WORKERS);
@@ -265,17 +235,25 @@ for r = 1:nRunsTotal
         end
     end
 
-    % ── Build compact footprints ─────────────────────────────────────────────
-    fprintf('[verify] Building footprints...\n');
-    Fall = cell(N, 1);
+    % ── Load / build all 13 family atlases (parallel) ────────────────────────
+    fprintf('[verify] Loading/building %d atlases...\n', N);
+    Sall = cell(N, 1);
     if N_WORKERS > 0
         parfor i = 1:N
-            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+            [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
         end
     else
         for i = 1:N
-            Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+            fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
+            [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
         end
+    end
+
+    % ── Build compact footprints (serial) ────────────────────────────────────
+    fprintf('[verify] Building footprints (serial)...\n');
+    Fall = cell(N, 1);
+    for i = 1:N
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
     end
     clear Sall;
     fprintf('[verify] Footprints built. Atlases released.\n');
@@ -300,21 +278,13 @@ for r = 1:nRunsTotal
     grid3_p = grid3;
     VU_p    = VU_mps;
 
-    fprintf('[verify] Running %d pair intersections...\n', nPairs);
+    fprintf('[verify] Running %d pair intersections (serial)...\n', nPairs);
     tPairs = tic;
 
-    if N_WORKERS > 0
-        parfor p = 1:nPairs
-            [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                pair_TOF(p), pair_voxelId(p)] = ...
-                local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
-        end
-    else
-        for p = 1:nPairs
-            [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                pair_TOF(p), pair_voxelId(p)] = ...
-                local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
-        end
+    for p = 1:nPairs
+        [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
+            pair_TOF(p), pair_voxelId(p)] = ...
+            local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
     end
     clear FA_arr FB_arr;
 
