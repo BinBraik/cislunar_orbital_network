@@ -1,22 +1,40 @@
 %% RUN_RS4_ALL_PAIRS_SUMMARY
-% Batch overlap runner over all family pairs with per-pair winner export
-% and summary CSV outputs.
-clear; clc;
-opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
+% Single-configuration DV-proxy batch runner over all 13×12/2 = 78 family pairs.
+%
+% REFACTORED to use the same footprint + parfor strategy as
+% run_rs4_dv_tmax_sweep.m (OOM-safe, no full atlas broadcast).
+%
+% Strategy:
+%   1. Load all 13 base atlases once (serial, main process — Java MD5 safe).
+%   2. Build compact per-family footprints (~5-25 MB each).
+%   3. Slice footprints into FA_arr / FB_arr (one entry per pair).
+%   4. Run pair loop: parfor over 78 pairs using sliced footprints.
+%   5. Assemble N×N minDVproxyMat + TOFmat and save outputs.
+%
+% Outputs written to <out_root>/<tag>/rs4_pairs_13fam/Summary/:
+%   minDVproxy_matrix.csv           — N×N DV matrix (m/s)
+%   pair_winners_top1.csv           — long-form winners table
+%   batch_summary_workspace.mat     — minDVproxyMat, T, cfg, families
+%
+% For per-pair figures and detailed overlap visualisation use
+%   run_rs4_overlap_and_visuals.m  (separate heavy pipeline).
 
-% --- hard-pin this repo paths ---
+clear; clc;
+
+% ── repo paths ───────────────────────────────────────────────────────────────
 thisFile = mfilename('fullpath');
 repoRoot = fileparts(fileparts(thisFile));
 restoredefaultpath; rehash toolboxcache;
 addpath(repoRoot);
-addpath(fullfile(repoRoot,'src'));
-addpath(fullfile(repoRoot,'scripts'));
+addpath(fullfile(repoRoot, 'src'));
+addpath(fullfile(repoRoot, 'scripts'));
 rehash;
 
-cfg = rs3_cfg_defaults();
+% ════════════════════════════════════════════════════════════════════════════
+%  USER KNOBS
+% ════════════════════════════════════════════════════════════════════════════
+N_WORKERS = 4;   % 0 = fully serial; N ≥ 1 = parfor with N workers
 
-% ===================== USER KNOBS =====================
-% If you want a specific subset/order, edit this list.
 families = { ...
     'Lyapunov L1', ...
     'Lyapunov L2', ...
@@ -33,17 +51,14 @@ families = { ...
     'Distant Prograde Orbit' ...
     };
 
-cfg.families.list = families;
+% ════════════════════════════════════════════════════════════════════════════
+%  CFG  (must match the cached atlases)
+% ════════════════════════════════════════════════════════════════════════════
+cfg = rs3_cfg_defaults();
+
+cfg.families.list      = families;
 cfg.families.test_only = false;
 
-cfg.io.save_figs   = true;
-cfg.io.save_fig    = false;
-cfg.io.fig_visible = 'off';
-
-cfg.cache.enable  = true;
-cfg.cache.rebuild = false;
-
-% grid settings (must match for both atlases)
 cfg.grid.dx               = 0.0005;
 cfg.grid.dy               = 0.0005;
 cfg.grid.dtheta           = deg2rad(0.5);
@@ -57,185 +72,180 @@ cfg.propag.v2tol          = 1e-8;
 cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 
-% zoom optional
-cfg.diag.zoom.enable = false;
-cfg.diag.zoom.xlim = [0.70 1.25];
-cfg.diag.zoom.ylim = [-0.45 0.45];
+cfg.cache.enable  = true;
+cfg.cache.rebuild = false;
 
-% Figure toggles (optional)
-cfg.plot.rs4.overlap_xy   = true;
+cfg.io.save_figs   = false;
+cfg.io.save_fig    = false;
+cfg.io.fig_visible = 'off';
+
+cfg.plot.rs4.overlap_xy   = false;
 cfg.plot.rs4.overlap_xyz  = false;
-cfg.plot.rs4.combo_xy     = true;
+cfg.plot.rs4.combo_xy     = false;
 cfg.plot.rs4.combo_xyz    = false;
-cfg.plot.rs4.bounds_lb    = true;
+cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = true;
+cfg.plot.rs4.bounds_proxy = false;
 
-rs3_cfg_validate(cfg);
-
-batchTag = sprintf('rs4_pairs_%dfam', numel(families));
-outRoot = fullfile(cfg.io.out_root, cfg.io.tag, batchTag);
-if ~exist(outRoot,'dir'), mkdir(outRoot); end
-summaryDir = fullfile(outRoot, 'Summary');
-if ~exist(summaryDir,'dir'), mkdir(summaryDir); end
-
-% ===================== BUILD GRID =====================
-grid3 = rs3_grid_make(cfg);
-if exist('rs3_grid_validate','file')==2
-    rs3_grid_validate(grid3, cfg);
+if exist('rs3_cfg_validate', 'file') == 2
+    rs3_cfg_validate(cfg);
 end
 
-% ===================== PREBUILD / LOAD ALL FAMILIES =====================
-N = numel(families);
-Sall = cell(N,1);
-InfoAll = cell(N,1);
-for i = 1:N
-    fam = families{i};
-    fprintf('[rs4-batch] build/load family %d/%d: %s\n', i, N, fam);
-    [Sall{i}, InfoAll{i}] = rs3_prepare_or_load_family(fam, cfg, grid3);
-end
+% ── Derived constants ────────────────────────────────────────────────────────
+VU_mps  = cfg.units.VU_mps;
+TU_days = cfg.units.TU_days;
+N       = numel(families);
 
-% ===================== SUMMARY HOLDERS =====================
-minDVproxyMat = nan(N,N);
-
-nPairs = N*(N-1)/2;
-colFamA = cell(nPairs,1);
-colFamB = cell(nPairs,1);
-colMinDV = nan(nPairs,1);
-colDVlb = nan(nPairs,1);
-colDVpatch = nan(nPairs,1);
-colTOF = nan(nPairs,1);
-colVoxelId = nan(nPairs,1);
-
-pairRow = 0;
-
-% ===================== PAIR LOOP =====================
-for i = 1:N
-    for j = i+1:N
-        pairRow = pairRow + 1;
-        famA = families{i};
-        famB = families{j};
-
-        colFamA{pairRow} = famA;
-        colFamB{pairRow} = famB;
-
-        pairTag = sprintf('%s__TO__%s', famA, famB);
-        pairSafe = rs3_sanitize_fname(pairTag);
-        pairDir = fullfile(outRoot, pairSafe);
-        if ~exist(pairDir,'dir'), mkdir(pairDir); end
-
-        fprintf('\n[rs4-batch] pair %d/%d: %s -> %s\n', pairRow, nPairs, famA, famB);
-
-        SA = Sall{i};
-        SB = Sall{j};
-
-        try
-            tPair = tic;
-
-            tStage = tic;
-            O = rs4_overlap_pair(SA, SB, cfg);
-            tOverlap = toc(tStage);
-
-            tStage = tic;
-            save(fullfile(pairDir, ['rs4_' pairSafe '_overlap.mat']), 'O', '-v7.3');
-            tSaveOverlap = toc(tStage);
-
-            if isempty(O.ids)
-                fprintf('[rs4-batch] no overlap for %s | %s\n', famA, famB);
-                status = struct('has_overlap', false, 'familyA', famA, 'familyB', famB, ...
-                    'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, 'dv_patch_ub_mps', NaN, ...
-                    'tof_est_days', NaN, 'voxel_id', NaN);
-                save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', '-v7.3');
-                continue;
-            end
-
-            tStage = tic;
-            V = rs4_overlap_extract_voxel_info(SA, SB, O, cfg);
-            tExtract = toc(tStage);
-
-            tStage = tic;
-            rs4_overlap_visualize(O, SA, SB, cfg, pairDir, pairTag);
-            tVizOverlap = toc(tStage);
-
-            tStage = tic;
-            rs4_overlap_visualize_combo(SA, SB, O, cfg, pairDir, pairTag);
-            tVizCombo = toc(tStage);
-
-            tStage = tic;
-            B = rs4_overlap_visualize_bounds(V, SA, SB, O, cfg, pairDir, pairTag);
-            tBounds = toc(tStage);
-
-            % Winner selection by DVproxy
-            dv = B.dv_proxy(:);
-            idxFinite = find(isfinite(dv));
-
-            if isempty(idxFinite)
-                fprintf('[rs4-batch] no finite DVproxy for %s | %s\n', famA, famB);
-                status = struct('has_overlap', true, 'familyA', famA, 'familyB', famB, ...
-                    'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, 'dv_patch_ub_mps', NaN, ...
-                    'tof_est_days', NaN, 'voxel_id', NaN);
-                save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', 'B', '-v7.3');
-                continue;
-            end
-
-            [~, orderLocal] = sort(dv(idxFinite), 'ascend');
-            iWinner = idxFinite(orderLocal(1));
-            minDV = dv(iWinner);
-            dvlbWinner = local_safe_index(B.dv_lb, iWinner);
-            dvpatchWinner = local_safe_index(B.dv_patch_ub, iWinner);
-
-            % Winner voxel info from flat V arrays
-            tofWinner = NaN;
-            voxelIdWinner = NaN;
-            if iWinner >= 1 && iWinner <= numel(V.ids)
-                voxelIdWinner = V.ids(iWinner);
-                tofWinner = V.t_days_mean_A(iWinner) + V.t_days_mean_B(iWinner);
-            end
-
-            % Fill summary matrix and row
-            minDVproxyMat(i,j) = minDV;
-            minDVproxyMat(j,i) = minDV;
-
-            colMinDV(pairRow) = minDV;
-            colDVlb(pairRow) = dvlbWinner;
-            colDVpatch(pairRow) = dvpatchWinner;
-            colTOF(pairRow) = tofWinner;
-            colVoxelId(pairRow) = voxelIdWinner;
-
-            % Save winner + full bounds (DVproxy for all voxels) per pair
-            winnerMeta = struct();
-            winnerMeta.familyA = famA;
-            winnerMeta.familyB = famB;
-            winnerMeta.pairTag = pairTag;
-            winnerMeta.generated = datestr(now, 31);
-            winnerMeta.units = struct('dv','m/s','tof','days');
-            winnerMeta.grid = struct('dx',grid3.dx,'dy',grid3.dy,'dtheta',grid3.dtheta);
-            winnerMeta.iWinner = iWinner;
-            winnerMeta.voxel_id = voxelIdWinner;
-            winnerMeta.min_dvproxy_mps = minDV;
-            winnerMeta.dv_lb_mps = dvlbWinner;
-            winnerMeta.dv_patch_ub_mps = dvpatchWinner;
-            winnerMeta.tof_est_days = tofWinner;
-
-            save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), ...
-                'winnerMeta', 'B', '-v7.3');
-
-            fprintf('[rs4-batch] timings: overlap=%.2fs saveO=%.2fs extract=%.2fs vizO=%.2fs vizCombo=%.2fs bounds=%.2fs total=%.2fs\n', ...
-                tOverlap, tSaveOverlap, tExtract, tVizOverlap, tVizCombo, tBounds, toc(tPair));
-
-            fprintf('[rs4-batch] min DVproxy = %.3f m/s (voxel id %d)\n', minDV, round(voxelIdWinner));
-
-        catch ME
-            warning('[rs4-batch] pair failed for %s | %s: %s', famA, famB, ME.message);
-            status = struct('has_overlap', false, 'familyA', famA, 'familyB', famB, ...
-                'error', ME.message, 'min_dvproxy_mps', NaN, 'dv_lb_mps', NaN, ...
-                'dv_patch_ub_mps', NaN, 'tof_est_days', NaN, 'voxel_id', NaN);
-            save(fullfile(pairDir, ['rs4_' pairSafe '_pair_result.mat']), 'status', '-v7.3');
-        end
+% ── Enumerate pairs ──────────────────────────────────────────────────────────
+nPairs = N * (N-1) / 2;
+pairI  = zeros(nPairs, 1);
+pairJ  = zeros(nPairs, 1);
+p = 0;
+for ii = 1:N
+    for jj = ii+1:N
+        p = p + 1;
+        pairI(p) = ii;
+        pairJ(p) = jj;
     end
 end
 
-% ===================== SUMMARY CSV #1: matrix =====================
+% ── Output directories ───────────────────────────────────────────────────────
+batchTag   = sprintf('rs4_pairs_%dfam', N);
+outRoot    = fullfile(cfg.io.out_root, cfg.io.tag, batchTag);
+summaryDir = fullfile(outRoot, 'Summary');
+if ~exist(summaryDir, 'dir'), mkdir(summaryDir); end
+
+fprintf('[rs4-batch] Output: %s\n', summaryDir);
+fprintf('[rs4-batch] Mode  : %s\n\n', ...
+    ternary(N_WORKERS > 0, sprintf('PARALLEL (%d workers)', N_WORKERS), 'SERIAL'));
+
+% ════════════════════════════════════════════════════════════════════════════
+%  1. LOAD ALL FAMILY ATLASES  (serial, main process — Java MD5 required)
+% ════════════════════════════════════════════════════════════════════════════
+fprintf('[rs4-batch] Loading %d family atlases...\n', N);
+grid3 = rs3_grid_make(cfg);
+Sall  = cell(N, 1);
+for i = 1:N
+    fprintf('[rs4-batch]   %d/%d  %s\n', i, N, families{i});
+    [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
+end
+fprintf('[rs4-batch] Atlases loaded.\n\n');
+
+% ════════════════════════════════════════════════════════════════════════════
+%  2. BUILD COMPACT FOOTPRINTS  (~5-25 MB each vs ~0.5-2 GB full atlas)
+% ════════════════════════════════════════════════════════════════════════════
+fprintf('[rs4-batch] Building voxel footprints...\n');
+Fall = cell(N, 1);
+if N_WORKERS > 0
+    pool = gcp('nocreate');
+    if isempty(pool), parpool('local', N_WORKERS); end
+    parfor i = 1:N
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+    end
+else
+    for i = 1:N
+        Fall{i} = local_compute_footprint(Sall{i}, grid3, VU_mps, TU_days);
+    end
+end
+clear Sall;
+fprintf('[rs4-batch] Footprints built. Full atlases released.\n\n');
+
+% ════════════════════════════════════════════════════════════════════════════
+%  3. SLICE INTO PER-PAIR ARRAYS  (required for parfor slicing)
+% ════════════════════════════════════════════════════════════════════════════
+FA_arr = cell(nPairs, 1);
+FB_arr = cell(nPairs, 1);
+for p = 1:nPairs
+    FA_arr{p} = Fall{pairI(p)};
+    FB_arr{p} = Fall{pairJ(p)};
+end
+clear Fall;
+
+% ════════════════════════════════════════════════════════════════════════════
+%  4. PAIR LOOP  (parfor over 78 pairs — sliced footprints only)
+% ════════════════════════════════════════════════════════════════════════════
+fprintf('[rs4-batch] Running %d pair intersections...\n', nPairs);
+tPairs = tic;
+
+pair_minDV   = nan(nPairs, 1);
+pair_DVlb    = nan(nPairs, 1);
+pair_DVpatch = nan(nPairs, 1);
+pair_TOF     = nan(nPairs, 1);
+pair_voxelId = nan(nPairs, 1);
+
+cfg_p   = cfg;
+grid3_p = grid3;
+VU_p    = VU_mps;
+
+if N_WORKERS > 0
+    parfor p = 1:nPairs
+        [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
+            pair_TOF(p), pair_voxelId(p)] = ...
+            local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
+    end
+else
+    for p = 1:nPairs
+        fprintf('[rs4-batch]   pair %d/%d: %-28s → %s\n', ...
+            p, nPairs, families{pairI(p)}, families{pairJ(p)});
+        [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
+            pair_TOF(p), pair_voxelId(p)] = ...
+            local_run_pair(FA_arr{p}, FB_arr{p}, grid3_p, cfg_p, VU_p);
+    end
+end
+clear FA_arr FB_arr;
+
+n_overlap = sum(isfinite(pair_minDV));
+fprintf('[rs4-batch] Pair loop done in %.1f s — %d/%d pairs have overlap.\n\n', ...
+    toc(tPairs), n_overlap, nPairs);
+
+% ════════════════════════════════════════════════════════════════════════════
+%  5. ASSEMBLE N×N MATRICES
+% ════════════════════════════════════════════════════════════════════════════
+minDVproxyMat = nan(N, N);
+TOFmat        = nan(N, N);
+for p = 1:nPairs
+    i = pairI(p);  j = pairJ(p);
+    minDVproxyMat(i, j) = pair_minDV(p);
+    minDVproxyMat(j, i) = pair_minDV(p);
+    TOFmat(i, j)        = pair_TOF(p);
+    TOFmat(j, i)        = pair_TOF(p);
+end
+
+% ── Winners table (same format as before — compatible with tmax sweep scanner) ──
+pair_famA = families(pairI);
+pair_famB = families(pairJ);
+T = table(pair_famA(:), pair_famB(:), ...
+    pair_minDV, pair_DVlb, pair_DVpatch, pair_TOF, pair_voxelId, ...
+    'VariableNames', { ...
+        'FamilyA', 'FamilyB', ...
+        'minDVproxy_mps', 'DVlb_mps', 'DVpatch_ub_mps', ...
+        'EstimatedTOF_days', 'VoxelId'});
+T = sortrows(T, 'minDVproxy_mps', 'MissingPlacement', 'last');
+
+% ════════════════════════════════════════════════════════════════════════════
+%  6. PRINT SUMMARY
+% ════════════════════════════════════════════════════════════════════════════
+fprintf('[rs4-batch] ===== DV PROXY SUMMARY =====\n');
+fprintf('  Total pairs        : %d\n', nPairs);
+fprintf('  Pairs with overlap : %d\n', n_overlap);
+fprintf('  Pairs no overlap   : %d\n', nPairs - n_overlap);
+if n_overlap > 0
+    valid_dv = pair_minDV(isfinite(pair_minDV));
+    fprintf('  Min proxy DV       : %.1f m/s\n', min(valid_dv));
+    fprintf('  Max proxy DV       : %.1f m/s\n', max(valid_dv));
+    fprintf('  Mean proxy DV      : %.1f m/s\n', mean(valid_dv));
+    fprintf('\n  Top-5 pairs by proxy DV:\n');
+    top5 = min(5, n_overlap);
+    for k = 1:top5
+        fprintf('    %2d. %-26s → %-26s  %.1f m/s\n', ...
+            k, T.FamilyA{k}, T.FamilyB{k}, T.minDVproxy_mps(k));
+    end
+end
+
+% ════════════════════════════════════════════════════════════════════════════
+%  7. SAVE OUTPUTS
+% ════════════════════════════════════════════════════════════════════════════
+% CSV 1: N×N matrix
 matrixCell = cell(N+1, N+1);
 matrixCell{1,1} = 'Family';
 for i = 1:N
@@ -247,40 +257,202 @@ for i = 1:N
 end
 writecell(matrixCell, fullfile(summaryDir, 'minDVproxy_matrix.csv'));
 
-% ===================== SUMMARY CSV #2: long table (top-1/pair) =====================
-T = table(colFamA, colFamB, colMinDV, colDVlb, colDVpatch, colTOF, colVoxelId, ...
-    'VariableNames', {'FamilyA','FamilyB','minDVproxy_mps','DVlb_mps','DVpatch_ub_mps','EstimatedTOF_days','VoxelId'});
+% CSV 2: long-form winners
 writetable(T, fullfile(summaryDir, 'pair_winners_top1.csv'));
 
-save(fullfile(summaryDir, 'batch_summary_workspace.mat'), 'families', 'minDVproxyMat', 'T', 'cfg', 'InfoAll', '-v7.3');
+% MAT workspace (compatible with run_rs4_dv_tmax_sweep.m scanner)
+save(fullfile(summaryDir, 'batch_summary_workspace.mat'), ...
+    'families', 'minDVproxyMat', 'TOFmat', 'T', 'cfg', '-v7.3');
 
-fprintf('\n[rs4-batch] done.\n');
-fprintf('  root:    %s\n', outRoot);
-fprintf('  summary: %s\n', summaryDir);
+fprintf('\n[rs4-batch] Done.\n');
+fprintf('  Summary dir: %s\n', summaryDir);
 
-% ===================== local helpers =====================
-function v = local_safe_index(arr, idx)
-v = NaN;
-if isempty(arr), return; end
-arr = arr(:);
-if idx >= 1 && idx <= numel(arr)
-    v = arr(idx);
-end
-end
+% ════════════════════════════════════════════════════════════════════════════
+%  LOCAL FUNCTIONS  (identical to run_rs4_dv_tmax_sweep.m)
+% ════════════════════════════════════════════════════════════════════════════
 
-function v = local_cfg_get(cfg, path, defaultVal)
-v = defaultVal;
+% ─────────────────────────────────────────────────────────────────────────────
+function [minDV, dvlb, dvpatch, tof, voxelId] = ...
+        local_run_pair(FA, FB, grid3, cfg, VU_mps)
+%LOCAL_RUN_PAIR  Compute DV proxy and TOF for one pair using footprints.
+minDV = NaN;  dvlb = NaN;  dvpatch = NaN;  tof = NaN;  voxelId = NaN;
 try
-    parts = strsplit(path, '.');
-    cur = cfg;
-    for i = 1:numel(parts)
-        k = parts{i};
-        if ~isstruct(cur) || ~isfield(cur, k), return; end
-        cur = cur.(k);
+    idsO = intersect(FA.uid_frs, FB.uid_brs);
+    if isempty(idsO), return; end
+
+    Ny = numel(grid3.y_centers);
+    Nx = numel(grid3.x_centers);
+    Nt = numel(grid3.th_centers);
+    [iy, ix, ~] = ind2sub([Ny, Nx, Nt], idsO);
+
+    bufFrac = 0.05;
+    if isfield(cfg,'overlap') && isfield(cfg.overlap,'primary_buffer_frac') ...
+            && ~isempty(cfg.overlap.primary_buffer_frac)
+        bufFrac = cfg.overlap.primary_buffer_frac;
     end
-    if ~isempty(cur), v = cur; end
-catch
-    v = defaultVal;
+    RE = cfg.sys.RE_nd;
+    RM = cfg.sys.RM_nd;
+    mu = FA.mu;
+
+    if isfield(grid3,'Keep') && ~isempty(grid3.Keep)
+        keepXY = logical(grid3.Keep);
+        if ~isequal(size(keepXY), [Ny, Nx]), keepXY = keepXY.'; end
+        okKeep = keepXY(sub2ind([Ny, Nx], iy, ix));
+    else
+        okKeep = true(numel(idsO), 1);
+    end
+
+    x = grid3.x_centers(ix);
+    y = grid3.y_centers(iy);
+    ok = okKeep(:) & ...
+         (hypot(x + mu, y)     > (1+bufFrac)*RE) & ...
+         (hypot(x - (1-mu), y) > (1+bufFrac)*RM);
+
+    idsO = idsO(ok);
+    if isempty(idsO), return; end
+    ix = ix(ok);  iy = iy(ok);
+
+    [~, locA] = ismember(idsO, FA.uid_frs);
+    [~, locB] = ismember(idsO, FB.uid_brs);
+    dv_min_A = FA.dv_min_frs(locA);
+    dv_min_B = FB.dv_min_brs(locB);
+    t_mean_A = FA.t_mean_frs(locA);
+    t_mean_B = FB.t_mean_brs(locB);
+
+    x_ok = grid3.x_centers(ix);
+    y_ok = grid3.y_centers(iy);
+    CJstar = min(FA.CJ, FB.CJ);
+    pot    = rs3_core_cr3bp_U_and_derivs(x_ok(:), y_ok(:), mu);
+    v_box  = sqrt(max(2*pot.U - CJstar, 0));
+    dv_patch_vec = 2*v_box .* sin(abs(grid3.dtheta)/2) * VU_mps;
+    dv_lb_vec    = dv_min_A(:) + dv_min_B(:);
+    dv_proxy     = dv_lb_vec + dv_patch_vec;
+
+    valid = isfinite(dv_proxy);
+    if ~any(valid), return; end
+
+    idxValid  = find(valid);
+    [~, iLoc] = min(dv_proxy(idxValid));
+    iWin      = idxValid(iLoc);
+
+    minDV   = dv_proxy(iWin);
+    dvlb    = dv_lb_vec(iWin);
+    dvpatch = dv_patch_vec(iWin);
+    voxelId = idsO(iWin);
+    tof     = t_mean_A(iWin) + t_mean_B(iWin);
+catch ME
+    warning('[rs4-batch:pair] %s', ME.message);
 end
 end
 
+% ─────────────────────────────────────────────────────────────────────────────
+function F = local_compute_footprint(S, grid3, VU_mps, TU_days)
+%LOCAL_COMPUTE_FOOTPRINT  Build compact per-voxel summary for one atlas family.
+Ny = numel(grid3.y_centers);
+Nx = numel(grid3.x_centers);
+Nt = numel(grid3.th_centers);
+
+thm    = rs3_wrapToPi(pi - grid3.th_centers(:));
+lut    = discretize(thm, grid3.th_edges);
+lut(isnan(lut)) = 0;
+it_lut = uint16(lut);
+
+dlists = S.Step4.delta_lists;
+Ns     = numel(dlists);
+max_h  = max(1, max(cellfun(@numel, dlists)));
+delta_mat = zeros(Ns, max_h);
+for s = 1:Ns
+    v = double(dlists{s});
+    delta_mat(s, 1:numel(v)) = v;
+end
+
+pot_u    = rs3_core_cr3bp_U_and_derivs(S.SeedsUpper(:,1), S.SeedsUpper(:,2), S.mu);
+v0_upper = sqrt(max(2*pot_u.U(:) - S.CJ, 0));
+if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
+    pot_l    = rs3_core_cr3bp_U_and_derivs(S.SeedsLower(:,1), S.SeedsLower(:,2), S.mu);
+    v0_lower = sqrt(max(2*pot_l.U(:) - S.CJ, 0));
+else
+    v0_lower = v0_upper;
+end
+
+nu = double(S.Step4.rows_FRS_upper.n);
+if nu > 0
+    [ids_u, dv_u, t_u, ix_u, iy_u, it_u] = local_fp_rows( ...
+        S.Step4.rows_FRS_upper, nu, v0_upper, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
+else
+    ids_u=zeros(0,1); dv_u=zeros(0,1); t_u=zeros(0,1);
+    ix_u=zeros(0,1);  iy_u=zeros(0,1); it_u=zeros(0,1);
+end
+
+nl = double(S.Step4.rows_FRS_lower.n);
+if nl > 0
+    [ids_l, dv_l, t_l, ix_l, iy_l, it_l] = local_fp_rows( ...
+        S.Step4.rows_FRS_lower, nl, v0_lower, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
+else
+    ids_l=zeros(0,1); dv_l=zeros(0,1); t_l=zeros(0,1);
+    ix_l=zeros(0,1);  iy_l=zeros(0,1); it_l=zeros(0,1);
+end
+
+[F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
+    [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
+
+if ~isempty(ix_u)
+    biy_u = Ny - iy_u + 1;
+    bit_u = double(it_lut(it_u));
+    ok_u  = bit_u > 0;
+    ids_brs_u = sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), max(1,min(Nt,bit_u(ok_u))));
+    dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
+else
+    ids_brs_u = zeros(0,1);  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
+end
+
+if ~isempty(ix_l)
+    biy_l = Ny - iy_l + 1;
+    bit_l = double(it_lut(it_l));
+    ok_l  = bit_l > 0;
+    ids_brs_l = sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), max(1,min(Nt,bit_l(ok_l))));
+    dv_bl = dv_l(ok_l);  t_bl = t_l(ok_l);
+else
+    ids_brs_l = zeros(0,1);  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
+end
+
+[F.uid_brs, F.dv_min_brs, F.t_mean_brs] = local_fp_agg( ...
+    [ids_brs_u; ids_brs_l], [dv_bu; dv_bl], [t_bu; t_bl]);
+
+F.CJ   = S.CJ;
+F.mu   = S.mu;
+F.name = S.name;
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
+        rows, n, v0_per_seed, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
+ix_out = double(rows.ix(1:n));
+iy_out = double(rows.iy(1:n));
+it_out = double(rows.it(1:n));
+ids    = sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out);
+iSeed  = double(rows.iSeed(1:n));
+iHead  = double(rows.iHead(1:n));
+t_nd   = double(rows.t(1:n));
+lin    = sub2ind([Ns, max_h], iSeed, iHead);
+delta  = delta_mat(lin);
+v0     = v0_per_seed(iSeed);
+dv_mps = 2 * v0(:) .* sin(abs(delta(:)) / 2) * VU_mps;
+t_days = abs(t_nd(:)) * TU_days;
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function [uid, dv_min, t_mean] = local_fp_agg(ids, dv, t)
+if isempty(ids)
+    uid = zeros(0,1);  dv_min = zeros(0,1);  t_mean = zeros(0,1);
+    return;
+end
+[uid, ~, ic] = unique(ids(:));
+dv_min = accumarray(ic, dv(:), [], @min);
+t_mean = accumarray(ic, t(:)) ./ accumarray(ic, ones(numel(ic), 1));
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+function out = ternary(cond, a, b)
+if cond, out = a; else, out = b; end
+end
