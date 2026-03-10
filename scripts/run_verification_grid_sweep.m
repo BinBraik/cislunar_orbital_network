@@ -48,6 +48,7 @@ rehash;
 % ════════════════════════════════════════════════════════════════════════════
 N_WORKERS    = 4;      % 0 = fully serial; N ≥ 1 = parfor atlas building
 INCLUDE_RUN7 = false;  % set true to include the stress-coarse Run 7
+INCLUDE_TEST = false;  % set true + edit RunTest_Custom below to add a test run
 
 % ── Fixed parameters (same across all verification runs) ────────────────────
 DV_CAP_ND = 0.2;
@@ -131,7 +132,17 @@ runs(8).dtheta_deg   = 1.5;
 runs(8).dtheta_fan_deg = 1.5;
 runs(8).ds_seed      = 0.03;
 
+% ── Optional test run — edit freely, then set INCLUDE_TEST = true ────────────
+% Change .id each time to avoid overwriting a previous test result.
+runs(9).id           = 'RunTest_Custom';
+runs(9).dx           = 0.0005;
+runs(9).dy           = 0.0005;
+runs(9).dtheta_deg   = 0.5;
+runs(9).dtheta_fan_deg = 0.5;
+runs(9).ds_seed      = 0.01;
+
 nRunsTotal = ternary(INCLUDE_RUN7, 8, 7);
+if INCLUDE_TEST, nRunsTotal = nRunsTotal + 1; end
 
 % ── Output root ──────────────────────────────────────────────────────────────
 verifyRoot = fullfile(repoRoot, 'rs4_verification_runs');
