@@ -235,18 +235,17 @@ for r = 1:nRunsTotal
         end
     end
 
-    % ── Load / build all 13 family atlases (parallel) ────────────────────────
-    fprintf('[verify] Loading/building %d atlases...\n', N);
+    % ── Load / build all 13 family atlases (serial families, parallel jobs) ──
+    % Parallelism lives INSIDE each family (parfor over seed×heading jobs in
+    % rs3_family_build_hits).  Running families in parfor would nest pools and
+    % force the inner loop serial — exactly the wrong level.
+    cfg.par.enable = (N_WORKERS > 0);
+    fprintf('[verify] Loading/building %d atlases (serial families, inner parfor=%d)...\n', ...
+        N, cfg.par.enable);
     Sall = cell(N, 1);
-    if N_WORKERS > 0
-        parfor i = 1:N
-            [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
-        end
-    else
-        for i = 1:N
-            fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
-            [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
-        end
+    for i = 1:N
+        fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
+        [Sall{i}, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
     end
 
     % ── Build compact footprints (serial) ────────────────────────────────────
