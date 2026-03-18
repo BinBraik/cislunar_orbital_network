@@ -1,4 +1,4 @@
-function metrics = net_centrality(A, W, D_sym, dist, DVcap_true_mps, VU_mps, Rmin_guard)
+function metrics = net_centrality(A, W, D_sym, dist, DVcap_true_mps)
 %NET_CENTRALITY  Compute node centrality metrics for one snapshot (Steps 5-9).
 %
 %   All metrics are computed on the feasible-edge topology established by
@@ -11,21 +11,16 @@ function metrics = net_centrality(A, W, D_sym, dist, DVcap_true_mps, VU_mps, Rmi
 %   D_sym          [N×N double]  symmetrised DV matrix (Inf for NaN/missing, 0 diag)
 %   dist           [N×N double]  all-pairs shortest paths from net_floyd_warshall
 %   DVcap_true_mps scalar        physical DV budget (m/s)
-%   VU_mps         scalar        velocity unit (m/s)
-%   Rmin_guard     scalar        min R_budget to qualify for reach winner
-%                                (stored in output; caller applies it in tie logic)
 %
 % Outputs — struct with fields:
-%   R_budget       [N×1]  fraction of budget-reachable destinations
-%   reach          [N×1]  normalised sum of inverse shortest-path distances
-%   gateway        [N×1]  DV-betweenness over budget-reachable OD pairs
-%   hub            [N×1]  sum of inverse direct-edge DV costs
-%   is_articulation [N×1 logical]  articulation-point flag
-%   budget_reach   [N×N logical]  pair-level budget-reachability matrix
-%   Rmin_guard     scalar  (passed through for downstream use)
+%   R_budget           [N×1]  fraction of budget-reachable destinations
+%   harmonic_closeness [N×1]  H(A) = 1/(N-1) * sum_{B!=A} 1/d(A,B)
+%   betweenness        [N×1]  B(A) = 2/((N-1)(N-2)) * sum_{S<T,S,T!=A} sigma_ST(A)/sigma_ST
+%   strength           [N×1]  S(A) = 1/(N-1) * sum_{B in Gamma(A)} 1/w(A,B)
+%   is_articulation   [N×1 logical]  articulation-point flag
+%   budget_reach      [N×N logical]  pair-level budget-reachability matrix
 
 N       = size(A, 1);
-eps_dv  = 1e-3 * VU_mps;   % ~1 m/s floor; prevents hub division by zero
 tol_rel = 1e-6;             % relative tolerance for path-cost equality
 
 % ── Step 5: Budgeted reachability per node ───────────────────────────────────
@@ -35,26 +30,28 @@ budget_reach(1:N+1:end) = false;          % exclude self
 
 R_budget = sum(budget_reach, 2) / (N - 1);
 
-% ── Step 6: REACH metric ─────────────────────────────────────────────────────
-% reach(i) = sum_{j budget-reachable} [ 1/dist(i,j) ] / (N-1)
-% Rewards nodes that sit close (in DV) to many others.
-reach = zeros(N, 1);
+% ── Step 6: Harmonic closeness ───────────────────────────────────────────────
+% H(A) = 1/(N-1) * sum_{B != A} 1/d(A,B)
+% Pairs with no admissible path have d = inf, contributing 1/inf = 0.
+harmonic_closeness = zeros(N, 1);
 for i = 1:N
     dests = find(budget_reach(i, :));
     if isempty(dests), continue; end
-    reach(i) = sum(1 ./ dist(i, dests)) / (N - 1);
+    harmonic_closeness(i) = sum(1 ./ dist(i, dests)) / (N - 1);
 end
 
-% ── Step 7: GATEWAY metric ───────────────────────────────────────────────────
-% DV-weighted betweenness centrality over budget-reachable OD pairs only.
-% gateway(i) = (sum over valid (s,t) of fraction of shortest paths through i)
-%              / max(1, number_of_valid_OD_pairs)
+% ── Step 7: Betweenness ──────────────────────────────────────────────────────
+% B(A) = 2/((N-1)(N-2)) * sum_{S<T, S,T != A} sigma_ST(A)/sigma_ST
 %
-% First pre-compute sigma(s,v) = number of DV-shortest paths from s to v.
-% Process nodes in increasing distance from s; predecessor u satisfies
-%   isfinite(W(u,v))  [direct edge]  AND  dist(s,u)+W(u,v) ≈ dist(s,v).
-
-sigma = zeros(N, N);          % sigma(s, v)
+% Accumulated using ordered pairs (equivalent since network is undirected;
+% ordered sum = 2 × unordered sum, and the factor 2 cancels with the
+% 1/(N-1)/(N-2) normalization to give B(A) = ordered_sum / ((N-1)*(N-2))).
+%
+% Normalisation denominator is FIXED at (N-1)*(N-2), independent of budget.
+% Pairs with no admissible path contribute 0.
+%
+% Pre-compute sigma(s,v) = number of DV-shortest paths from s to v.
+sigma = zeros(N, N);
 for s = 1:N
     sigma(s, s) = 1;
     [~, order] = sort(dist(s, :));   % process in increasing dist from s
@@ -75,15 +72,12 @@ for s = 1:N
     end
 end
 
-% Accumulate betweenness
-gateway     = zeros(N, 1);
-valid_pairs = 0;
+% Accumulate betweenness via ordered-pair loop
+betweenness = zeros(N, 1);
 
 for s = 1:N
     for t = 1:N
         if s == t || ~budget_reach(s, t), continue; end
-        valid_pairs = valid_pairs + 1;
-
         if sigma(s, t) == 0, continue; end
 
         d_st    = dist(s, t);
@@ -93,39 +87,37 @@ for s = 1:N
             if i == s || i == t,       continue; end
             if ~isfinite(dist(s, i)) || ~isfinite(dist(i, t)), continue; end
             if abs(dist(s, i) + dist(i, t) - d_st) <= tol_st
-                % Fraction of s→t shortest paths passing through i:
-                %   sigma(s,i) * sigma(i,t) / sigma(s,t)
-                gateway(i) = gateway(i) + ...
+                betweenness(i) = betweenness(i) + ...
                     (sigma(s, i) * sigma(i, t)) / sigma(s, t);
             end
         end
     end
 end
 
-if valid_pairs > 0
-    gateway = gateway / valid_pairs;
+% Fixed normalisation: ordered_sum / ((N-1)*(N-2))  [equivalent to manuscript]
+if N >= 3
+    betweenness = betweenness / ((N - 1) * (N - 2));
 end
 
-% ── Step 8: HUB metric ───────────────────────────────────────────────────────
-% hub(i) = sum_{j: direct feasible edge} [ 1 / (D(i,j) + eps) ]
-% Uses raw (symmetrised) DV, not shortest-path distances.
-hub = zeros(N, 1);
+% ── Step 8: Strength ─────────────────────────────────────────────────────────
+% S(A) = 1/(N-1) * sum_{B in Gamma(A)} 1/w(A,B)
+% Uses raw (symmetrised) DV for direct feasible edges; normalised by (N-1).
+strength = zeros(N, 1);
 for i = 1:N
     nbrs = find(A(i, :));
     if isempty(nbrs), continue; end
-    hub(i) = sum(1 ./ (D_sym(i, nbrs) + eps_dv));
+    strength(i) = sum(1 ./ D_sym(i, nbrs)) / (N - 1);
 end
 
 % ── Step 9: Articulation points ──────────────────────────────────────────────
 is_articulation = net_articulation(A);
 
 % ── Pack output ──────────────────────────────────────────────────────────────
-metrics.R_budget        = R_budget;
-metrics.reach           = reach;
-metrics.gateway         = gateway;
-metrics.hub             = hub;
-metrics.is_articulation = is_articulation;
-metrics.budget_reach    = budget_reach;
-metrics.Rmin_guard      = Rmin_guard;
+metrics.R_budget           = R_budget;
+metrics.harmonic_closeness = harmonic_closeness;
+metrics.betweenness        = betweenness;
+metrics.strength           = strength;
+metrics.is_articulation    = is_articulation;
+metrics.budget_reach       = budget_reach;
 
 end
