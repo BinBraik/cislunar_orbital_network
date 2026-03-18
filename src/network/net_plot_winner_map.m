@@ -338,16 +338,9 @@ hold(ax, 'on');
 % ── 1. Black dashed: LCC fully connected — inline "LCC=13" label ──────────────
 Z_lcc = lcc_full_map';   % [nTmax × nDV]
 if any(Z_lcc(:) == 0) && any(Z_lcc(:) == 1)
-    [C1, h1] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
-                       'k--', 'LineWidth', 1.5);
-    % clabel breaks the line and places the label inline (native style).
-    % Text labels are children of h1, not of ax — must use findobj(h1, ...).
-    clabel(C1, h1, 'FontSize', 7, 'Color', 'k', 'LabelSpacing', 800); %#ok<CLABEL>
-    drawnow;
-    new_txt = findobj(h1, 'Type', 'text');
-    if ~isempty(new_txt)
-        set(new_txt, 'String', 'LCC=13', 'BackgroundColor', 'none', 'Margin', 0.1);
-    end
+    [C1, ~] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
+                      'k--', 'LineWidth', 1.5);
+    i_place_inline_label(ax, C1, 'LCC=13', 'k', 7);
 end
 
 % ── 2. Red dashed: all pairs budget-reachable — no label ──────────────────────
@@ -361,6 +354,68 @@ if ~isempty(budget_pairs_map) && any(isfinite(budget_pairs_map(:)))
 end
 
 end   % end i_overlay_two_contours
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+function i_place_inline_label(ax, C, lbl, col, fsz)
+%I_PLACE_INLINE_LABEL  Place a rotated text label at the midpoint of the
+%   longest contour segment in C, with no background box.
+%   Rotation matches the local contour direction in display (pixel) space.
+
+if isempty(C) || size(C, 2) < 2, return; end
+
+% --- Find longest contour segment ---
+best_len = 0;  best_k = 0;
+k = 1;
+while k <= size(C, 2)
+    n = C(2, k);
+    if n < 2 || k + n > size(C, 2), break; end
+    dx = diff(C(1, k+1:k+n));
+    dy = diff(C(2, k+1:k+n));
+    L  = sum(sqrt(dx.^2 + dy.^2));
+    if L > best_len
+        best_len = L;
+        best_k   = k;
+    end
+    k = k + n + 1;
+end
+if best_k == 0, return; end
+
+n     = C(2, best_k);
+seg_x = C(1, best_k+1 : best_k+n);
+seg_y = C(2, best_k+1 : best_k+n);
+dx    = diff(seg_x);
+dy    = diff(seg_y);
+arc   = cumsum([0, sqrt(dx.^2 + dy.^2)]);
+
+% --- Midpoint index ---
+[~, mi] = min(abs(arc - arc(end)/2));
+mi = max(2, min(mi, numel(seg_x)-1));
+px = seg_x(mi);
+py = seg_y(mi);
+
+% --- Rotation angle: convert data-space direction to display-space degrees ---
+fig   = ancestor(ax, 'figure');
+fpos  = get(fig, 'Position');   % [left bottom width height] in pixels
+axpos = get(ax,  'Position');   % normalised [left bottom width height]
+xl = xlim(ax);  yl = ylim(ax);
+sx = (axpos(3) * fpos(3)) / (xl(2) - xl(1));   % pixels per data-x unit
+sy = (axpos(4) * fpos(4)) / (yl(2) - yl(1));   % pixels per data-y unit
+
+ddx = (seg_x(mi+1) - seg_x(mi-1)) * sx;
+ddy = (seg_y(mi+1) - seg_y(mi-1)) * sy;
+ang = atan2d(ddy, ddx);
+if abs(ang) > 90, ang = ang + 180; end   % keep text right-side up
+
+% --- Place text ---
+text(ax, px, py, lbl, ...
+     'Color', col, 'FontSize', fsz, 'FontWeight', 'bold', ...
+     'Rotation', ang, ...
+     'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+     'BackgroundColor', 'none', ...
+     'Clipping', 'on');
+
+end   % end i_place_inline_label
 
 % ─────────────────────────────────────────────────────────────────────────────
 
