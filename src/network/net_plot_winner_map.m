@@ -327,87 +327,45 @@ end   % end main function
 
 function i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
                                  lcc_full_map, budget_pairs_map, max_pairs)
-%I_OVERLAY_TWO_CONTOURS  Draw two special contour lines on ax with inline labels.
-%   1. Black dashed, inline-labelled "LCC=13" — where the network first becomes
-%      fully connected (lcc_full_map transitions 0→1).
-%   2. Red dashed, inline-labelled with the max-pairs value — where all
-%      budget-feasible unordered pairs first reach the maximum (max_pairs, e.g. 78).
-%   Labels are placed on the line itself (no legend entries).
+%I_OVERLAY_TWO_CONTOURS  Draw two special contour lines on ax.
+%   1. Black dashed, inline-labelled "LCC=13" using native contour label style
+%      (line breaks at label, no background box).
+%   2. Red dashed, no label.
+%   No legend entries are created.
 
 hold(ax, 'on');
 
-% ── 1. Black dashed: LCC fully connected ──────────────────────────────────────
+% ── 1. Black dashed: LCC fully connected — inline "LCC=13" label ──────────────
 Z_lcc = lcc_full_map';   % [nTmax × nDV]
 if any(Z_lcc(:) == 0) && any(Z_lcc(:) == 1)
-    [C1, ~] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
-                      'k--', 'LineWidth', 1.5);
-    i_label_contour(ax, C1, 'LCC=13', 'k');
+    % Snapshot text children before clabel so we can identify new ones
+    t_before = findobj(ax, 'Type', 'text');
+
+    [C1, h1] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
+                       'k--', 'LineWidth', 1.5);
+    % clabel breaks the line and places the label inline (native style)
+    clabel(C1, h1, 'FontSize', 7, 'Color', 'k', 'LabelSpacing', 800); %#ok<CLABEL>
+
+    % Find newly created text objects and rename from "0.5" → "LCC=13"
+    drawnow;
+    t_after = findobj(ax, 'Type', 'text');
+    new_txt = setdiff(t_after, t_before);
+    if ~isempty(new_txt)
+        set(new_txt, 'String', 'LCC=13', 'BackgroundColor', 'none', 'Margin', 0.1);
+    end
 end
 
-% ── 2. Red dashed: all pairs budget-reachable ─────────────────────────────────
+% ── 2. Red dashed: all pairs budget-reachable — no label ──────────────────────
 if ~isempty(budget_pairs_map) && any(isfinite(budget_pairs_map(:)))
     Z_bp   = budget_pairs_map';   % [nTmax × nDV]
     thresh = max_pairs - 0.5;
     if any(Z_bp(:) < thresh) && any(Z_bp(:) >= thresh)
-        [C2, ~] = contour(ax, DV_vec, Tmax_vec, Z_bp, [thresh thresh], ...
-                          'r--', 'LineWidth', 2.0);
-        i_label_contour(ax, C2, sprintf('%d', max_pairs), 'r');
+        contour(ax, DV_vec, Tmax_vec, Z_bp, [thresh thresh], ...
+                'r--', 'LineWidth', 2.0);
     end
 end
 
 end   % end i_overlay_two_contours
-
-% ─────────────────────────────────────────────────────────────────────────────
-
-function i_label_contour(ax, C, lbl_str, col)
-%I_LABEL_CONTOUR  Place a text label at the midpoint of the longest contour
-%                 segment described by the contour matrix C.
-%
-%   C is the matrix returned as the first output of contour().
-%   The label is placed with a white background so it is legible over any fill.
-
-if isempty(C) || size(C, 2) < 2
-    return;
-end
-
-best_len = 0;
-best_pt  = [];
-
-k = 1;
-while k <= size(C, 2)
-    n = C(2, k);
-    if n < 1 || k + n > size(C, 2)
-        break;
-    end
-    seg_x = C(1, k+1 : k+n);
-    seg_y = C(2, k+1 : k+n);
-
-    dx = diff(seg_x);
-    dy = diff(seg_y);
-    arc = cumsum([0, sqrt(dx.^2 + dy.^2)]);
-    total_len = arc(end);
-
-    if total_len > best_len
-        best_len = total_len;
-        % Index of point closest to half arc length
-        mid_s = total_len / 2;
-        [~, mi] = min(abs(arc - mid_s));
-        mi = max(1, min(mi, numel(seg_x)));
-        best_pt = [seg_x(mi), seg_y(mi)];
-    end
-
-    k = k + n + 1;
-end
-
-if ~isempty(best_pt)
-    text(ax, best_pt(1), best_pt(2), lbl_str, ...
-         'Color', col, 'FontSize', 7, 'FontWeight', 'bold', ...
-         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
-         'BackgroundColor', 'white', 'Margin', 1, ...
-         'Clipping', 'on');
-end
-
-end   % end i_label_contour
 
 % ─────────────────────────────────────────────────────────────────────────────
 
