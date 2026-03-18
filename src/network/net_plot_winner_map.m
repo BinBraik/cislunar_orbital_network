@@ -64,7 +64,16 @@ switch plot_type
         Z(skip_mask) = NaN;
         Z = Z';   % [nTmax × nDV] for imagesc
 
-        imagesc(ax, DV_vec, Tmax_vec, Z);
+        % Clim from actual data range (not 0)
+        valid_z = Z(isfinite(Z));
+        if isempty(valid_z)
+            z_lim = [0 1];
+        else
+            z_lim = [min(valid_z), max(valid_z)];
+            if z_lim(1) == z_lim(2), z_lim(2) = z_lim(1) + 1; end
+        end
+
+        imagesc(ax, DV_vec, Tmax_vec, Z, z_lim);
         axis(ax, 'xy');
         set(ax, 'Color', [1 1 1]);   % white for NaN/skip cells
         colormap(ax, parula(256));
@@ -84,10 +93,9 @@ switch plot_type
         end
 
         % Two special contours (black dashed LCC=13, red dashed budget=78)
-        [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                lcc_full_map, budget_pairs_map, MAX_PAIRS);
+        i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
 
-        i_add_contour_legend(ax, h_lcc, h_bp);
         title(ax, ttl, 'FontSize', 11);
 
     % ═══════════════════════════════════════════════════════════════════════
@@ -118,9 +126,9 @@ switch plot_type
         i_draw_tie_cells(ax, winner_idx, winner_names, short_names, fam_colors, ...
                          DV_vec, Tmax_vec, hw, hh);
 
-        % Two special contours
-        [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                lcc_full_map, budget_pairs_map, MAX_PAIRS);
+        % Two special contours (inline labels only, not in legend)
+        i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
 
         % Filtered legend: only families that actually win somewhere
         present_idx = unique(winner_idx(isfinite(winner_idx) & winner_idx > 0));
@@ -131,8 +139,6 @@ switch plot_type
                       'DisplayName', short_names{present_idx(k)});
             leg_items{end+1} = p; %#ok<AGROW>
         end
-        if ~isempty(h_lcc), leg_items{end+1} = h_lcc; end
-        if ~isempty(h_bp),  leg_items{end+1} = h_bp;  end
         if ~isempty(leg_items)
             legend(ax, [leg_items{:}], 'Location', 'eastoutside', ...
                    'FontSize', 8, 'Box', 'on');
@@ -185,9 +191,8 @@ switch plot_type
         cb.Label.FontSize = 9;
 
         hold(ax, 'on');
-        [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                lcc_full_map, budget_pairs_map, MAX_PAIRS);
-        i_add_contour_legend(ax, h_lcc, h_bp);
+        i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
         title(ax, 'Largest connected component size', 'FontSize', 11);
 
     % ═══════════════════════════════════════════════════════════════════════
@@ -220,8 +225,8 @@ switch plot_type
         image(ax, DV_vec, Tmax_vec, rgb);
         axis(ax, 'xy');
         hold(ax, 'on');
-        [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                lcc_full_map, budget_pairs_map, MAX_PAIRS);
+        i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
 
         n_show = min(n_colors, 8);
         hp = gobjects(n_show, 1);
@@ -231,10 +236,7 @@ switch plot_type
             hp(k) = patch(ax, NaN, NaN, ap_cmap(ci,:), 'EdgeColor', 'none', ...
                           'DisplayName', sprintf('%d', ci-1));
         end
-        leg_items = num2cell(hp);
-        if ~isempty(h_lcc), leg_items{end+1} = h_lcc; end
-        if ~isempty(h_bp),  leg_items{end+1} = h_bp;  end
-        lgd = legend(ax, [leg_items{:}], 'Location', 'eastoutside', ...
+        lgd = legend(ax, hp, 'Location', 'eastoutside', ...
                      'FontSize', 7, 'Box', 'on');
         lgd.Title.String = '# articulation pts';
         title(ax, 'Articulation-point count per snapshot', 'FontSize', 11);
@@ -251,7 +253,16 @@ switch plot_type
         max_vals(skip_mask) = NaN;
         Z = max_vals';   % [nTmax × nDV]
 
-        imagesc(ax, DV_vec, Tmax_vec, Z);
+        % Clim from actual data range (not 0)
+        valid_data = Z(isfinite(Z));
+        if isempty(valid_data)
+            z_lim = [0 1];
+        else
+            z_lim = [min(valid_data), max(valid_data)];
+            if z_lim(1) == z_lim(2), z_lim(2) = z_lim(1) + eps; end
+        end
+
+        imagesc(ax, DV_vec, Tmax_vec, Z, z_lim);
         axis(ax, 'xy');
         set(ax, 'Color', [1 1 1]);
         colormap(ax, parula(256));
@@ -269,9 +280,8 @@ switch plot_type
         cb.Label.FontSize = 9;
 
         hold(ax, 'on');
-        valid_data = Z(isfinite(Z));
         if ~isempty(valid_data)
-            vmin = min(valid_data);  vmax = max(valid_data);
+            vmin = z_lim(1);  vmax = z_lim(2);
             if vmax > vmin
                 step = i_nice_step((vmax - vmin) / 8);
                 lvls = (ceil(vmin/step)*step) : step : vmax;
@@ -283,9 +293,8 @@ switch plot_type
             end
         end
 
-        [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                lcc_full_map, budget_pairs_map, MAX_PAIRS);
-        i_add_contour_legend(ax, h_lcc, h_bp);
+        i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
         title(ax, ttl, 'FontSize', 11);
 
     otherwise
@@ -316,49 +325,33 @@ end   % end main function
 %  Local helpers
 % ═══════════════════════════════════════════════════════════════════════════
 
-function [h_lcc, h_bp] = i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                                  lcc_full_map, budget_pairs_map, max_pairs)
-%I_OVERLAY_TWO_CONTOURS  Draw two special contour lines on ax:
+function i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
+                                 lcc_full_map, budget_pairs_map, max_pairs)
+%I_OVERLAY_TWO_CONTOURS  Draw two special contour lines on ax with inline labels.
 %   1. Black dashed, inline-labelled "LCC=13" — where the network first becomes
 %      fully connected (lcc_full_map transitions 0→1).
 %   2. Red dashed, inline-labelled with the max-pairs value — where all
 %      budget-feasible unordered pairs first reach the maximum (max_pairs, e.g. 78).
+%   Labels are placed on the line itself (no legend entries).
 
 hold(ax, 'on');
-h_lcc = [];
-h_bp  = [];
 
 % ── 1. Black dashed: LCC fully connected ──────────────────────────────────────
 Z_lcc = lcc_full_map';   % [nTmax × nDV]
 if any(Z_lcc(:) == 0) && any(Z_lcc(:) == 1)
-    [C1, h1] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
-                       'k--', 'LineWidth', 1.5);
-    cl1 = clabel(C1, h1, 'FontSize', 7, 'Color', 'k');
-    for ii = 1:numel(cl1)
-        if isgraphics(cl1(ii), 'text')
-            set(cl1(ii), 'String', 'LCC=13', 'BackgroundColor', 'none');
-        end
-    end
-    % Dummy line for legend
-    h_lcc = plot(ax, NaN, NaN, 'k--', 'LineWidth', 1.5, 'DisplayName', 'LCC=13');
+    [C1, ~] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
+                      'k--', 'LineWidth', 1.5);
+    i_label_contour(ax, C1, 'LCC=13', 'k');
 end
 
 % ── 2. Red dashed: all pairs budget-reachable ─────────────────────────────────
 if ~isempty(budget_pairs_map) && any(isfinite(budget_pairs_map(:)))
-    Z_bp = budget_pairs_map';   % [nTmax × nDV]
+    Z_bp   = budget_pairs_map';   % [nTmax × nDV]
     thresh = max_pairs - 0.5;
     if any(Z_bp(:) < thresh) && any(Z_bp(:) >= thresh)
-        [C2, h2] = contour(ax, DV_vec, Tmax_vec, Z_bp, [thresh thresh], ...
-                           'r--', 'LineWidth', 2.0);
-        lbl_str = sprintf('%d', max_pairs);
-        cl2 = clabel(C2, h2, 'FontSize', 7, 'Color', 'r');
-        for ii = 1:numel(cl2)
-            if isgraphics(cl2(ii), 'text')
-                set(cl2(ii), 'String', lbl_str, 'BackgroundColor', 'none');
-            end
-        end
-        h_bp = plot(ax, NaN, NaN, 'r--', 'LineWidth', 2.0, ...
-                    'DisplayName', sprintf('Budget: %d pairs', max_pairs));
+        [C2, ~] = contour(ax, DV_vec, Tmax_vec, Z_bp, [thresh thresh], ...
+                          'r--', 'LineWidth', 2.0);
+        i_label_contour(ax, C2, sprintf('%d', max_pairs), 'r');
     end
 end
 
@@ -366,21 +359,62 @@ end   % end i_overlay_two_contours
 
 % ─────────────────────────────────────────────────────────────────────────────
 
-function i_add_contour_legend(ax, h_lcc, h_bp)
-%I_ADD_CONTOUR_LEGEND  Add a compact legend showing only the two special contours.
-items = {};
-if ~isempty(h_lcc), items{end+1} = h_lcc; end
-if ~isempty(h_bp),  items{end+1} = h_bp;  end
-if ~isempty(items)
-    legend(ax, [items{:}], 'Location', 'best', 'FontSize', 7, 'Box', 'on');
+function i_label_contour(ax, C, lbl_str, col)
+%I_LABEL_CONTOUR  Place a text label at the midpoint of the longest contour
+%                 segment described by the contour matrix C.
+%
+%   C is the matrix returned as the first output of contour().
+%   The label is placed with a white background so it is legible over any fill.
+
+if isempty(C) || size(C, 2) < 2
+    return;
 end
+
+best_len = 0;
+best_pt  = [];
+
+k = 1;
+while k <= size(C, 2)
+    n = C(2, k);
+    if n < 1 || k + n > size(C, 2)
+        break;
+    end
+    seg_x = C(1, k+1 : k+n);
+    seg_y = C(2, k+1 : k+n);
+
+    dx = diff(seg_x);
+    dy = diff(seg_y);
+    arc = cumsum([0, sqrt(dx.^2 + dy.^2)]);
+    total_len = arc(end);
+
+    if total_len > best_len
+        best_len = total_len;
+        % Index of point closest to half arc length
+        mid_s = total_len / 2;
+        [~, mi] = min(abs(arc - mid_s));
+        mi = max(1, min(mi, numel(seg_x)));
+        best_pt = [seg_x(mi), seg_y(mi)];
+    end
+
+    k = k + n + 1;
 end
+
+if ~isempty(best_pt)
+    text(ax, best_pt(1), best_pt(2), lbl_str, ...
+         'Color', col, 'FontSize', 7, 'FontWeight', 'bold', ...
+         'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+         'BackgroundColor', 'white', 'Margin', 1, ...
+         'Clipping', 'on');
+end
+
+end   % end i_label_contour
 
 % ─────────────────────────────────────────────────────────────────────────────
 
 function i_draw_tie_cells(ax, winner_idx, winner_names, short_names, fam_colors, ...
                            DV_vec, Tmax_vec, hw, hh)
 %I_DRAW_TIE_CELLS  Overlay diagonal-split (2-way) or pie (3+-way) patches on ax.
+%                  Each tie cell gets a black border rectangle on top.
 
 for di = 1:numel(DV_vec)
     for dj = 1:numel(Tmax_vec)
@@ -426,6 +460,10 @@ for di = 1:numel(DV_vec)
                 patch(ax, xv, yv, fam_colors(tidx(s),:), 'EdgeColor', 'none');
             end
         end
+
+        % Black border around the tie cell
+        rectangle(ax, 'Position', [cx-hw, cy-hh, 2*hw, 2*hh], ...
+                  'EdgeColor', 'k', 'LineWidth', 0.8, 'FaceColor', 'none');
     end
 end
 end   % end i_draw_tie_cells
