@@ -338,18 +338,13 @@ hold(ax, 'on');
 % ── 1. Black dashed: LCC fully connected — inline "LCC=13" label ──────────────
 Z_lcc = lcc_full_map';   % [nTmax × nDV]
 if any(Z_lcc(:) == 0) && any(Z_lcc(:) == 1)
-    % Snapshot text children before clabel so we can identify new ones
-    t_before = findobj(ax, 'Type', 'text');
-
     [C1, h1] = contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
                        'k--', 'LineWidth', 1.5);
-    % clabel breaks the line and places the label inline (native style)
+    % clabel breaks the line and places the label inline (native style).
+    % Text labels are children of h1, not of ax — must use findobj(h1, ...).
     clabel(C1, h1, 'FontSize', 7, 'Color', 'k', 'LabelSpacing', 800); %#ok<CLABEL>
-
-    % Find newly created text objects and rename from "0.5" → "LCC=13"
     drawnow;
-    t_after = findobj(ax, 'Type', 'text');
-    new_txt = setdiff(t_after, t_before);
+    new_txt = findobj(h1, 'Type', 'text');
     if ~isempty(new_txt)
         set(new_txt, 'String', 'LCC=13', 'BackgroundColor', 'none', 'Margin', 0.1);
     end
