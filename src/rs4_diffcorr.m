@@ -40,15 +40,26 @@ function Tc = rs4_diffcorr(T, SA, SB, cfg)
 % -------------------------------------------------------------------------
 % Config
 % -------------------------------------------------------------------------
-relTol    = local_cfg_get(cfg, 'propag.relTol',      1e-9);
-absTol    = local_cfg_get(cfg, 'propag.absTol',      1e-9);
-VU_mps    = local_cfg_get(cfg, 'units.VU_mps',       1.0);
-TU_days   = local_cfg_get(cfg, 'units.TU_days',      1.0);
-Tmax      = local_cfg_get(cfg, 'propag.Tmax',        pi/2);
-tol_patch = local_cfg_get(cfg, 'diffcorr.tol_patch', 1e-6);
-dc_display = local_cfg_get(cfg, 'diffcorr.display',  'iter');  % 'off' for batch
+relTol_final = local_cfg_get(cfg, 'propag.relTol',      1e-9);
+absTol_final = local_cfg_get(cfg, 'propag.absTol',      1e-9);
+VU_mps       = local_cfg_get(cfg, 'units.VU_mps',       1.0);
+TU_days      = local_cfg_get(cfg, 'units.TU_days',      1.0);
+Tmax         = local_cfg_get(cfg, 'propag.Tmax',        pi/2);
+tol_patch    = local_cfg_get(cfg, 'diffcorr.tol_patch', 1e-6);
+dc_display   = local_cfg_get(cfg, 'diffcorr.display',   'iter');  % 'off' for batch
 
-odeOpts = odeset('RelTol', relTol, 'AbsTol', absTol);
+% Two-tolerance strategy: use 10x looser tolerances during the many ODE
+% evaluations inside the optimizer (FD gradients), then tight tolerances
+% only for the final arc re-integration and residual check.
+% The FD step is 1e-6, so 1e-7 arc accuracy is more than sufficient for
+% gradient fidelity while reducing per-arc cost noticeably.
+relTol_dc  = local_cfg_get(cfg, 'diffcorr.relTol_dc', relTol_final * 10);
+absTol_dc  = local_cfg_get(cfg, 'diffcorr.absTol_dc', absTol_final * 10);
+relTol     = relTol_final;  % alias kept for local_ensure_xpo calls
+absTol     = absTol_final;
+
+odeOpts       = odeset('RelTol', relTol_dc,    'AbsTol', absTol_dc);    % optimizer evals
+odeOpts_final = odeset('RelTol', relTol_final, 'AbsTol', absTol_final); % final arcs
 
 % -------------------------------------------------------------------------
 % Step 0 — Ensure SA/SB have dense PO trace (Xpo, t_dense)
@@ -215,9 +226,9 @@ seed_B   = local_interp_po(SB, alpha_B);
 IC_B_frs = [seed_B(1); seed_B(2); rs3_wrapToPi(seed_B(3) + delta_B)];
 
 [tA_vec, XA]     = ode113(@(tt,XX) rs3_core_reduced_cr3bp_model(tt,XX,SA.CJ,SA.mu,false), ...
-                           [0, t_A], IC_A, odeOpts);
+                           [0, t_A], IC_A, odeOpts_final);
 [tB_vec, XB_frs] = ode113(@(tt,XX) rs3_core_reduced_cr3bp_model(tt,XX,SB.CJ,SB.mu,false), ...
-                           [0, t_B], IC_B_frs, odeOpts);
+                           [0, t_B], IC_B_frs, odeOpts_final);
 
 % R-transform: (x, y, th)_frs -> (x, -y, pi-th)_brs
 x_B  =  XB_frs(:,1);
@@ -246,7 +257,7 @@ v_patch      = sqrt(max(2*pot_p.U - min(SA.CJ, SB.CJ), 0));
 delta_th     = abs(rs3_wrapToPi(thp_A - thp_B));
 DV_patch_nd  = 2 * v_patch * sin(delta_th / 2);
 
-r_final   = local_residual(z_star, SA, SB, odeOpts);
+r_final   = local_residual(z_star, SA, SB, odeOpts_final);
 converged = norm(r_final ./ r_scale) <= tol_patch;
 
 if ~strcmp(dc_display, 'off')
@@ -375,11 +386,18 @@ end
 
 function seed = local_interp_po(S, alpha)
 % Interpolate PO state [x, y, th] at continuous time alpha in [0, Tf_PO).
-% Uses pchip for (x,y) and linear on unwrapped theta to avoid jump artefacts.
-    t   = mod(alpha, S.Tf_PO);
-    xy  = interp1(S.t_dense, S.Xpo(:,1:2), t, 'pchip');
-    th_uw = unwrap(S.Xpo(:,3));
-    th  = rs3_wrapToPi(interp1(S.t_dense, th_uw, t, 'linear'));
+% Uses pre-built pchip pp-forms (pp_xy, pp_th) for fast scalar queries —
+% avoids the per-call interp1 setup and unwrap over 1001 points.
+    t  = mod(alpha, S.Tf_PO);
+    if isfield(S, 'pp_xy') && ~isempty(S.pp_xy)
+        xy = ppval(S.pp_xy, t)';          % [1x2]
+        th = rs3_wrapToPi(ppval(S.pp_th, t));
+    else
+        % Fallback (pp-forms not yet built — should not happen after local_ensure_xpo).
+        xy    = interp1(S.t_dense, S.Xpo(:,1:2), t, 'pchip');
+        th_uw = unwrap(S.Xpo(:,3));
+        th    = rs3_wrapToPi(interp1(S.t_dense, th_uw, t, 'linear'));
+    end
     seed = [xy(1), xy(2), th];
 end
 
@@ -388,8 +406,16 @@ end
 function S = local_ensure_xpo(S, relTol, absTol, N_po)
 % If SA.Xpo / SA.t_dense were stripped by the cache, rebuild them by
 % re-integrating the periodic orbit from S.X0 over [0, S.Tf_PO].
+% Also builds pp-form splines (pp_xy, pp_th) for fast repeated scalar
+% interpolation inside the optimizer — replaces the per-call interp1+unwrap.
+    need_pp = ~isfield(S, 'pp_xy') || isempty(S.pp_xy);
+
     if isfield(S, 'Xpo') && ~isempty(S.Xpo) && ...
        isfield(S, 't_dense') && ~isempty(S.t_dense)
+        % Xpo already present — only (re)build pp-forms if missing.
+        if need_pp
+            S = local_build_pp(S);
+        end
         return;
     end
     fprintf('[diffcorr] Xpo not in cache for "%s" — re-integrating PO ...\n', S.name);
@@ -400,6 +426,21 @@ function S = local_ensure_xpo(S, relTol, absTol, N_po)
     Xpo     = deval(solPO, t_dense)';
     S.t_dense = t_dense;
     S.Xpo     = Xpo;
+    S = local_build_pp(S);
+end
+
+% -------------------------------------------------------------------------
+
+function S = local_build_pp(S)
+% Build pchip pp-form structs for fast repeated scalar interpolation.
+% pp_xy : 2-D pchip over (x,y);  pp_th : 1-D pchip over unwrapped theta.
+% ppval(S.pp_xy, t) is ~5-10x faster than interp1(...,'pchip') for scalar t,
+% and avoids the per-call unwrap(1001 elements) that was in local_interp_po.
+    t   = S.t_dense(:)';                      % [1 x N] row
+    xy  = S.Xpo(:, 1:2)';                     % [2 x N]
+    th  = unwrap(S.Xpo(:, 3))';               % [1 x N] (unwrap once, here)
+    S.pp_xy = pchip(t, xy);
+    S.pp_th = pchip(t, th);
 end
 
 % -------------------------------------------------------------------------
