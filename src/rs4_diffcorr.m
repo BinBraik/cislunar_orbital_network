@@ -475,7 +475,7 @@ function alpha = local_find_alpha_cont(S, xy)
     dt  = S.Tf_PO / (numel(S.t_dense) - 1);
     lo  = max(0,        t0 - 5*dt);
     hi  = min(S.Tf_PO,  t0 + 5*dt);
-    xy  = xy(:)';   % ensure 1x2 row for ppval subtraction
+    xy  = xy(:);    % ensure 2×1 column — matches ppval(S.pp_xy, scalar) output
     alpha = fminbnd(@(a) sum((ppval(S.pp_xy, a) - xy).^2), lo, hi);
 end
 
