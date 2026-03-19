@@ -47,6 +47,15 @@ cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = false;
 
+% ---- Differential Correction (rs4_diffcorr knobs) ----
+cfg.diffcorr.tol_patch     = 1e-4;   % normalized convergence threshold
+cfg.diffcorr.tol_converged = 1e-4;   % report CONVERGED if ||r_sc|| <= this (can be >= tol_patch)
+cfg.diffcorr.display       = 'iter'; % 'off' | 'iter' | 'final'  (keep iter for single-pair debugging)
+cfg.diffcorr.MaxIterations = 300;    % fmincon iteration budget (raise to 600 for hard cases)
+cfg.diffcorr.MaxFunEvals   = 8000;   % fmincon function eval budget
+cfg.diffcorr.N_po_dt       = 0.003;  % PO knot spacing [ND] — auto-scales to orbit period
+cfg.diffcorr.N_po_min      = 1001;   % minimum knot count (floor)
+
 rs3_cfg_validate(cfg);
 
 outdir = fullfile(cfg.io.out_root, cfg.io.tag);

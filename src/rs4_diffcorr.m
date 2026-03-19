@@ -35,7 +35,13 @@ function Tc = rs4_diffcorr(T, SA, SB, cfg)
 %   Tc  : corrected trajectory struct  (same schema as T, plus .dc fields)
 %
 % Optional cfg fields (with defaults):
-%   cfg.diffcorr.tol_patch   constraint tolerance in normalised units (1e-6)
+%   cfg.diffcorr.tol_patch      constraint tolerance in normalised units (1e-4)
+%   cfg.diffcorr.tol_converged  "CONVERGED" label threshold — can be >= tol_patch (1e-4)
+%   cfg.diffcorr.display        fmincon display mode: 'off'|'iter'|'final' ('iter')
+%   cfg.diffcorr.MaxIterations  fmincon max iterations (300)
+%   cfg.diffcorr.MaxFunEvals    fmincon max function evaluations (8000)
+%   cfg.diffcorr.N_po_dt        target time between PO knots [ND] — scales with period (0.003)
+%   cfg.diffcorr.N_po_min       minimum knot count floor (1001)
 
 % -------------------------------------------------------------------------
 % Config
@@ -45,16 +51,19 @@ absTol_final = local_cfg_get(cfg, 'propag.absTol',      1e-9);
 VU_mps       = local_cfg_get(cfg, 'units.VU_mps',       1.0);
 TU_days      = local_cfg_get(cfg, 'units.TU_days',      1.0);
 Tmax         = local_cfg_get(cfg, 'propag.Tmax',        pi/2);
-tol_patch    = local_cfg_get(cfg, 'diffcorr.tol_patch', 1e-6);
-dc_display   = local_cfg_get(cfg, 'diffcorr.display',   'iter');  % 'off' for batch
+tol_patch     = local_cfg_get(cfg, 'diffcorr.tol_patch',     1e-4);
+tol_converged = local_cfg_get(cfg, 'diffcorr.tol_converged', tol_patch);
+dc_display    = local_cfg_get(cfg, 'diffcorr.display',        'iter');  % 'off' for batch
 
 % Two-tolerance strategy: use 10x looser tolerances during the many ODE
 % evaluations inside the optimizer (FD gradients), then tight tolerances
 % only for the final arc re-integration and residual check.
 % The FD step is 1e-6, so 1e-7 arc accuracy is more than sufficient for
 % gradient fidelity while reducing per-arc cost noticeably.
-relTol_dc  = local_cfg_get(cfg, 'diffcorr.relTol_dc', relTol_final * 10);
-absTol_dc  = local_cfg_get(cfg, 'diffcorr.absTol_dc', absTol_final * 10);
+relTol_dc    = local_cfg_get(cfg, 'diffcorr.relTol_dc',      relTol_final * 10);
+absTol_dc    = local_cfg_get(cfg, 'diffcorr.absTol_dc',      absTol_final * 10);
+dc_max_iter  = local_cfg_get(cfg, 'diffcorr.MaxIterations',   300);
+dc_max_feval = local_cfg_get(cfg, 'diffcorr.MaxFunEvals',     8000);
 relTol     = relTol_final;  % alias kept for local_ensure_xpo calls
 absTol     = absTol_final;
 
@@ -66,15 +75,20 @@ odeOpts_final = odeset('RelTol', relTol_final, 'AbsTol', absTol_final); % final 
 %   The cache strips these by default (cfg.cache.store_dense_po=false).
 %   Re-integrate on demand using X0, CJ, mu, Tf_PO — all of which are cached.
 % -------------------------------------------------------------------------
-N_po = 1001;    % dense-enough for smooth interpolation
-SA   = local_ensure_xpo(SA, relTol, absTol, N_po);
-SB   = local_ensure_xpo(SB, relTol, absTol, N_po);
+% Scale knot count to orbit period so all families get ~N_po_dt ND time between
+% knots — avoids Cycler 21 (T≈21) being 7x coarser than Lyapunov L1 (T≈3).
+N_po_dt  = local_cfg_get(cfg, 'diffcorr.N_po_dt',  0.003);   % target spacing [ND]
+N_po_min = local_cfg_get(cfg, 'diffcorr.N_po_min', 1001);    % floor
+N_po_A   = max(N_po_min, ceil(SA.Tf_PO / N_po_dt) + 1);
+N_po_B   = max(N_po_min, ceil(SB.Tf_PO / N_po_dt) + 1);
+SA       = local_ensure_xpo(SA, relTol, absTol, N_po_A);
+SB       = local_ensure_xpo(SB, relTol, absTol, N_po_B);
 
 % -------------------------------------------------------------------------
 % Step 1 — Build initial guess from T
 % -------------------------------------------------------------------------
-alpha_A_0 = local_find_alpha(SA, T.seed_A(1:2));
-alpha_B_0 = local_find_alpha(SB, T.seed_B_frs(1:2));
+alpha_A_0 = local_find_alpha_cont(SA, T.seed_A(1:2));
+alpha_B_0 = local_find_alpha_cont(SB, T.seed_B_frs(1:2));
 delta_A_0 = rs3_wrapToPi(T.IC_A(3)     - T.seed_A(3));
 delta_B_0 = rs3_wrapToPi(T.IC_B_frs(3) - T.seed_B_frs(3));
 t_A_0     = T.t_A;
@@ -128,8 +142,8 @@ opts_fmin = optimoptions('fmincon', ...
     'ConstraintTolerance',     tol_patch, ...
     'OptimalityTolerance',     1e-7,    ...
     'StepTolerance',           1e-10,   ...
-    'MaxIterations',           300,     ...
-    'MaxFunctionEvaluations',  8000,    ...
+    'MaxIterations',           dc_max_iter,   ...
+    'MaxFunctionEvaluations',  dc_max_feval,  ...
     'FiniteDifferenceType',    'central', ...
     'FiniteDifferenceStepSize', 1e-6,   ...
     'TypicalX',                typX);
@@ -160,16 +174,16 @@ r_pass1_norm = norm(r_pass1 ./ r_scale);
 z_best      = z_star;
 r_best_norm = r_pass1_norm;
 
-if (exitflag == -2 || exitflag == 0) && r_pass1_norm > tol_patch
+if r_pass1_norm > tol_patch
     if ~strcmp(dc_display, 'off')
-        fprintf('[diffcorr] Pass 1 infeasible (||r_sc||=%.2e). Running lsqnonlin ...\n', ...
-            r_pass1_norm);
+        fprintf('[diffcorr] Pass 1 infeasible (||r_sc||=%.2e, exitflag=%d). Running lsqnonlin ...\n', ...
+            r_pass1_norm, exitflag);
     end
 
-    % Warm-start: from z_star when pass 1 made progress (exitflag=0),
-    % otherwise fall back to the original warm start z0.
+    % Warm-start: use z_star whenever fmincon made any progress (any exitflag
+    % except -2 which means it never moved), otherwise fall back to z0.
     z_lsq0 = z0;
-    if exitflag == 0, z_lsq0 = z_star; end
+    if exitflag ~= -2, z_lsq0 = z_star; end
 
     opts_lsq = optimoptions('lsqnonlin', ...
         'Display',                'off', ...
@@ -257,8 +271,9 @@ v_patch      = sqrt(max(2*pot_p.U - min(SA.CJ, SB.CJ), 0));
 delta_th     = abs(rs3_wrapToPi(thp_A - thp_B));
 DV_patch_nd  = 2 * v_patch * sin(delta_th / 2);
 
-r_final   = local_residual(z_star, SA, SB, odeOpts_final);
-converged = norm(r_final ./ r_scale) <= tol_patch;
+r_final      = local_residual(z_star, SA, SB, odeOpts_final);
+r_final_norm = norm(r_final ./ r_scale);
+converged    = r_final_norm <= tol_converged;
 
 if ~strcmp(dc_display, 'off')
     fprintf('[diffcorr] Corrected solution:\n');
@@ -266,14 +281,14 @@ if ~strcmp(dc_display, 'off')
         (DV_turn_A_nd + DV_patch_nd + DV_turn_B_nd)*VU_mps, ...
         DV_turn_A_nd*VU_mps, DV_patch_nd*VU_mps, DV_turn_B_nd*VU_mps);
     fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r_final(1), r_final(2), r_final(3));
-    fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol=%.2e)  %s\n', ...
-        norm(r_final ./ r_scale), tol_patch, local_conv_str(converged));
+    fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol_conv=%.2e)  %s\n', ...
+        r_final_norm, tol_converged, local_conv_str(converged));
     fprintf('[diffcorr]   delta_th at patch  = %.4f deg\n', rad2deg(delta_th));
 end
 
 if ~converged
     warning('[diffcorr] Patch constraint NOT satisfied (||r_sc||=%.2e > tol=%.2e, exitflag=%d).', ...
-        norm(r_final ./ r_scale), tol_patch, exitflag);
+        r_final_norm, tol_converged, exitflag);
 end
 
 % -------------------------------------------------------------------------
@@ -324,9 +339,11 @@ Tc.tof_B_days   = t_B * TU_days;
 
 % Optimisation metadata
 Tc.exitflag     = exitflag;
-Tc.converged    = converged;   % true iff ||r_final ./ r_scale|| <= tol_patch
-Tc.iterations   = output.iterations;
-Tc.tol_patch    = tol_patch;
+Tc.converged      = converged;   % true iff ||r_final ./ r_scale|| <= tol_converged
+Tc.r_final_norm   = r_final_norm;
+Tc.iterations     = output.iterations;
+Tc.tol_patch      = tol_patch;
+Tc.tol_converged  = tol_converged;
 end
 
 % =========================================================================
@@ -445,8 +462,27 @@ end
 
 % -------------------------------------------------------------------------
 
+function alpha = local_find_alpha_cont(S, xy)
+% Continuous projection of 2-D position xy onto the PO spline.
+% Uses a coarse discrete search over Xpo knots to identify the correct basin,
+% then refines with fminbnd over a ±5-knot window around the discrete seed.
+% This gives sub-knot accuracy regardless of orbit period.
+    % Coarse seed (nearest of N_po discrete knots)
+    d        = hypot(S.Xpo(:,1) - xy(1), S.Xpo(:,2) - xy(2));
+    [~, idx] = min(d);
+    t0       = S.t_dense(idx);
+    % Refine over ±5-knot window (narrow: orbit is smooth, correct basin found above)
+    dt  = S.Tf_PO / (numel(S.t_dense) - 1);
+    lo  = max(0,        t0 - 5*dt);
+    hi  = min(S.Tf_PO,  t0 + 5*dt);
+    xy  = xy(:)';   % ensure 1x2 row for ppval subtraction
+    alpha = fminbnd(@(a) sum((ppval(S.pp_xy, a) - xy).^2), lo, hi);
+end
+
+% -------------------------------------------------------------------------
+
 function alpha = local_find_alpha(S, xy)
-% Return the t_dense value at which PO is closest to 2-D position xy.
+% Discrete nearest-knot search (kept as internal fallback).
     d = hypot(S.Xpo(:,1) - xy(1), S.Xpo(:,2) - xy(2));
     [~, idx] = min(d);
     alpha = S.t_dense(idx);

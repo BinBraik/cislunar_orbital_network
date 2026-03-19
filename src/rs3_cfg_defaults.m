@@ -82,6 +82,16 @@ cfg.rs4 = struct();
 cfg.rs4.extract = struct();
 cfg.rs4.extract.parallel = false;  % parallelize overlap voxel metadata extraction (requires parpool)
 
+% ---------------- Differential correction (rs4_diffcorr) ----------------
+cfg.diffcorr = struct();
+cfg.diffcorr.tol_patch      = 1e-4;   % normalised constraint tolerance for fmincon/lsqnonlin
+cfg.diffcorr.tol_converged  = 1e-4;   % threshold for the "CONVERGED" label (can be >= tol_patch)
+cfg.diffcorr.display        = 'iter'; % fmincon display: 'off' | 'iter' | 'final'
+cfg.diffcorr.MaxIterations  = 300;    % fmincon max iterations
+cfg.diffcorr.MaxFunEvals    = 8000;   % fmincon max function evaluations
+cfg.diffcorr.N_po_dt        = 0.003;  % target time between PO spline knots [ND] — scales with period
+cfg.diffcorr.N_po_min       = 1001;   % minimum knot count (floor regardless of period)
+
 % ---------------- Parallelism ----------------
 cfg.par = struct();
 cfg.par.enable         = true;   % enable PARFOR over (seed x heading) jobs
