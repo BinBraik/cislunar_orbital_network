@@ -63,6 +63,20 @@ addpath(fullfile(rs3_repo_root(), 'src', 'network'));
 if ~exist(OUT_DIR, 'dir'), mkdir(OUT_DIR); end
 
 cfg = rs3_cfg_defaults();
+
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
+cfg.seed.ds_seed          = 0.01;
+cfg.propag.Tmax           = pi;
+cfg.fan.DV_cap_nd         = 0.2;
+cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.propag.absTol         = 1e-8;
+cfg.propag.relTol         = 1e-8;
+cfg.propag.v2tol          = 1e-8;
+cfg.log.step_len_factor   = 0.75;
+cfg.log.maxstep_factor    = 2;
+
 cfg.io.save_figs        = true;
 cfg.io.fig_visible      = 'on';
 cfg.cache.enable        = true;
