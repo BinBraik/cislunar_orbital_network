@@ -244,9 +244,11 @@ for ex = 1:size(selected, 1)
     % ── Coast arc on bridge PO ───────────────────────────────────────────────
     % Leg-1 bridge arrival seed (physical):  T1.seed_B_frs(1:2)
     % Leg-2 bridge departure seed (physical): T2.seed_A(1:2)
+    % Bridge arrival in physical (x,y):  R-transform of FRS IC = (x_B(1), y_B(1))
+    % Bridge departure in physical (x,y): FRS IC of Leg-2 = T2.XA(1,1:2)
     coast_arc = local_coast_on_po(SBr, ...
-        T1.seed_B_frs(1:2)', ...
-        T2.seed_A(1:2)');
+        [T1.x_B(1); T1.y_B(1)], ...
+        [T2.XA(1,1); T2.XA(1,2)]);
 
     % ── Static figure ────────────────────────────────────────────────────────
     c_A  = PALETTE(1,:);
@@ -273,11 +275,12 @@ for ex = 1:size(selected, 1)
     local_plot_po_with_arrows(ax, SB,  c_B,  sprintf('Dest: %s',    famB));
 
     % ── Leg-1 arcs (physical coords) ─────────────────────────────────────────
-    % FRS: origin → patch-1  (physical as-is)
+    % FRS: origin → patch-1  (physical, forward in time)
     plot(ax, T1.XA(:,1), T1.XA(:,2), '-', 'Color', c_A, 'LineWidth', 2.0, ...
         'DisplayName', sprintf('Leg 1 out  (%.1f d)', T1.tof_A_days));
-    % BRS: patch-1 → bridge  (y-flip to physical)
-    plot(ax, T1.x_B, -T1.y_B, '-', 'Color', c_Br, 'LineWidth', 2.0, ...
+    % BRS: patch-1 → bridge  (reversed: FRS runs bridge→patch, physical runs patch→bridge)
+    % y_B is already physical (R-transform applied in rs4_voxel_traj_extract)
+    plot(ax, T1.x_B(end:-1:1), T1.y_B(end:-1:1), '-', 'Color', c_Br, 'LineWidth', 2.0, ...
         'DisplayName', sprintf('Leg 1 in   (%.1f d)', T1.tof_B_days));
 
     % ── Coast arc on bridge ───────────────────────────────────────────────────
@@ -287,11 +290,12 @@ for ex = 1:size(selected, 1)
     end
 
     % ── Leg-2 arcs (physical coords) ─────────────────────────────────────────
-    % FRS: bridge → patch-2  (physical as-is)
+    % FRS: bridge → patch-2  (physical, forward in time)
     plot(ax, T2.XA(:,1), T2.XA(:,2), '-', 'Color', c_Br, 'LineWidth', 2.0, ...
         'DisplayName', sprintf('Leg 2 out  (%.1f d)', T2.tof_A_days));
-    % BRS: patch-2 → dest    (y-flip to physical)
-    plot(ax, T2.x_B, -T2.y_B, '-', 'Color', c_B, 'LineWidth', 2.0, ...
+    % BRS: patch-2 → dest  (reversed: FRS runs dest→patch, physical runs patch→dest)
+    % y_B is already physical (R-transform applied in rs4_voxel_traj_extract)
+    plot(ax, T2.x_B(end:-1:1), T2.y_B(end:-1:1), '-', 'Color', c_B, 'LineWidth', 2.0, ...
         'DisplayName', sprintf('Leg 2 in   (%.1f d)', T2.tof_B_days));
 
     % ── Patch markers ─────────────────────────────────────────────────────────
@@ -402,10 +406,10 @@ function local_make_gif(T1, T2, coast_arc, SA, SBr, SB, c_A, c_Br, c_B, ...
 %
 % Path phases (all in physical coordinates):
 %   1. Leg-1 FRS:  T1.XA                 (origin  → patch-1)
-%   2. Leg-1 BRS:  (T1.x_B, -T1.y_B) reversed  (patch-1 → bridge)
+%   2. Leg-1 BRS:  (T1.x_B, T1.y_B) reversed  (patch-1 → bridge; y_B already physical)
 %   3. Coast:      coast_arc              (bridge arrival → bridge departure)
 %   4. Leg-2 FRS:  T2.XA                 (bridge  → patch-2)
-%   5. Leg-2 BRS:  (T2.x_B, -T2.y_B) reversed  (patch-2 → dest)
+%   5. Leg-2 BRS:  (T2.x_B, T2.y_B) reversed  (patch-2 → dest; y_B already physical)
 %
 % The point changes colour by phase:  c_A → c_Br → c_Br → c_Br → c_B.
 
@@ -416,10 +420,16 @@ n_c = size(coast_arc, 1);
 n2f = size(T2.XA, 1);
 n2b = numel(T2.x_B);
 
-path_x = [T1.XA(:,1);           T1.x_B(end:-1:1);     ...
-           coast_arc(:,1);       T2.XA(:,1);            T2.x_B(end:-1:1)];
-path_y = [T1.XA(:,2);          -T1.y_B(end:-1:1);     ...
-           coast_arc(:,2);       T2.XA(:,2);           -T2.y_B(end:-1:1)];
+% Full physical path in forward time:
+%   1. Leg-1 FRS  : origin seed → patch-1       (XA, forward in time)
+%   2. Leg-1 BRS  : patch-1 → bridge arrival    (x_B/y_B reversed; y_B already physical)
+%   3. Coast      : bridge arrival → departure   (on PO)
+%   4. Leg-2 FRS  : bridge departure → patch-2  (XA, forward in time)
+%   5. Leg-2 BRS  : patch-2 → dest              (x_B/y_B reversed; y_B already physical)
+path_x = [T1.XA(:,1);       T1.x_B(end:-1:1); ...
+           coast_arc(:,1);   T2.XA(:,1);        T2.x_B(end:-1:1)];
+path_y = [T1.XA(:,2);       T1.y_B(end:-1:1); ...
+           coast_arc(:,2);   T2.XA(:,2);        T2.y_B(end:-1:1)];
 
 % Phase boundaries (cumulative point counts)
 ph_end = cumsum([n1f, n1b, max(n_c,0), n2f, n2b]);
