@@ -458,13 +458,11 @@ function local_make_gif(T1, T2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c
 % so the animated dot moves at a uniform rate across all segments.
 
 TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
+relTol  = local_cfg_get(cfg, 'propag.relTol', 1e-9);
+absTol  = local_cfg_get(cfg, 'propag.absTol', 1e-9);
+ode_opts = odeset('RelTol', relTol, 'AbsTol', absTol);
 
-% ── Per-phase physical time vectors ──────────────────────────────────────────
-% BRS arcs run bridge→patch in FRS time; reversed = patch→bridge in physical time.
-% Physical time for reversed BRS: t_phys = t_B - tB_vec(end:-1:1), range [0, t_B].
-t1b_phys = T1.t_B - T1.tB_vec(end:-1:1);   % (n1b×1), 0 → T1.t_B
-t2b_phys = T2.t_B - T2.tB_vec(end:-1:1);   % (n2b×1), 0 → T2.t_B
-
+% ── Per-phase time durations ──────────────────────────────────────────────────
 durations = [T1.t_A, T1.t_B, coast_time, T2.t_A, T2.t_B];
 T_total   = sum(durations);
 if T_total < 1e-12
@@ -474,16 +472,27 @@ end
 
 % Allocate frames per phase proportional to time (minimum 2 per phase)
 n_ph = max(2, round(N_frames * durations / T_total));
-% Trim/pad last phase so total == N_frames
 n_ph(end) = max(2, N_frames - sum(n_ph(1:end-1)));
 
-% ── Resample each phase to uniform time ──────────────────────────────────────
-ph1_x = interp1(T1.tA_vec(:),   T1.XA(:,1),       linspace(0,T1.t_A, n_ph(1)), 'pchip')';
-ph1_y = interp1(T1.tA_vec(:),   T1.XA(:,2),       linspace(0,T1.t_A, n_ph(1)), 'pchip')';
+% ── Dense re-integration at uniform time steps (avoids ODE-step artefacts) ───
+% Using deval on the ODE solution gives the exact trajectory at any query time,
+% completely eliminating the non-smooth shortcuts caused by sparse ODE output.
 
-ph2_x = interp1(t1b_phys(:),    T1.x_B(end:-1:1), linspace(0,T1.t_B, n_ph(2)), 'pchip')';
-ph2_y = interp1(t1b_phys(:),    T1.y_B(end:-1:1), linspace(0,T1.t_B, n_ph(2)), 'pchip')';
+% Phase 1: Transfer A outbound — SA dynamics, origin → patch-1
+sol1  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ,SA.mu,false), ...
+               [0, T1.t_A], T1.IC_A, ode_opts);
+Xd1   = deval(sol1, linspace(0, T1.t_A, n_ph(1)))';   % n×3, physical
+ph1_x = Xd1(:,1);   ph1_y = Xd1(:,2);
 
+% Phase 2: Transfer A inbound — SBr (bridge) dynamics, FRS, then R-transform + reverse
+%   FRS IC_B_frs integrates bridge→patch; R-transform + reverse gives patch→bridge.
+sol2  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+               [0, T1.t_B], T1.IC_B_frs, ode_opts);
+Xd2   = deval(sol2, linspace(0, T1.t_B, n_ph(2)))';   % n×3, FRS coords
+ph2_x = Xd2(end:-1:1, 1);          % reverse → physical forward time
+ph2_y = -Xd2(end:-1:1, 2);         % R-transform y-flip
+
+% Phase 3: Coast on bridge PO (Xpo already uniform in time)
 if coast_time > 0 && size(coast_arc,1) > 1
     t_c   = linspace(0, coast_time, size(coast_arc,1))';
     ph3_x = interp1(t_c, coast_arc(:,1), linspace(0,coast_time,n_ph(3)), 'pchip')';
@@ -492,11 +501,18 @@ else
     ph3_x = zeros(0,1);  ph3_y = zeros(0,1);
 end
 
-ph4_x = interp1(T2.tA_vec(:),   T2.XA(:,1),       linspace(0,T2.t_A, n_ph(4)), 'pchip')';
-ph4_y = interp1(T2.tA_vec(:),   T2.XA(:,2),       linspace(0,T2.t_A, n_ph(4)), 'pchip')';
+% Phase 4: Transfer B outbound — SBr dynamics, bridge departure → patch-2
+sol4  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+               [0, T2.t_A], T2.IC_A, ode_opts);
+Xd4   = deval(sol4, linspace(0, T2.t_A, n_ph(4)))';
+ph4_x = Xd4(:,1);   ph4_y = Xd4(:,2);
 
-ph5_x = interp1(t2b_phys(:),    T2.x_B(end:-1:1), linspace(0,T2.t_B, n_ph(5)), 'pchip')';
-ph5_y = interp1(t2b_phys(:),    T2.y_B(end:-1:1), linspace(0,T2.t_B, n_ph(5)), 'pchip')';
+% Phase 5: Transfer B inbound — SB dynamics, FRS, then R-transform + reverse
+sol5  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ,SB.mu,false), ...
+               [0, T2.t_B], T2.IC_B_frs, ode_opts);
+Xd5   = deval(sol5, linspace(0, T2.t_B, n_ph(5)))';
+ph5_x = Xd5(end:-1:1, 1);
+ph5_y = -Xd5(end:-1:1, 2);
 
 path_x = [ph1_x; ph2_x; ph3_x; ph4_x; ph5_x];
 path_y = [ph1_y; ph2_y; ph3_y; ph4_y; ph5_y];
