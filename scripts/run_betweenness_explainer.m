@@ -457,62 +457,57 @@ function local_make_gif(T1, T2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c
 % Frames are allocated proportional to each phase's physical time duration
 % so the animated dot moves at a uniform rate across all segments.
 
-TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
-relTol  = local_cfg_get(cfg, 'propag.relTol', 1e-9);
-absTol  = local_cfg_get(cfg, 'propag.absTol', 1e-9);
+TU_days  = local_cfg_get(cfg, 'units.TU_days', 1.0);
+relTol   = local_cfg_get(cfg, 'propag.relTol', 1e-9);
+absTol   = local_cfg_get(cfg, 'propag.absTol', 1e-9);
 ode_opts = odeset('RelTol', relTol, 'AbsTol', absTol);
 
-% ── Per-phase time durations ──────────────────────────────────────────────────
-durations = [T1.t_A, T1.t_B, coast_time, T2.t_A, T2.t_B];
-T_total   = sum(durations);
-if T_total < 1e-12
-    warning('[betweenness_gif] Zero total duration — skipping animation.');
-    return
-end
+% ── Step 1: Dense integration via deval — exact trajectories, no shortcuts ────
+% N_dense >> N_frames so subsequent arc-length resampling is smooth.
+N_dense = max(2000, 20 * N_frames);
 
-% Allocate frames per phase proportional to time (minimum 2 per phase)
-n_ph = max(2, round(N_frames * durations / T_total));
+sol1 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ, SA.mu, false), ...
+               [0, T1.t_A], T1.IC_A, ode_opts);
+D1   = deval(sol1, linspace(0, T1.t_A, N_dense))';   % N_dense×3, physical
+
+sol2 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+               [0, T1.t_B], T1.IC_B_frs, ode_opts);
+D2r  = deval(sol2, linspace(0, T1.t_B, N_dense))';   % FRS frame
+D2   = [D2r(end:-1:1,1), -D2r(end:-1:1,2)];          % reversed + R-transform → physical
+
+sol4 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+               [0, T2.t_A], T2.IC_A, ode_opts);
+D4   = deval(sol4, linspace(0, T2.t_A, N_dense))';
+
+sol5 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ, SB.mu, false), ...
+               [0, T2.t_B], T2.IC_B_frs, ode_opts);
+D5r  = deval(sol5, linspace(0, T2.t_B, N_dense))';
+D5   = [D5r(end:-1:1,1), -D5r(end:-1:1,2)];
+
+% Coast: Xpo is already dense and uniform in time
+D3 = coast_arc;   % may be empty
+
+% ── Step 2: Allocate frames proportional to arc length ────────────────────────
+% This gives uniform *visual* speed regardless of physical speed variations.
+arc_len = @(xy) sum(hypot(diff(xy(:,1)), diff(xy(:,2))));
+L3 = 0;
+if size(D3,1) > 1, L3 = arc_len(D3); end
+L = max([arc_len(D1(:,1:2)), arc_len(D2), L3, arc_len(D4(:,1:2)), arc_len(D5)], 1e-12);
+L_total = sum(L);
+
+n_ph = max(2, round(N_frames * L / L_total));
 n_ph(end) = max(2, N_frames - sum(n_ph(1:end-1)));
 
-% ── Dense re-integration at uniform time steps (avoids ODE-step artefacts) ───
-% Using deval on the ODE solution gives the exact trajectory at any query time,
-% completely eliminating the non-smooth shortcuts caused by sparse ODE output.
-
-% Phase 1: Transfer A outbound — SA dynamics, origin → patch-1
-sol1  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ,SA.mu,false), ...
-               [0, T1.t_A], T1.IC_A, ode_opts);
-Xd1   = deval(sol1, linspace(0, T1.t_A, n_ph(1)))';   % n×3, physical
-ph1_x = Xd1(:,1);   ph1_y = Xd1(:,2);
-
-% Phase 2: Transfer A inbound — SBr (bridge) dynamics, FRS, then R-transform + reverse
-%   FRS IC_B_frs integrates bridge→patch; R-transform + reverse gives patch→bridge.
-sol2  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
-               [0, T1.t_B], T1.IC_B_frs, ode_opts);
-Xd2   = deval(sol2, linspace(0, T1.t_B, n_ph(2)))';   % n×3, FRS coords
-ph2_x = Xd2(end:-1:1, 1);          % reverse → physical forward time
-ph2_y = -Xd2(end:-1:1, 2);         % R-transform y-flip
-
-% Phase 3: Coast on bridge PO (Xpo already uniform in time)
-if coast_time > 0 && size(coast_arc,1) > 1
-    t_c   = linspace(0, coast_time, size(coast_arc,1))';
-    ph3_x = interp1(t_c, coast_arc(:,1), linspace(0,coast_time,n_ph(3)), 'pchip')';
-    ph3_y = interp1(t_c, coast_arc(:,2), linspace(0,coast_time,n_ph(3)), 'pchip')';
+% ── Step 3: Resample each phase to uniform arc-length steps ──────────────────
+[ph1_x, ph1_y] = local_arc_resample(D1(:,1),   D1(:,2),   n_ph(1));
+[ph2_x, ph2_y] = local_arc_resample(D2(:,1),   D2(:,2),   n_ph(2));
+if size(D3,1) > 1
+    [ph3_x, ph3_y] = local_arc_resample(D3(:,1), D3(:,2), n_ph(3));
 else
-    ph3_x = zeros(0,1);  ph3_y = zeros(0,1);
+    ph3_x = zeros(0,1); ph3_y = zeros(0,1);
 end
-
-% Phase 4: Transfer B outbound — SBr dynamics, bridge departure → patch-2
-sol4  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
-               [0, T2.t_A], T2.IC_A, ode_opts);
-Xd4   = deval(sol4, linspace(0, T2.t_A, n_ph(4)))';
-ph4_x = Xd4(:,1);   ph4_y = Xd4(:,2);
-
-% Phase 5: Transfer B inbound — SB dynamics, FRS, then R-transform + reverse
-sol5  = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ,SB.mu,false), ...
-               [0, T2.t_B], T2.IC_B_frs, ode_opts);
-Xd5   = deval(sol5, linspace(0, T2.t_B, n_ph(5)))';
-ph5_x = Xd5(end:-1:1, 1);
-ph5_y = -Xd5(end:-1:1, 2);
+[ph4_x, ph4_y] = local_arc_resample(D4(:,1),   D4(:,2),   n_ph(4));
+[ph5_x, ph5_y] = local_arc_resample(D5(:,1),   D5(:,2),   n_ph(5));
 
 path_x = [ph1_x; ph2_x; ph3_x; ph4_x; ph5_x];
 path_y = [ph1_y; ph2_y; ph3_y; ph4_y; ph5_y];
@@ -591,6 +586,21 @@ end
 
 close(fig_anim);
 fprintf('[anim] GIF saved: %s\n', gif_path);
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+function [xr, yr] = local_arc_resample(x, y, n_out)
+%LOCAL_ARC_RESAMPLE  Resample (x,y) curve to n_out points uniform in arc length.
+% Gives visually uniform dot speed regardless of physical velocity variations.
+x = x(:); y = y(:);
+ds = hypot(diff(x), diff(y));
+s  = [0; cumsum(ds)];
+% Clamp any floating-point duplicates to keep interp1 happy
+s  = s + (0:numel(s)-1)' * 1e-14 * max(s(end), 1);
+s_q = linspace(0, s(end), n_out);
+xr  = interp1(s, x, s_q, 'pchip')';
+yr  = interp1(s, y, s_q, 'pchip')';
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
