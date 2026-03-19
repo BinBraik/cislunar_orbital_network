@@ -35,8 +35,21 @@
 clear; clc;
 
 % ===================== USER KNOBS =====================
-famOrigin  = 'Lyapunov L1';
-famTargets = {'Cycler 11a', 'Cycler 32'};   % default targets
+famOrigin  = 'Cycler 11a';
+famTargets = {                          % all families except the origin
+    'Lyapunov L1',
+    'Lyapunov L2',
+    'Cycler 21',
+    'Cycler 11b',
+    'Cycler 32',
+    'Resonant 2to1 Stable',
+    'Resonant 2to1 Unstable',
+    'Resonant 3to1 Stable',
+    'Resonant 3to1 Unstable',
+    'Resonant 5to2 Stable',
+    'Resonant 5to2 Unstable',
+    'Distant Prograde Orbit',
+};
 
 use_parallel = false;  % true requires nWorkers * 2 * ~500 MB free RAM
 
