@@ -14,18 +14,18 @@
 %
 %  Outputs (all under OUT_DIR):
 %    snapshot_summary.csv, node_metrics.csv, network_results.mat
-%    edges_count_map.{pdf,png,fig}
-%    lcc_map.{pdf,png,fig}
-%    articulation_map.{pdf,png,fig}
-%    winner_map_strength.{pdf,png,fig}
-%    winner_map_harmonic_closeness.{pdf,png,fig}
-%    winner_map_betweenness.{pdf,png,fig}
-%    strength_contour.{pdf,png,fig}
-%    harmonic_closeness_contour.{pdf,png,fig}
-%    budget_feasible_pairs_map.{pdf,png,fig}
-%    baseline_strength.{pdf,png,fig}
-%    baseline_harmonic_closeness.{pdf,png,fig}
-%    baseline_betweenness.{pdf,png,fig}
+%    edges_count_map.{pdf,png,svg,fig}
+%    lcc_map.{pdf,png,svg,fig}
+%    articulation_map.{pdf,png,svg,fig}
+%    winner_map_strength.{pdf,png,svg,fig}
+%    winner_map_harmonic_closeness.{pdf,png,svg,fig}
+%    winner_map_betweenness.{pdf,png,svg,fig}
+%    strength_contour.{pdf,png,svg,fig}
+%    harmonic_closeness_contour.{pdf,png,svg,fig}
+%    budget_feasible_pairs_map.{pdf,png,svg,fig}
+%    baseline_strength.{pdf,png,svg,fig}
+%    baseline_harmonic_closeness.{pdf,png,svg,fig}
+%    baseline_betweenness.{pdf,png,svg,fig}
 %    [optional] animation_Tmax<dj>.gif
 %
 %  Dependencies: rs3_cfg_defaults, src/network/*.m  (added to path below)
@@ -406,7 +406,7 @@ end
 
 all_figs = [sweep_figs, baseline_figs];
 for fi = 1:numel(all_figs)
-    for ext = {'.pdf', '.png', '.fig'}
+    for ext = {'.pdf', '.png', '.svg', '.fig'}
         p = fullfile(OUT_DIR, [all_figs{fi} ext{1}]);
         if exist(p, 'file'), fprintf('  OK  %s%s\n', all_figs{fi}, ext{1});
         else,                fprintf('  --  %s%s  (missing)\n', all_figs{fi}, ext{1}); end

@@ -79,6 +79,7 @@ for m = 1:size(metrics, 1)
              'PaperSize', [9 4.8]);
     print(fig, [base '.pdf'], '-dpdf', '-bestfit');
     print(fig, [base '.png'], '-dpng', '-r150');
+    print(fig, [base '.svg'], '-dsvg');
     saveas(fig, [base '.fig']);
 
     close(fig);

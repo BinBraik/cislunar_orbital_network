@@ -315,6 +315,7 @@ set(fig, 'PaperUnits', 'inches', 'PaperPosition', [0 0 8.6 6.2], ...
          'PaperSize', [8.6 6.2]);
 print(fig, [base '.pdf'], '-dpdf', '-bestfit');
 print(fig, [base '.png'], '-dpng', '-r150');
+print(fig, [base '.svg'], '-dsvg');
 saveas(fig, [base '.fig']);
 
 close(fig);
