@@ -72,4 +72,22 @@ if saveFig
     end
 end
 
+% Save SVG if requested (default true)
+saveSvg = true;
+if isfield(cfg,'io') && isfield(cfg.io,'save_svg')
+    saveSvg = logical(cfg.io.save_svg);
+end
+if saveSvg
+    svgPath = fullfile(outdir2, [baseName '.svg']);
+    try
+        if exist('exportgraphics','file')
+            exportgraphics(fig, svgPath, 'ContentType', 'vector');
+        else
+            print(fig, svgPath, '-dsvg');
+        end
+    catch ME
+        warning('[rs3] Failed to save SVG (%s): %s', svgPath, ME.message);
+    end
+end
+
 end
