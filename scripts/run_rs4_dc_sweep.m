@@ -86,9 +86,9 @@ cfg.diffcorr.N_po_dt       = 0.003;  % PO knot spacing [ND] — auto-scales to o
 cfg.diffcorr.N_po_min      = 1001;   % minimum knot count (floor)
 
 % Cache settings — must match what was used to build the caches
-cfg.grid.dx               = 0.0005;
-cfg.grid.dy               = 0.0005;
-cfg.grid.dtheta           = deg2rad(0.5);
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;

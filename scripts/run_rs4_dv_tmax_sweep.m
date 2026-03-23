@@ -87,9 +87,9 @@ cfg = rs3_cfg_defaults();
 cfg.families.list      = families;
 cfg.families.test_only = false;
 
-cfg.grid.dx               = 0.0005;
-cfg.grid.dy               = 0.0005;
-cfg.grid.dtheta           = deg2rad(0.5);
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;

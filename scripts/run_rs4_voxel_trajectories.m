@@ -30,9 +30,9 @@ cfg.cache.enable  = true;
 cfg.cache.rebuild = false;
 
 % Grid (must match the cache that was built)
-cfg.grid.dx               = 0.0005;
-cfg.grid.dy               = 0.0005;
-cfg.grid.dtheta           = deg2rad(0.5);
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;

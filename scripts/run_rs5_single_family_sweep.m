@@ -62,9 +62,9 @@ cfg.cache.enable  = true;
 cfg.cache.rebuild = false;
 
 % Grid — must match whichever cache was built
-cfg.grid.dx               = 0.0005;
-cfg.grid.dy               = 0.0005;
-cfg.grid.dtheta           = deg2rad(0.5);
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;
@@ -88,7 +88,6 @@ cfg.diffcorr.MaxIterations = 300;    % fmincon iteration budget (raise to 600 fo
 cfg.diffcorr.MaxFunEvals   = 8000;   % fmincon function eval budget
 cfg.diffcorr.N_po_dt       = 0.003;  % PO knot spacing [ND] — auto-scales to orbit period
 cfg.diffcorr.N_po_min      = 1001;   % minimum knot count (floor)
-cfg.diffcorr.relax_heading = true;   % spatial constraint only; DV_patch enters objective
 
 rs3_cfg_validate(cfg);
 
