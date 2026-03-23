@@ -192,9 +192,9 @@ grid3 = rs3_grid_make(cfg);
 %% ── Per-example colour palette ───────────────────────────────────────────────
 % [origin, bridge, dest] colours
 PALETTE = [
-    0.15 0.42 0.80;   % blue   — origin
+    0.82 0.25 0.12;   % red    — origin
     0.18 0.62 0.30;   % green  — bridge
-    0.82 0.25 0.12;   % red    — destination
+    0.15 0.42 0.80;   % blue   — destination
 ];
 
 %% ── Process each example ────────────────────────────────────────────────────
@@ -316,6 +316,13 @@ for ex = 1:size(selected, 1)
     plot(ax, T2.x_B(end:-1:1), T2.y_B(end:-1:1), '-', 'Color', c_B, 'LineWidth', 2.0, ...
         'HandleVisibility', 'off');
 
+    % ── Direction-of-motion arrows: 4 total across full Transfer A → coast → Transfer B
+    tA_full  = [T1.XA(:,1:2); T1.x_B(end:-1:1), T1.y_B(end:-1:1)];
+    tB_full  = [T2.XA(:,1:2); T2.x_B(end:-1:1), T2.y_B(end:-1:1)];
+    coast_xy = coast_arc(:,1:2);
+    full_path = [tA_full; coast_xy; tB_full];
+    local_add_arrows_to_path(ax, full_path, [0 0 0], 4, 0.03);
+
     % ── ΔV patch markers (yellow stars) ──────────────────────────────────────
     xp1 = T1.XA(T1.i_star, 1);  yp1 = T1.XA(T1.i_star, 2);
     xp2 = T2.XA(T2.i_star, 1);  yp2 = T2.XA(T2.i_star, 2);
@@ -354,6 +361,25 @@ for ex = 1:size(selected, 1)
     legend(ax, 'Location','best', 'FontSize', 8);
 
     rs3_io_save_figure(fig, ex_dir, ['betweenness_' ex_tag], cfg);
+
+    % ── Save trajectories and POs to .mat ────────────────────────────────────
+    mat_data.T1              = T1;
+    mat_data.T2              = T2;
+    mat_data.coast_arc       = coast_arc;
+    mat_data.coast_time      = coast_time;
+    mat_data.PO_origin       = SA.Xpo;
+    mat_data.PO_bridge       = SBr.Xpo;
+    mat_data.PO_dest         = SB.Xpo;
+    mat_data.famA            = famA;
+    mat_data.famBr           = famBr;
+    mat_data.famB            = famB;
+    mat_data.dv_leg1_mps     = dv_l1;
+    mat_data.dv_leg2_mps     = dv_l2;
+    mat_data.dv_via_mps      = dv_via;
+    mat_data.dv_direct_mps   = dv_direct;
+    mat_path = fullfile(ex_dir, ['betweenness_' ex_tag '_data.mat']);
+    save(mat_path, '-struct', 'mat_data');
+    fprintf('[ex %d] Data saved: %s\n', ex, mat_path);
 
     % ── Optional GIF animation ────────────────────────────────────────────────
     if ANIM_ENABLE
@@ -618,6 +644,32 @@ try
     if ~isempty(cur), v = cur; end
 catch
     v = defaultVal;
+end
+end
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+function local_add_arrows_to_path(ax, xy, rgb, N_arr, arr_len)
+%LOCAL_ADD_ARROWS_TO_PATH  Place N_arr direction arrows along a 2-D path.
+%   XY is [N×2] in chronological order.  Arrows are placed at equally-spaced
+%   arc-length positions and point in the local tangent direction.
+xy = xy(all(isfinite(xy),2), :);
+if size(xy,1) < 2, return; end
+ds   = hypot(diff(xy(:,1)), diff(xy(:,2)));
+s    = [0; cumsum(ds)];
+S_total = s(end);
+if S_total < 1e-10, return; end
+for k = 1:N_arr
+    s_target = S_total * (k - 0.5) / N_arr;
+    idx = find(s <= s_target, 1, 'last');
+    idx = max(1, min(idx, size(xy,1)-1));
+    dx = xy(idx+1,1) - xy(idx,1);
+    dy = xy(idx+1,2) - xy(idx,2);
+    nrm = hypot(dx, dy);
+    if nrm < 1e-10, continue; end
+    quiver(ax, xy(idx,1), xy(idx,2), arr_len*dx/nrm, arr_len*dy/nrm, 0, ...
+        'Color', rgb, 'LineWidth', 1.2, 'MaxHeadSize', 3, ...
+        'HandleVisibility', 'off');
 end
 end
 
