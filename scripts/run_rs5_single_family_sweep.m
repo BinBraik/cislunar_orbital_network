@@ -88,6 +88,7 @@ cfg.diffcorr.MaxIterations = 300;    % fmincon iteration budget (raise to 600 fo
 cfg.diffcorr.MaxFunEvals   = 8000;   % fmincon function eval budget
 cfg.diffcorr.N_po_dt       = 0.003;  % PO knot spacing [ND] — auto-scales to orbit period
 cfg.diffcorr.N_po_min      = 1001;   % minimum knot count (floor)
+cfg.diffcorr.relax_heading = true;   % spatial constraint only; DV_patch enters objective
 
 rs3_cfg_validate(cfg);
 

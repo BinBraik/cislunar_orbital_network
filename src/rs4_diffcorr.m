@@ -6,12 +6,22 @@ function Tc = rs4_diffcorr(T, SA, SB, cfg)
 %
 %   z = [alpha_A, delta_A, t_A, alpha_B, delta_B, t_B]
 %
-% via fmincon to minimise DV_turn_A + DV_turn_B subject to the position +
-% heading continuity constraint at the arc endpoints:
+% via fmincon.  Two modes are supported (cfg.diffcorr.relax_heading):
 %
-%   r(z) = [ x_A(t_A)  -  x_B(t_B)           ]
-%           [ y_A(t_A)  -  y_B(t_B)           ]  =  0
-%           [ wrap( th_A(t_A) - th_B(t_B) )   ]
+%   relax_heading = false (default)
+%     Minimise DV_turn_A + DV_turn_B subject to full position + heading
+%     continuity (forces DV_patch = 0 via constraint):
+%       r(z) = [ x_A(t_A) - x_B(t_B)          ]
+%              [ y_A(t_A) - y_B(t_B)          ]  = 0
+%              [ wrap( th_A(t_A) - th_B(t_B)) ]
+%
+%   relax_heading = true
+%     Minimise DV_turn_A + DV_patch + DV_turn_B subject to spatial
+%     continuity only (heading mismatch enters the cost, not the constraint):
+%       r(z) = [ x_A(t_A) - x_B(t_B) ]  = 0
+%              [ y_A(t_A) - y_B(t_B) ]
+%     This is a relaxation of the default mode — the feasible set is
+%     strictly larger so total DV can only be equal or lower.
 %
 % where
 %   alpha_A/B   continuous departure-time parameters along PO_A / PO_B
@@ -42,6 +52,8 @@ function Tc = rs4_diffcorr(T, SA, SB, cfg)
 %   cfg.diffcorr.MaxFunEvals    fmincon max function evaluations (8000)
 %   cfg.diffcorr.N_po_dt        target time between PO knots [ND] — scales with period (0.003)
 %   cfg.diffcorr.N_po_min       minimum knot count floor (1001)
+%   cfg.diffcorr.relax_heading  if true: 2-component spatial constraint +
+%                               DV_patch in objective (false)
 
 % -------------------------------------------------------------------------
 % Config
@@ -62,8 +74,9 @@ dc_display    = local_cfg_get(cfg, 'diffcorr.display',        'iter');  % 'off' 
 % gradient fidelity while reducing per-arc cost noticeably.
 relTol_dc    = local_cfg_get(cfg, 'diffcorr.relTol_dc',      relTol_final * 10);
 absTol_dc    = local_cfg_get(cfg, 'diffcorr.absTol_dc',      absTol_final * 10);
-dc_max_iter  = local_cfg_get(cfg, 'diffcorr.MaxIterations',   300);
-dc_max_feval = local_cfg_get(cfg, 'diffcorr.MaxFunEvals',     8000);
+dc_max_iter    = local_cfg_get(cfg, 'diffcorr.MaxIterations',   300);
+dc_max_feval   = local_cfg_get(cfg, 'diffcorr.MaxFunEvals',     8000);
+relax_heading  = local_cfg_get(cfg, 'diffcorr.relax_heading',   false);
 relTol     = relTol_final;  % alias kept for local_ensure_xpo calls
 absTol     = absTol_final;
 
@@ -109,28 +122,37 @@ ub = [SA.Tf_PO;   +delta_max;  Tmax;   SB.Tf_PO;   +delta_max;  Tmax ];
 % -------------------------------------------------------------------------
 % Step 3 — Residual scaling (normalise to voxel-grid units)
 %   r_scaled = r ./ [dx; dy; dtheta]  =>  O(1) at initial miss
+%   When relax_heading=true the heading row is dropped from the constraint,
+%   so r_scale is 2-element.
 % -------------------------------------------------------------------------
 grid3   = SA.grid3;
-r_scale = [grid3.dx; grid3.dy; grid3.dtheta];
+if relax_heading
+    r_scale = [grid3.dx; grid3.dy];
+else
+    r_scale = [grid3.dx; grid3.dy; grid3.dtheta];
+end
 
 % -------------------------------------------------------------------------
 % Step 4 — Diagnostic: evaluate warm-start residual
 % -------------------------------------------------------------------------
-r0 = local_residual(z0, SA, SB, odeOpts);
+r0 = local_residual(z0, SA, SB, odeOpts, relax_heading);
 if ~strcmp(dc_display, 'off')
     fprintf('\n[diffcorr] ---- Differential Correction ----\n');
+    if relax_heading
+        fprintf('[diffcorr] Mode: relax_heading (spatial constraint only; DV_patch in cost)\n');
+    end
     fprintf('[diffcorr] Warm start:\n');
     fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
         T.DV_total_true_mps, T.DV_turn_A_mps, T.DV_patch_mps, T.DV_turn_B_mps);
-    fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r0(1), r0(2), r0(3));
+    fprintf('[diffcorr]   residual (raw)     = %s\n', mat2str(r0', 3));
     fprintf('[diffcorr]   residual (scaled)  = %.3e\n', norm(r0 ./ r_scale));
 end
 
 % -------------------------------------------------------------------------
 % Step 5 — fmincon (pass 1)
 % -------------------------------------------------------------------------
-obj_fun = @(z) local_objective(z, SA, SB);
-con_fun = @(z) local_constraints(z, SA, SB, odeOpts, r_scale);
+obj_fun = @(z) local_objective(z, SA, SB, odeOpts, relax_heading);
+con_fun = @(z) local_constraints(z, SA, SB, odeOpts, r_scale, relax_heading);
 
 % TypicalX guides the per-variable FD step size.
 % alpha [0,Tf_PO] ~ Tf_PO/2,  delta [-pi/2,pi/2] ~ pi/6,  t [1e-4,Tmax] ~ Tmax/2
@@ -168,7 +190,7 @@ end
 %        patch residual to near-zero, then restart fmincon from that
 %        feasible warm point to recover DV optimality.
 % -------------------------------------------------------------------------
-r_pass1      = local_residual(z_star, SA, SB, odeOpts);
+r_pass1      = local_residual(z_star, SA, SB, odeOpts, relax_heading);
 r_pass1_norm = norm(r_pass1 ./ r_scale);
 
 z_best      = z_star;
@@ -192,9 +214,9 @@ if r_pass1_norm > tol_patch
         'MaxFunctionEvaluations', 5000, ...
         'FiniteDifferenceType',   'central');
 
-    z_feas      = lsqnonlin(@(z) local_residual(z, SA, SB, odeOpts) ./ r_scale, ...
+    z_feas      = lsqnonlin(@(z) local_residual(z, SA, SB, odeOpts, relax_heading) ./ r_scale, ...
                              z_lsq0, lb, ub, opts_lsq);
-    r_feas_norm = norm(local_residual(z_feas, SA, SB, odeOpts) ./ r_scale);
+    r_feas_norm = norm(local_residual(z_feas, SA, SB, odeOpts, relax_heading) ./ r_scale);
     if ~strcmp(dc_display, 'off')
         fprintf('[diffcorr] lsqnonlin: ||r_sc||=%.2e\n', r_feas_norm);
     end
@@ -211,7 +233,7 @@ if r_pass1_norm > tol_patch
         [z_star2, ~, exitflag2, output2] = fmincon( ...
             obj_fun, z_feas, [], [], [], [], lb, ub, con_fun, opts_fmin2);
 
-        r_pass2_norm = norm(local_residual(z_star2, SA, SB, odeOpts) ./ r_scale);
+        r_pass2_norm = norm(local_residual(z_star2, SA, SB, odeOpts, relax_heading) ./ r_scale);
         if ~strcmp(dc_display, 'off')
             fprintf('[diffcorr] fmincon pass 2: exitflag=%d  iter=%d  ||r_sc||=%.2e\n', ...
                 exitflag2, output2.iterations, r_pass2_norm);
@@ -271,7 +293,7 @@ v_patch      = sqrt(max(2*pot_p.U - min(SA.CJ, SB.CJ), 0));
 delta_th     = abs(rs3_wrapToPi(thp_A - thp_B));
 DV_patch_nd  = 2 * v_patch * sin(delta_th / 2);
 
-r_final      = local_residual(z_star, SA, SB, odeOpts_final);
+r_final      = local_residual(z_star, SA, SB, odeOpts_final, relax_heading);
 r_final_norm = norm(r_final ./ r_scale);
 converged    = r_final_norm <= tol_converged;
 
@@ -280,7 +302,7 @@ if ~strcmp(dc_display, 'off')
     fprintf('[diffcorr]   DV_total = %.3f m/s  (turn_A=%.3f  patch=%.3f  turn_B=%.3f)\n', ...
         (DV_turn_A_nd + DV_patch_nd + DV_turn_B_nd)*VU_mps, ...
         DV_turn_A_nd*VU_mps, DV_patch_nd*VU_mps, DV_turn_B_nd*VU_mps);
-    fprintf('[diffcorr]   residual (raw)     = [%.3e  %.3e  %.3e]\n', r_final(1), r_final(2), r_final(3));
+    fprintf('[diffcorr]   residual (raw)     = %s\n', mat2str(r_final', 3));
     fprintf('[diffcorr]   residual (scaled)  = %.3e  (tol_conv=%.2e)  %s\n', ...
         r_final_norm, tol_converged, local_conv_str(converged));
     fprintf('[diffcorr]   delta_th at patch  = %.4f deg\n', rad2deg(delta_th));
@@ -350,30 +372,63 @@ end
 % Local helpers
 % =========================================================================
 
-function dv = local_objective(z, SA, SB)
-% Minimise total turn cost (patch cost goes to zero via constraint).
-    alpha_A = z(1);  delta_A = z(2);
-    alpha_B = z(4);  delta_B = z(5);
-    seed_A  = local_interp_po(SA, alpha_A);
-    seed_B  = local_interp_po(SB, alpha_B);
-    pot_A   = rs3_core_cr3bp_U_and_derivs(seed_A(1), seed_A(2), SA.mu);
+function dv = local_objective(z, SA, SB, odeOpts, relax_heading)
+% Minimise total DV cost.
+% relax_heading=false : DV_turn_A + DV_turn_B  (patch zeroed via constraint)
+% relax_heading=true  : DV_turn_A + DV_patch + DV_turn_B  (heading is free)
+    e       = local_eval_arcs(z, SA, SB, odeOpts);
+    delta_A = z(2);
+    delta_B = z(5);
+    pot_A   = rs3_core_cr3bp_U_and_derivs(e.seed_A(1), e.seed_A(2), SA.mu);
     v0_A    = sqrt(max(2*pot_A.U - SA.CJ, 0));
-    pot_B   = rs3_core_cr3bp_U_and_derivs(seed_B(1), seed_B(2), SB.mu);
+    pot_B   = rs3_core_cr3bp_U_and_derivs(e.seed_B(1), e.seed_B(2), SB.mu);
     v0_B    = sqrt(max(2*pot_B.U - SB.CJ, 0));
-    dv      = 2*v0_A*sin(abs(delta_A)/2) + 2*v0_B*sin(abs(delta_B)/2);
+    DV_turns = 2*v0_A*sin(abs(delta_A)/2) + 2*v0_B*sin(abs(delta_B)/2);
+    if relax_heading
+        pot_p    = rs3_core_cr3bp_U_and_derivs(e.xA, e.yA, SA.mu);
+        v_p      = sqrt(max(2*pot_p.U - min(SA.CJ, SB.CJ), 0));
+        dth      = abs(rs3_wrapToPi(e.thA - e.thB));
+        DV_patch = 2 * v_p * sin(dth / 2);
+        dv = DV_turns + DV_patch;
+    else
+        dv = DV_turns;
+    end
 end
 
 % -------------------------------------------------------------------------
 
-function [c, ceq] = local_constraints(z, SA, SB, odeOpts, r_scale)
+function [c, ceq] = local_constraints(z, SA, SB, odeOpts, r_scale, relax_heading)
     c   = [];
-    r   = local_residual(z, SA, SB, odeOpts);
+    r   = local_residual(z, SA, SB, odeOpts, relax_heading);
     ceq = r ./ r_scale;      % normalised to O(1) at warm start
 end
 
 % -------------------------------------------------------------------------
 
-function r = local_residual(z, SA, SB, odeOpts)
+function r = local_residual(z, SA, SB, odeOpts, relax_heading)
+% Returns spatial (and optionally heading) endpoint mismatch.
+% relax_heading=false : r = [dx; dy; d_theta]  (3-component)
+% relax_heading=true  : r = [dx; dy]           (2-component)
+    e = local_eval_arcs(z, SA, SB, odeOpts);
+    if relax_heading
+        r = [e.xA - e.xB; e.yA - e.yB];
+    else
+        r = [e.xA - e.xB; e.yA - e.yB; rs3_wrapToPi(e.thA - e.thB)];
+    end
+end
+
+% -------------------------------------------------------------------------
+
+function e = local_eval_arcs(z, SA, SB, odeOpts)
+% Integrate both arcs from current decision vector z and return their
+% endpoints.  Uses a persistent cache keyed on z to avoid redundant ODE
+% evaluations when fmincon queries the objective and constraint at the same
+% point (which happens every iteration with central finite differences).
+    persistent z_cache e_cache
+    if ~isempty(z_cache) && isequal(z, z_cache)
+        e = e_cache;
+        return;
+    end
     alpha_A = z(1);  delta_A = z(2);  t_A = z(3);
     alpha_B = z(4);  delta_B = z(5);  t_B = z(6);
 
@@ -388,15 +443,17 @@ function r = local_residual(z, SA, SB, odeOpts)
     [~, XB_frs] = ode113(@(tt,XX) rs3_core_reduced_cr3bp_model(tt,XX,SB.CJ,SB.mu,false), ...
                           [0, max(t_B, 1e-6)], IC_B_frs, odeOpts);
 
-    xA  = XA(end,1);
-    yA  = XA(end,2);
-    thA = XA(end,3);
+    e.xA    = XA(end,1);
+    e.yA    = XA(end,2);
+    e.thA   = XA(end,3);
+    e.xB    =  XB_frs(end,1);
+    e.yB    = -XB_frs(end,2);                       % R-transform y
+    e.thB   =  rs3_wrapToPi(pi - XB_frs(end,3));    % R-transform th
+    e.seed_A = seed_A;
+    e.seed_B = seed_B;
 
-    xB  =  XB_frs(end,1);
-    yB  = -XB_frs(end,2);                       % R-transform y
-    thB =  rs3_wrapToPi(pi - XB_frs(end,3));    % R-transform th
-
-    r = [xA - xB; yA - yB; rs3_wrapToPi(thA - thB)];
+    z_cache = z;
+    e_cache = e;
 end
 
 % -------------------------------------------------------------------------
