@@ -1,36 +1,44 @@
-%% RUN_VERIFICATION_GRID_SWEEP
-% Automated numerical robustness verification sweep.
-% Runs 7 core configurations (+ optional Run 7 stress-coarse) with different
-% grid / seed / heading-fan parameters to verify that network centrality results
-% are stable across reasonable numerical choices.
+%% RUN_VERIFICATION_GRID_SWEEP  —  numerical robustness verification across 7 grid configs
 %
-% DV_cap = 0.2 nd  and  Tmax = π  are FIXED across all runs.
-% Only the spatial grid (dx, dy), heading grid (dtheta), heading fan (dtheta_fan),
-% and seed spacing (ds_seed) are varied.
+% Runs the 78-pair DV-proxy computation at 7 (or 8) systematically varied
+% numerical configurations to verify that network centrality rankings are stable
+% across reasonable discretisation choices.  DV_cap and Tmax are held fixed;
+% only the spatial grid, heading grid, heading fan, and seed spacing are varied.
+% After this script completes, run run_robustness_analysis.m to compare results.
 %
-% Run table  (from verification design):
-%   Run 0  Baseline           dx=dy=0.0005  dtheta=0.5°  fan=0.5°  ds=0.01
-%   Run 1  Coarser spatial    dx=dy=0.001   dtheta=0.5°  fan=0.5°  ds=0.01
-%   Run 2  Coarser hdg grid   dx=dy=0.0005  dtheta=1.0°  fan=0.5°  ds=0.01
-%   Run 3  Coarser hdg fan    dx=dy=0.0005  dtheta=0.5°  fan=1.0°  ds=0.01
-%   Run 4  Coarser seed       dx=dy=0.0005  dtheta=0.5°  fan=0.5°  ds=0.02
-%   Run 5  Combined coarse    dx=dy=0.001   dtheta=1.0°  fan=1.0°  ds=0.02
-%   Run 6  Combined fine      dx=dy=0.00025 dtheta=0.25° fan=0.25° ds=0.005
-%   Run 7* Stress coarse      dx=dy=0.0015  dtheta=1.5°  fan=1.5°  ds=0.03
+% Run table (DV_cap = 0.2 nd, Tmax = π fixed across all):
+%   Run 0  Baseline        dx=dy=0.0005  dtheta=0.5°  fan=0.5°  ds=0.01
+%   Run 1  Coarser spatial dx=dy=0.001   dtheta=0.5°  fan=0.5°  ds=0.01
+%   Run 2  Coarser hdg grid dx=dy=0.0005 dtheta=1.0°  fan=0.5°  ds=0.01
+%   Run 3  Coarser hdg fan  dx=dy=0.0005 dtheta=0.5°  fan=1.0°  ds=0.01
+%   Run 4  Coarser seed     dx=dy=0.0005 dtheta=0.5°  fan=0.5°  ds=0.02
+%   Run 5  Combined coarse  dx=dy=0.001  dtheta=1.0°  fan=1.0°  ds=0.02
+%   Run 6  Combined fine    dx=dy=0.00025 dtheta=0.25° fan=0.25° ds=0.005
+%   Run 7* Stress coarse    dx=dy=0.0015 dtheta=1.5°  fan=1.5°  ds=0.03
 %            (* only if INCLUDE_RUN7 = true)
 %
-% Strategy — identical to run_rs4_dv_tmax_sweep.m + run_rs4_all_pairs_summary.m:
+% Strategy (same as run_rs4_all_pairs_summary.m):
 %   1. For each run config: build cfg, load 13 atlases, build footprints.
-%   2. Slice footprints into FA_arr / FB_arr (one per pair).
-%   3. Run 78-pair loop with parfor (sliced footprints — OOM-safe).
-%   4. Assemble N×N minDVproxyMat + TOFmat.
-%   5. Save to rs4_verification_runs/<RunID>/result.mat  (skip-if-exists).
+%   2. Slice footprints into FA_arr / FB_arr for parfor broadcast safety.
+%   3. Run 78-pair intersection loop (parfor or serial).
+%   4. Assemble N×N minDVproxyMat + TOFmat; save to result.mat.
+%   Each run is skipped if its result.mat already exists (safe to re-run).
 %
-% Output per run:  rs4_verification_runs/<RunID>/result.mat
-%   Variables: minDVproxyMat [13×13], TOFmat [13×13], T (winners table),
-%              families {13×1}, cfg (run config)
+% Prerequisites:
+%   - Cached atlases built at multiple resolutions must exist in rs3_cache/.
+%     Run run_rs3_one_family_atlas_and_plots.m for each run configuration.
+%     The Run 0 baseline cache is the same as for run_rs4_dv_tmax_sweep.m.
 %
-% After all runs complete, run run_robustness_analysis.m to compare results.
+% User knobs:
+%   N_WORKERS    — parfor workers; 0 = fully serial
+%   INCLUDE_RUN7 — true to add the stress-coarse Run 7 configuration
+%   INCLUDE_TEST — true to add a custom test run (edit RunTest_Custom)
+%   DV_CAP_ND    — fixed DV cap (nd); default 0.2
+%   TMAX_ND      — fixed Tmax (nd); default π
+%
+% Outputs written to rs4_verification_runs/<RunID>/:
+%   result.mat  — minDVproxyMat [N×N], TOFmat [N×N], T (winners table),
+%                 families {N×1}, cfg
 
 clear; clc;
 

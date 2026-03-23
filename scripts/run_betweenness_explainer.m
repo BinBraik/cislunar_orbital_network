@@ -1,37 +1,56 @@
-%% RUN_BETWEENNESS_EXPLAINER
+%% RUN_BETWEENNESS_EXPLAINER  —  visualise betweenness centrality via bridge routing
 %
-% Demonstrates betweenness centrality by showing that routing transfers
-% through a high-betweenness "bridge" orbit (default: Cycler 11a) is
-% cheaper than flying direct between origin and destination.
+% Demonstrates betweenness centrality by showing that routing a transfer through
+% a high-betweenness "bridge" orbit (default: Cycler 11a) is cheaper than flying
+% directly between origin and destination.  For the top N_EXAMPLES (origin, dest)
+% pairs by DV savings, the script extracts the two-leg transfer arcs, computes
+% the coast segment on the bridge PO, and produces a static figure and an
+% animated GIF tracing the full multi-leg path.
 %
 % Workflow:
-%   1. Load the DV sweep matrix and pick a baseline (DV_cap, Tmax) snapshot.
-%   2. Compute savings = DV_direct(A,B) - [DV(A,bridge) + DV(bridge,B)]
-%      for every undirected pair that doesn't involve the bridge.
-%   3. Select the top N_EXAMPLES pairs (ranked by savings).
+%   1. Load DV sweep matrix and network_results; pick a (DV_cap, Tmax) snapshot.
+%   2. Compute savings = DV_direct(A,B) − [DV(A,bridge) + DV(bridge,B)]
+%      for every pair not involving the bridge family.
+%   3. Select the top N_EXAMPLES pairs (ranked by savings, largest first).
 %   4. For each selected pair:
-%       a. Load atlases for origin, bridge, destination.
-%       b. Extract Leg-1 arc  (origin  → bridge) via rs4_voxel_traj_extract.
-%       c. Extract Leg-2 arc  (bridge  → dest  ) via rs4_voxel_traj_extract.
-%       d. Compute coast segment on bridge PO between the two seeds.
-%       e. Plot all elements (POs dashed + direction arrows, arcs in
-%          distinct colours, patch markers, DV annotation).
-%       f. [optional] Export an animated GIF of a spacecraft following
-%          the full multi-leg path with a growing trail.
+%        a. Load atlases for origin, bridge, and destination families.
+%        b. Extract Leg-1 arc (origin → bridge) via rs4_voxel_traj_extract.
+%        c. Extract Leg-2 arc (bridge → dest)   via rs4_voxel_traj_extract.
+%        d. Compute the coast arc on the bridge PO between the two patch seeds.
+%        e. Plot POs (dashed + arrows), transfer arcs (solid, colour-coded),
+%           patch markers, and DV annotation text.
+%        f. Optionally animate the spacecraft along the full path with a trail.
 %
-% Coordinate note:
-%   All arcs are converted to physical (x, y) space for plotting:
-%     FRS arcs   XA(:,1:2)          — already physical.
-%     BRS arcs   reversed(x_B, y_B) — y_B already physical after R-transform;
-%                                      reversed so arc runs patch→PO in forward time.
-%   Periodic orbits are plotted from S.Xpo without modification.
-%   A small geometric gap at each patch point is intentional; it
-%   represents the DV_patch manoeuvre.
+% Prerequisites:
+%   - run_rs4_dv_tmax_sweep.m must have completed (sweep_DVmatrix_results.mat).
+%   - run_network_centrality_sweep.m is recommended (network_results.mat).
+%   - Cached atlases for the bridge, origin, and destination families must exist.
+%
+% User knobs:
+%   SWEEP_MAT        — path to sweep_DVmatrix_results.mat
+%   NET_MAT          — path to network_results.mat (optional but recommended)
+%   BRIDGE_FAMILY    — family to use as the routing hub; default 'Cycler 11a'
+%   N_EXAMPLES       — number of top (origin, dest) examples to generate
+%   BASELINE_DI/DJ   — sweep snapshot indices; [] = max-budget cell
+%   ANIM_ENABLE      — true to generate an animated GIF per example
+%   ANIM_N_FRAMES    — total frames in each GIF
+%   ANIM_FRAME_DELAY — seconds per GIF frame
+%   OUT_DIR          — output directory
 %
 % Colour convention:
-%   c_A  (blue)  — full Transfer A: origin departure arc + bridge arrival arc
-%   c_Br (green) — bridge periodic orbit + coast segment on bridge
-%   c_B  (red)   — full Transfer B: bridge departure arc + destination arrival arc
+%   c_A  (red)   — origin PO + Transfer A: origin departure arc + bridge arrival arc
+%   c_Br (green) — bridge PO + coast segment on bridge PO
+%   c_B  (blue)  — destination PO + Transfer B: bridge departure arc + destination arrival arc
+%
+% Coordinate note:
+%   FRS arcs (XA[:,1:2]) are already in physical (x,y) space.
+%   BRS arcs are reversed so the arc runs patch→PO in forward time.
+%   The small geometric gap at each patch point represents the DV_patch manoeuvre.
+%
+% Outputs written to OUT_DIR (rs3_betweenness_explainer/):
+%   example_<N>/betweenness_<tag>_static.png/fig  — static trajectory figure
+%   example_<N>/betweenness_<tag>.gif             — animated GIF (if enabled)
+%   example_<N>/betweenness_<tag>_data.mat        — trajectory + PO data
 
 clear; clc;
 

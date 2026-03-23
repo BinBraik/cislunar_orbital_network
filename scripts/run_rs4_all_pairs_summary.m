@@ -1,23 +1,37 @@
-%% RUN_RS4_ALL_PAIRS_SUMMARY
-% Single-configuration DV-proxy batch runner over all 13×12/2 = 78 family pairs.
+%% RUN_RS4_ALL_PAIRS_SUMMARY  —  batch DV-proxy over all 78 family pairs
 %
-% REFACTORED to use the same footprint + parfor strategy as
-% run_rs4_dv_tmax_sweep.m (OOM-safe, no full atlas broadcast).
+% Computes the minimum DV-proxy transfer cost for every pair drawn from the
+% 13-family set (78 undirected pairs) at a single grid / fan / propagation
+% configuration.  Outputs an N×N DV matrix and a ranked winners table.
+% This is the fast, figure-free batch runner; for detailed per-pair figures
+% use run_rs4_overlap_and_visuals.m.
 %
-% Strategy:
-%   1. Load all 13 base atlases once (serial, main process — Java MD5 safe).
-%   2. Build compact per-family footprints (~5-25 MB each).
-%   3. Slice footprints into FA_arr / FB_arr (one entry per pair).
-%   4. Run pair loop: parfor over 78 pairs using sliced footprints.
-%   5. Assemble N×N minDVproxyMat + TOFmat and save outputs.
+% Strategy (OOM-safe, parfor-friendly):
+%   1. Load all N atlases serially on the main process (Java MD5 safe).
+%   2. Build compact per-family footprints (~5–25 MB each vs ~500 MB full atlas).
+%   3. Slice footprints into per-pair arrays for parfor broadcast safety.
+%   4. Run 78-pair intersection loop (parfor or serial, see N_WORKERS).
+%   5. Assemble N×N minDVproxyMat + TOFmat and save CSV + .mat outputs.
 %
-% Outputs written to <out_root>/<tag>/rs4_pairs_13fam/Summary/:
-%   minDVproxy_matrix.csv           — N×N DV matrix (m/s)
-%   pair_winners_top1.csv           — long-form winners table
-%   batch_summary_workspace.mat     — minDVproxyMat, T, cfg, families
+% Prerequisites:
+%   - Cached atlases for all families in the families list must exist.
+%     Build them first with run_rs3_one_family_atlas_and_plots.m.
+%   - The cfg block below (grid / fan / propag) must match the cached atlases.
 %
-% For per-pair figures and detailed overlap visualisation use
-%   run_rs4_overlap_and_visuals.m  (separate heavy pipeline).
+% User knobs:
+%   N_WORKERS        — 0 = fully serial; N ≥ 1 = parfor with N workers
+%   POOL_AFTER_ATLAS — true (safe): start parpool after atlas loading completes;
+%                      false: start parpool before loading (only if all atlases
+%                      are already cached, no risk of pool timeout)
+%   families         — cell array of family name strings to include
+%   cfg.grid.*       — voxel grid (must match cached atlases)
+%   cfg.fan.*        — heading fan settings (must match cache)
+%   cfg.propag.*     — integration settings (must match cache)
+%
+% Outputs written to rs3_results/<timestamp>/rs4_pairs_<N>fam/Summary/:
+%   minDVproxy_matrix.csv       — N×N symmetric DV-proxy matrix (m/s)
+%   pair_winners_top1.csv       — long-form winners table, sorted by DV
+%   batch_summary_workspace.mat — minDVproxyMat, TOFmat, T, families, cfg
 
 clear; clc;
 

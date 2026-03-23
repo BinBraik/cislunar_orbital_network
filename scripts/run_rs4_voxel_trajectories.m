@@ -1,18 +1,40 @@
-%% RUN_RS4_VOXEL_TRAJECTORIES
-% Re-integrate the argmin-DV trajectory pair for the best overlap voxel of
-% one family pair and compute the true DV_total.
+%% RUN_RS4_VOXEL_TRAJECTORIES  —  extract, correct, and plot true-DV trajectory pair
+%
+% Re-integrates the argmin-DV arc pair for the best overlap voxel of a single
+% family pair and applies differential correction.  This gives the true
+% DV_total (replacing the proxy upper-bound) and produces side-by-side before/
+% after DC trajectory figures.  Use this script to inspect and verify a specific
+% transfer in detail before running the full 78-pair batch.
 %
 % Workflow:
-%   1. Load (or rebuild) both family atlases from cache
-%   2. Compute overlap O and voxel metadata V (same as run_rs4_overlap_and_visuals)
-%   3. Run rs4_overlap_visualize_bounds to get B struct (best voxel index B.imin)
-%   4. Call rs4_voxel_traj_extract  -> T struct with arcs + true DV values
-%   5. Call rs4_voxel_traj_visualize_single -> cislunar background plot
+%   1. Load both family atlases from cache (or rebuild if needed).
+%   2. Compute overlap O and per-voxel metadata V (same as run_rs4_overlap_and_visuals).
+%   3. Find the best-DV voxel (B struct with B.imin) via rs4_overlap_visualize_bounds.
+%   4. Re-integrate the two winning arcs → T struct with true DV values.
+%      DV_total_true = DV_turn_A_min + DV_patch_true + DV_turn_B_min
+%      where DV_patch_true = 2·v_box·sin(|Δθ|/2) at the voxel centre.
+%   5. Run differential correction → Tc struct (tightened DV + corrected arcs).
+%   6. Generate cislunar trajectory figure and before/after DC comparison figure.
 %
-% The DVtotal printed here replaces the proxy upper-bound with:
-%   DV_total_true = DV_turn_A_min + DV_patch_true + DV_turn_B_min
-% where DV_patch_true = 2*v_box_center*sin(|theta_A - theta_B|/2) measured
-% at the closest points of each re-integrated arc to the voxel center.
+% Prerequisites:
+%   - Cached atlases for famA and famB must exist in rs3_cache/.
+%   - cfg below (grid / fan / propag) must match those cached atlases exactly.
+%
+% User knobs:
+%   famA, famB              — the two orbit families to analyse
+%   cfg.grid/fan/propag     — must match cached atlases
+%   cfg.diffcorr.*          — DC solver settings:
+%     tol_patch             — normalised convergence tolerance for fmincon
+%     tol_converged         — threshold for the "CONVERGED" status label
+%     display               — 'iter' shows iteration-by-iteration output;
+%                             'off' for silent; 'final' for summary only
+%     MaxIterations         — fmincon iteration budget (raise to 600 for hard cases)
+%     MaxFunEvals           — fmincon function-evaluation budget
+%     N_po_dt / N_po_min    — PO spline knot density (finer = slower but smoother)
+%
+% Outputs written to rs3_results/<timestamp>/:
+%   rs4_<tag>_voxel_traj.png/fig           — re-integrated arc pair figure
+%   rs4_<tag>_diffcorr_compare.png/fig     — before/after DC side-by-side figure
 
 clear; clc;
 

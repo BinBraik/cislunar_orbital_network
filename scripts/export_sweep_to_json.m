@@ -1,15 +1,27 @@
-%% EXPORT_SWEEP_TO_JSON
-% Generate a self-contained web/dv_map.html from sweep results.
+%% EXPORT_SWEEP_TO_JSON  —  generate self-contained interactive DV map (HTML)
 %
-% Reads:
-%   rs3_sweep_results/sweep_DVmatrix_results.mat  — DV/TOF matrices (required)
-%   rs3_network_results/network_results.mat        — centrality data (optional)
+% Reads the DV/TOF sweep matrices and (optionally) network centrality results and
+% writes a fully self-contained web/dv_map.html that can be opened directly in any
+% browser.  The interactive map lets users select a (DV_cap, Tmax) budget snapshot
+% and explore the N×N transfer matrix with hover tooltips and family rankings.
 %
 % If network_results.mat is absent the script computes harmonic closeness
-% locally using the corrected formula from net_centrality.m Step 6.
+% locally from the sweep data (same formula as net_centrality.m Step 6).
 %
-% Writes:
-%   web/dv_map.html   — fully self-contained, open directly in any browser
+% Prerequisites:
+%   - run_rs4_dv_tmax_sweep.m must have completed and written
+%     rs3_sweep_results/sweep_DVmatrix_results.mat.
+%   - run_network_centrality_sweep.m output is optional but enriches the map.
+%   - web/dv_map_template.html must exist (tracked in the repository).
+%
+% User knobs (path variables at the top of the file):
+%   SWEEP_MAT   — path to sweep_DVmatrix_results.mat
+%   NET_MAT     — path to network_results.mat (leave as-is; script handles absence)
+%   HTML_TMPL   — path to dv_map_template.html (default: web/dv_map_template.html)
+%   HTML_OUT    — output path for the generated page (default: web/dv_map.html)
+%
+% Outputs:
+%   web/dv_map.html  — self-contained interactive HTML; open in any browser
 
 clear; clc;
 

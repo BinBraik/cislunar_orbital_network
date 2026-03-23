@@ -1,35 +1,46 @@
-%% =========================================================================
-%  run_network_centrality_sweep.m
+%% RUN_NETWORK_CENTRALITY_SWEEP  —  network centrality analysis over sweep grid
 %
-%  Network centrality analysis over the DV-cap / Tmax parameter sweep.
+% Reads the DV/TOF matrices produced by run_rs4_dv_tmax_sweep.m and computes
+% five network-centrality metrics for every (DV_cap, Tmax) snapshot in the sweep
+% grid.  Produces contour maps, winner maps, and per-family bar charts.
+% The output network_results.mat is consumed by export_sweep_to_json.m and
+% run_betweenness_explainer.m.
 %
-%  For each snapshot (di, dj) in the sweep grid the script:
-%    1. Loads and sanitises the DV/TOF transfer matrix
-%    2. Applies the feasibility filter
-%    3. Runs Floyd-Warshall for all-pairs shortest-path distances
-%    4. Computes the Largest Connected Component (LCC)
-%    5-9. Computes budgeted reachability, harmonic closeness, betweenness,
-%         strength, and articulation-point metrics
-%    10. Resolves ties and records winners
+% For each snapshot (di, dj) the script:
+%   1. Loads and sanitises the DV/TOF transfer matrix.
+%   2. Applies the feasibility filter (edge exists iff DV ≤ budget).
+%   3. Runs Floyd-Warshall for all-pairs shortest-path distances.
+%   4. Computes the Largest Connected Component (LCC).
+%   5–9. Computes strength, harmonic closeness, betweenness centrality,
+%        PageRank, and articulation-point flags.
+%   10. Resolves ties and records the per-snapshot winner for each metric.
 %
-%  Outputs (all under OUT_DIR):
-%    snapshot_summary.csv, node_metrics.csv, network_results.mat
-%    edges_count_map.{pdf,png,svg,fig}
-%    lcc_map.{pdf,png,svg,fig}
-%    articulation_map.{pdf,png,svg,fig}
-%    winner_map_strength.{pdf,png,svg,fig}
-%    winner_map_harmonic_closeness.{pdf,png,svg,fig}
-%    winner_map_betweenness.{pdf,png,svg,fig}
-%    strength_contour.{pdf,png,svg,fig}
-%    harmonic_closeness_contour.{pdf,png,svg,fig}
-%    budget_feasible_pairs_map.{pdf,png,svg,fig}
-%    baseline_strength.{pdf,png,svg,fig}
-%    baseline_harmonic_closeness.{pdf,png,svg,fig}
-%    baseline_betweenness.{pdf,png,svg,fig}
-%    [optional] animation_Tmax<dj>.gif
+% Prerequisites:
+%   - run_rs4_dv_tmax_sweep.m must have completed and written
+%     rs3_sweep_results/sweep_DVmatrix_results.mat.
 %
-%  Dependencies: rs3_cfg_defaults, src/network/*.m  (added to path below)
-% =========================================================================
+% User knobs:
+%   SWEEP_MAT        — path to sweep_DVmatrix_results.mat
+%   OUT_DIR          — output directory (created if absent)
+%   BUDGET_FACTOR    — multiplier on DV_cap for the edge-feasibility budget
+%                      (2 = departure + arrival manoeuvre, the physical total)
+%   TIE_TOL_REL      — relative tie tolerance for winner assignment
+%   BASELINE_DI/DJ   — snapshot indices for bar charts; [] = max-budget cell
+%   GIF_ENABLE       — true to generate animated GIF showing network growth
+%   GIF_TMAX_IDX     — Tmax slice index for the animation
+%   GIF_FRAME_DELAY  — seconds per GIF frame
+%
+% Outputs written to OUT_DIR (rs3_network_results/):
+%   network_results.mat              — authoritative store of all metrics
+%   snapshot_summary.csv            — per-snapshot graph statistics
+%   node_metrics.csv                — per-family metric values (baseline snapshot)
+%   edges_count_map.*               — edge count vs (DV_cap, Tmax) contour
+%   lcc_map.*                       — LCC size vs parameter grid
+%   articulation_map.*              — articulation points vs parameter grid
+%   winner_map_<metric>.*           — which family leads each metric per snapshot
+%   <metric>_contour.*              — metric score vs parameter grid
+%   baseline_<metric>.*             — per-family bar charts at the baseline snapshot
+%   [optional] animation_Tmax<N>.gif — animated network growth over DV_cap
 
 %% ========================================================================
 %  USER KNOBS — edit this block; do not change code below the divider

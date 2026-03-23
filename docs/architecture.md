@@ -47,3 +47,92 @@ The CR3BP has y=0 symmetry: a trajectory `(x, y, θ, t)` in the upper half corre
 ## Caching
 
 Cache keys are MD5 hashes of a fingerprint string that encodes all pipeline parameters (grid, seed, fan, propagation, version tag). A cache hit skips Steps 3–4 entirely. See `rs3_cache_fingerprint_family`, `rs3_cache_try_load_family`, `rs3_cache_save_family`.
+
+---
+
+## Voxel metadata and differential correction (rs4)
+
+After the overlap step, `rs4_overlap_extract_voxel_info` computes per-voxel metadata:
+
+- `V` struct — per-voxel DV bounds and estimated TOF:
+  - `V.dv_lb_mps` — lower bound: `DV_turn_A_min + DV_turn_B_min`
+  - `V.dv_patch_ub_mps` — patch upper bound: `2·v_box·sin(|Δθ|/2)`
+  - `V.dv_proxy_mps` — proxy: lb + patch estimate
+  - `V.tof_days` — mean transfer time estimate
+
+`rs4_voxel_traj_extract` re-integrates the two argmin-DV arcs for the best voxel and computes the true `DV_total`:
+
+```
+DV_total_true = DV_turn_A_min + DV_patch_true + DV_turn_B_min
+```
+
+where `DV_patch_true` is measured at the closest points of each re-integrated arc to the voxel centre.
+
+`rs4_diffcorr` then solves for continuous patch continuity using `fmincon` with two constraint modes:
+
+- **Standard**: enforce position + velocity continuity at the patch point.
+- **relax_heading**: enforce only spatial continuity; allow heading mismatch to be absorbed into the DV budget (useful for hard cases).
+
+The resulting `Tc` struct replaces the proxy with a tightened, physically continuous transfer.
+
+---
+
+## Full trajectory assembly (rs5)
+
+`rs5_build_full_traj` assembles three segments into a single continuous-time trajectory struct:
+
+1. **Departure arc** — FRS arc from origin PO to patch point (forward integration).
+2. **Patch gap** — the DV_patch impulse (represented as a gap in position).
+3. **Arrival arc** — BRS arc from patch point to destination PO (time-reversed BRS, run forward).
+
+`rs5_visualize_full_traj` plots all three segments with direction-of-motion arrows on each leg and labels showing the three impulse magnitudes (DV_turn_A, DV_patch, DV_turn_B).
+
+Output `result.mat` fields:
+- `T` — raw (pre-DC) trajectory struct
+- `Tc` — differential-corrected trajectory struct
+- `traj_raw`, `traj_dc` — arc arrays for re-plotting without re-running the pipeline
+
+---
+
+## Network analysis (net_*)
+
+Inputs: an N×N DV matrix from `run_rs4_dv_tmax_sweep` or `run_rs4_dc_sweep_tmax`.
+
+**Graph construction** (`net_build_graph`): directed weighted graph where edge (i, j) exists iff `DV(i,j) ≤ DV_budget`. Edge weight = DV in m/s.
+
+**All-pairs shortest paths** (`net_floyd_warshall`): Floyd-Warshall with path reconstruction. Returns distance matrix `D` and predecessor matrix `P` for tracing optimal multi-hop routes.
+
+**Largest Connected Component** (`net_lcc`): extracts the LCC of the undirected version of the graph.
+
+**Centrality metrics** (`net_centrality`): five metrics are computed at each (DV_cap, Tmax) snapshot:
+
+| Metric | Definition |
+|---|---|
+| Strength | Sum of outgoing edge weights (total reachable DV) |
+| Harmonic closeness | Mean reciprocal shortest-path distance to all reachable nodes |
+| Betweenness | Fraction of shortest paths (across all pairs) that pass through this node |
+| PageRank | Stationary distribution of a random walk with teleportation |
+| Articulation | Flag: node whose removal disconnects the graph |
+
+**Winner maps** (`net_plot_winner_map`): for each (DV_cap, Tmax) cell, the family with the highest score per metric is recorded. Plotted as a colour-coded contour map over the parameter space.
+
+---
+
+## Betweenness explainer
+
+Purpose: demonstrate that a high-betweenness orbit acts as a routing hub — routing through it is cheaper than flying direct.
+
+For a bridge family B and all (origin A, destination C) pairs not involving B, the savings are:
+
+```
+savings(A, C) = DV_direct(A, C) − [DV(A, B) + DV(B, C)]
+```
+
+The top-N pairs by savings are selected. For each, the script:
+
+1. Extracts Leg-1 arcs (A → B via FRS/BRS overlap) and Leg-2 arcs (B → C) using `rs4_voxel_traj_extract`.
+2. Computes a coast arc along the bridge PO connecting the two patch seeds.
+3. Plots the full three-segment path: origin PO (red) → Transfer A → bridge PO coast (green) → Transfer B → destination PO (blue).
+4. Optionally animates the spacecraft along the path as a GIF with arc-length-uniform speed.
+
+The coast arc is computed by integrating the bridge PO from the Leg-1 patch seed to the Leg-2 patch seed along the PO in the correct direction.

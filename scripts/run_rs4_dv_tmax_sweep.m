@@ -1,26 +1,43 @@
-%% RUN_RS4_DV_TMAX_SWEEP
-% Sweep DVmatrix (and TOFmatrix) over all (DV_cap_nd, Tmax) combinations.
+%% RUN_RS4_DV_TMAX_SWEEP  —  DV-proxy sweep over (DV_cap, Tmax) parameter grid
+%
+% Computes the minimum DV-proxy transfer cost and estimated TOF for all 78 family
+% pairs across a 2D grid of (DV_cap_nd, Tmax) values.  This is the proxy-only
+% (no differential correction) parametric sweep; for the full DC version use
+% run_rs4_dc_sweep_tmax.m.  Output is the primary input to
+% run_network_centrality_sweep.m and export_sweep_to_json.m.
 %
 % Strategy:
-%   1. Load base atlases once  (Tmax = pi, DV_cap = 0.2).
-%   2. For each (DV_cap, Tmax) cell:
-%        a. Check rs3_results for a finished run whose config matches
-%           → extract minDVproxyMat + TOFmatrix directly, skip recompute.
-%        b. Otherwise: derive in-memory subset atlases and run the pairwise
-%           overlap loop  (no figures, no per-pair .mat files).
-%   3. Checkpoint after EVERY completed cell  (safe to kill + requeue on HPC).
-%   4. Write final .mat  +  three Excel workbooks when all cells are done.
+%   1. Load base atlases once (Tmax = π, DV_cap = 0.2, must be pre-cached).
+%   2. For each (DV_cap, Tmax) grid cell:
+%        a. Check rs3_results for a finished run with matching config → reuse.
+%        b. Otherwise: derive in-memory subset atlases and run the 78-pair
+%           overlap loop (no figures, no per-pair files).
+%   3. Atomic checkpoint after every cell (safe to kill + requeue on HPC).
+%   4. Write final .mat and optional Excel workbooks when all cells are done.
 %
-% Parallelism:
-%   Serial over (DV_cap, Tmax) combinations  (predictable memory footprint).
-%   Optional parfor over the N*(N-1)/2 pairs within each combination.
-%   Set N_WORKERS = 0 to force fully serial (safest for memory-limited nodes).
+% Prerequisites:
+%   - Base cached atlases (Tmax = π, DV_cap = 0.2) must exist for all families.
+%   - The cfg block below must match those cached atlases exactly.
 %
-% Outputs written to OUTPUT_DIR:
-%   sweep_DVmatrix_results.mat  — authoritative data store
-%   sweep_DVmatrix.xlsx         — one sheet per combination, N×N DVproxy matrix
-%   sweep_TOFmatrix.xlsx        — one sheet per combination, N×N mean-TOF matrix
-%   sweep_winners.xlsx          — one sheet per combination, pair-winner table
+% User knobs:
+%   N_WORKERS      — parfor workers for the pair loop; 0 = fully serial
+%   WRITE_EXCEL    — true to write .xlsx workbooks (one sheet per cell);
+%                    false to skip (the .mat is the authoritative output)
+%   WRITE_FLAT_CSV — true to write a flat CSV from the winners_sweep table
+%   families       — cell array of family names (must match cached atlases)
+%   DV_cap_list    — sweep values for DV_cap_nd (nd); default: 20 pts, 0.025–0.200
+%   Tmax_list      — sweep values for Tmax (nd); default: 20 pts, π/4–π
+%   CHECKPOINT_FILE / OUTPUT_DIR — paths for checkpoints and final output
+%
+% Outputs written to OUTPUT_DIR (rs3_sweep_results/):
+%   sweep_DVmatrix_results.mat  — authoritative store; variables:
+%     DVmatrix_sweep            {nDV×nTmax} cell of [N×N] DV-proxy (m/s)
+%     TOFmatrix_sweep           {nDV×nTmax} cell of [N×N] mean-TOF (days)
+%     winners_sweep             {nDV×nTmax} cell of pair-winner tables
+%     DV_cap_list, Tmax_list, Tmax_labels, families
+%   sweep_DVmatrix.xlsx         — one sheet per (DV_cap, Tmax) cell (if enabled)
+%   sweep_TOFmatrix.xlsx        — same layout for TOF
+%   sweep_winners.xlsx          — same layout for winner tables
 
 clear; clc;
 

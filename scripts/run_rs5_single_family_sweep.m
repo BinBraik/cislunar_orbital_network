@@ -1,36 +1,39 @@
-%% RUN_RS5_SINGLE_FAMILY_SWEEP
-% Transfer sweep from ONE origin family to a list of target families.
+%% RUN_RS5_SINGLE_FAMILY_SWEEP  —  full trajectory assembly for one origin family
 %
-% For each (origin → target) pair this script:
-%   1. Computes the forward/backward reachable-set overlap
-%   2. Extracts the argmin-DV trajectory pair for the best overlap voxel
-%   3. Runs differential correction to enforce patch continuity
-%   4. Assembles a SINGLE concatenated trajectory  (departure → patch → arrival)
-%   5. Saves figures with visible departure / arrival direction arrows
-%   6. Saves a self-contained result.mat with everything needed to
-%      re-integrate or re-plot the trajectories later without re-running
-%      the full pipeline
+% Computes complete 3-impulse transfer trajectories from a single origin family
+% to every family in a target list.  For each pair the script runs the full
+% rs3→rs4→rs5 pipeline: overlap → best-voxel extraction → differential
+% correction → full trajectory assembly (departure + patch + arrival arcs).
+% Use this when you want publication-quality trajectory plots and self-contained
+% result files for a specific origin family.
 %
-% Output layout:
-%   <out_root>/<tag>/<origin>/
-%       sweep_summary.mat          —  all results + cfg in one file
-%       <origin>_TO_<target>/
-%           result.mat             —  T, Tc, traj_raw, traj_dc, regen recipe
-%           rs5_*_before_dc.png    —  trajectory before DC  (with arrows)
-%           rs5_*_after_dc.png     —  trajectory after DC   (with arrows)
+% Prerequisites:
+%   - Cached atlases for famOrigin and all famTargets must exist in rs3_cache/.
+%   - The cfg block (grid / fan / propag) must match those cached atlases.
 %
-% Parallel execution:  set use_parallel = true if RAM > nWorkers * 2 * ~500 MB.
-% Each parfor worker receives a full copy of SA and the matching SB struct.
-% With the default 2 targets this is very manageable; for large sweeps over
-% many families monitor memory before enabling.
+% User knobs:
+%   famOrigin        — origin periodic orbit family
+%   famTargets       — cell array of target families to sweep over
+%   use_parallel     — true to run targets in parfor; requires
+%                      RAM > nWorkers × 2 × ~500 MB per worker
+%   cfg.diffcorr.*   — DC solver settings (tolerance, max iterations, display)
+%   cfg.io.save_figs / fig_visible — figure output settings
+%   cfg.grid/fan/propag — must match cached atlases
 %
-% Available families (from rs3_core_family_ic):
-%   'Lyapunov L1'           'Lyapunov L2'
-%   'Cycler 21'             'Cycler 11a'           'Cycler 11b'   'Cycler 32'
-%   'Resonant 2to1 Stable'  'Resonant 2to1 Unstable'
-%   'Resonant 3to1 Stable'  'Resonant 3to1 Unstable'
-%   'Resonant 5to2 Stable'  'Resonant 5to2 Unstable'
+% Available families:
+%   'Lyapunov L1'            'Lyapunov L2'
+%   'Cycler 21'              'Cycler 11a'    'Cycler 11b'    'Cycler 32'
+%   'Resonant 2to1 Stable'   'Resonant 2to1 Unstable'
+%   'Resonant 3to1 Stable'   'Resonant 3to1 Unstable'
+%   'Resonant 5to2 Stable'   'Resonant 5to2 Unstable'
 %   'Distant Prograde Orbit'
+%
+% Outputs written to rs3_results/<timestamp>/<origin>/:
+%   sweep_summary.mat              — all per-target results + cfg in one file
+%   <origin>_TO_<target>/
+%     result.mat                   — T (raw), Tc (DC), traj structs, regen recipe
+%     rs5_*_before_dc.png/fig      — trajectory before differential correction
+%     rs5_*_after_dc.png/fig       — trajectory after differential correction
 
 clear; clc;
 

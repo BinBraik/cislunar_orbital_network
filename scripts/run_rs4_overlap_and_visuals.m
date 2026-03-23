@@ -1,4 +1,35 @@
-%% RUN_RS4_OVERLAP_AND_VISUALS
+%% RUN_RS4_OVERLAP_AND_VISUALS  —  overlap two family atlases and generate figures
+%
+% Computes the Forward/Backward Reachable Set overlap between two periodic orbit
+% families and produces a full diagnostic figure set: FRS/BRS scatter plots,
+% combined FRS+BRS overlay, DV-proxy bound contours, and best-voxel marker.
+% Use this script when you want detailed per-pair visualisations.  For the full
+% 78-pair batch summary (no figures) use run_rs4_all_pairs_summary.m instead.
+%
+% Prerequisites:
+%   - Cached atlases for famA and famB must exist in rs3_cache/.
+%     Build them first with run_rs3_one_family_atlas_and_plots.m.
+%   - The grid / fan / propag settings below must exactly match the cache
+%     (the cache key is the MD5 of these parameters).
+%
+% User knobs (edit the USER KNOBS block near the top of the file):
+%   famA, famB              — the two orbit families to overlap
+%   cfg.grid.dx/dy/dtheta   — voxel grid (must match cached atlases)
+%   cfg.fan.DV_cap_nd       — DV budget for the heading fan (must match cache)
+%   cfg.propag.Tmax         — max integration time (must match cache)
+%   cfg.io.save_figs        — true to save PNG/FIG; false for display-only
+%   cfg.io.fig_visible      — 'on' to see figures during run; 'off' for batch
+%   cfg.diag.zoom.*         — optional zoom window applied to overlap figures
+%   cfg.plot.rs4.*          — per-figure toggles (overlap_xy, combo_xy,
+%                             bounds_lb, bounds_ub, bounds_proxy)
+%
+% Outputs written to rs3_results/<timestamp>/:
+%   rs4_<tag>_atlases.mat           — SA, SB atlas structs
+%   rs4_<tag>_overlap.mat           — O struct (overlap voxel IDs + hit counts)
+%   rs4_<tag>_overlap_voxel_info.mat — V struct (per-voxel DV bounds + TOF)
+%   rs4_<tag>_overlap_*.png/fig     — FRS/BRS and overlap figures
+%   rs4_<tag>_bounds_*.png/fig      — DV-proxy bound contour figures
+
 clear; clc;
 % opengl software   % force software renderer — avoids JOGL/GPU deadlock with large scatter plots
 

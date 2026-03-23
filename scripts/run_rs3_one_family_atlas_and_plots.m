@@ -1,6 +1,44 @@
-%% RUN_RS3_ONE_FAMILY_ATLAS_AND_PLOTS
-% Build/load ONE family atlas (Steps 2–5) then plot FRS and BRS sets
-% (Upper generated, Lower added via symmetry at plot time).
+%% RUN_RS3_ONE_FAMILY_ATLAS_AND_PLOTS  —  build / load one family atlas and plot
+%
+% Builds (or loads from cache) a single-family reachable-set atlas and produces
+% diagnostic figures for the Forward Reachable Set (FRS), Backward Reachable Set
+% (BRS), seed distribution, and voxel grid.  This is the entry point for Steps
+% 2–5 of the pipeline.  Run it first to verify that a family builds and plots
+% correctly before committing to the larger batch sweeps.
+%
+% Prerequisites:
+%   - Call rs3_setup (or run from the repository root) to put src/ on the path.
+%   - No upstream scripts are required; atlases are built and cached here.
+%
+% User knobs (edit the USER KNOBS block near the top of the file):
+%   familyName            — periodic orbit family to process (see list below)
+%   cfg.grid.dx/dy        — spatial voxel width (nd); finer = more memory/time
+%   cfg.grid.dtheta       — heading-angle voxel width (rad)
+%   cfg.seed.ds_seed      — arclength spacing between seed points on the PO (nd)
+%   cfg.propag.Tmax       — max integration time per arc, forward and backward (nd)
+%   cfg.fan.DV_cap_nd     — max heading-offset DV budget at each seed (nd)
+%   cfg.fan.dtheta_fan    — angular resolution of the heading fan (rad)
+%   cfg.propag.absTol/relTol — ODE tolerances; tighten for finer spatial grids
+%   cfg.io.save_figs      — true to write PNG/FIG files; false for display-only
+%   cfg.io.fig_visible    — 'on' to see figures during the run; 'off' for batch
+%   cfg.diag.zoom.*       — optional zoom window applied to trajectory figures
+%   cfg.cache.rebuild     — true to recompute even if a valid cache already exists
+%   cfg.par.enable        — true to parallelise over (seed × heading) jobs
+%
+% Available families:
+%   'Lyapunov L1'            'Lyapunov L2'
+%   'Cycler 21'              'Cycler 11a'    'Cycler 11b'    'Cycler 32'
+%   'Resonant 2to1 Stable'   'Resonant 2to1 Unstable'
+%   'Resonant 3to1 Stable'   'Resonant 3to1 Unstable'
+%   'Resonant 5to2 Stable'   'Resonant 5to2 Unstable'
+%   'Distant Prograde Orbit'
+%
+% Outputs written to rs3_results/<timestamp>/:
+%   step5_<family>_atlas.mat   — atlas struct S + cache metadata (cacheInfo)
+%   grid_validate_*.png/fig    — voxel grid diagnostic figure
+%   family_validate_*.png/fig  — seed distribution along the periodic orbit
+%   hits_validate_frs_*.png    — Forward Reachable Set voxel occupancy
+%   hits_validate_brs_*.png    — Backward Reachable Set voxel occupancy
 
 clear; clc;
 

@@ -1,23 +1,39 @@
-%% RUN_RS3_CACHE_MANAGER
-% Inspect the cache, display config blocks, and derive subset caches.
+%% RUN_RS3_CACHE_MANAGER  —  inspect, review, and derive atlas caches
 %
-% ── TYPICAL WORKFLOW ────────────────────────────────────────────────────
-%  1.  Set ACTION = 'inspect', run → see the table + config-key groups.
+% Cache-housekeeping utility.  Supports three actions:
 %
-%  2.  Find the entry whose configuration you want to USE as the source.
-%      Note its index number (first column).
-%      Set ACTION = 'show_config',  SHOW_IDX = [48]  → prints the full
-%      MATLAB config block so you can verify every parameter.
+%   'inspect'     — print the full cache table (family, config key, size, date).
+%                   Always safe to run; read-only.
+%   'show_config' — pretty-print the exact MATLAB config block for one or more
+%                   cache entries so you can verify their grid/fan/propag settings.
+%   'derive'      — build reduced-parameter subset caches from an existing source
+%                   (e.g. shorter Tmax, tighter DV_cap) without re-integrating.
 %
-%  3.  Set ACTION = 'derive', SOURCE_IDX = 48.
-%      The script automatically finds every family that has a cache entry
-%      with the SAME config_key (same grid/fan/propag/log settings) as
-%      entry #48, and derives the requested subset from each one.
-%      Edit SUBSET_OVERRIDES to restrict only the parameters you want to
-%      change; all others are inherited from the source exactly.
+% Typical workflow:
+%   1. Run with ACTION = 'inspect' → read the table, note index numbers.
+%   2. Set ACTION = 'show_config', SHOW_IDX = [n] → verify parameters.
+%   3. Set ACTION = 'derive', SOURCE_IDX = n, edit SUBSET_OVERRIDES with the
+%      parameters you want to change.  The script finds all families sharing
+%      the same config_key as entry n and derives a subset for each.
+%   4. The printed cfg block at the end can be pasted into any batch runner.
 %
-%  4.  Run the batch runner with the cfg block printed at the end.
-% ────────────────────────────────────────────────────────────────────────
+% Prerequisites:
+%   - At least one cached atlas must exist in rs3_cache/.
+%     Build them with run_rs3_one_family_atlas_and_plots.m.
+%
+% User knobs:
+%   ACTION           — 'inspect' | 'show_config' | 'derive'
+%   CACHE_DIR        — path to cache folder; '' = default (repo/rs3_cache)
+%   SHOW_IDX         — [integers] — entry indices to display (show_config only)
+%   SOURCE_IDX       — integer — representative entry to derive from
+%   FAMILIES         — {} = all families with matching config; or name list
+%   SUBSET_OVERRIDES — struct with fields to change (propag.Tmax, fan.DV_cap_nd,
+%                      grid.dx/dy/dtheta); absent fields are inherited unchanged
+%   FORCE_REBUILD    — true to overwrite an existing derived cache
+%
+% Outputs (derive action only, written to rs3_cache/):
+%   <MD5>_<family>_rs3_v2_keep_masked.mat  — derived subset cache file
+%   A copy-pasteable cfg block is printed to the console.
 
 clear; clc;
 thisFile = mfilename('fullpath');

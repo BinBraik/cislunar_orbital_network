@@ -1,39 +1,40 @@
-%% RUN_RS4_DC_SWEEP
-% Two-phase batch differential correction over every pair of the 13
-% periodic-orbit families.
+%% RUN_RS4_DC_SWEEP  —  two-phase differential correction over all 78 family pairs
 %
-% PHASE 1  — Footprint-based overlap (tiny memory, parfor-safe):
-%   Build compact per-family footprints (~5-25 MB each).
-%   Run pairwise intersection in parfor → one "ticket" per pair containing
-%   the winner voxel ID and the argmin row identifiers (iSeed, iHead,
-%   halfFlag, t_nd) for both sides.  No full atlas data in workers.
+% Runs targeted differential correction (DC) for every undirected pair from the
+% 13-family set.  Phase 1 is a fast footprint-based overlap pass that finds the
+% best voxel and its argmin seed/heading indices; Phase 2 re-integrates only the
+% two winning arcs and runs rs4_diffcorr to tighten the DV estimate.
 %
-% PHASE 2  — Targeted DC (2 families at a time):
-%   For each pair, use the ticket to re-integrate only the two winning arcs
-%   (bypassing rs4_overlap_pair / rs4_overlap_extract_voxel_info / etc.),
-%   then run rs4_diffcorr.  Each worker holds exactly 2 family atlases.
+% This is the single-configuration companion to run_rs4_dc_sweep_tmax.m, which
+% sweeps over (DV_cap, Tmax) grids.  Use this script for a one-shot DC run at
+% fixed parameters, then replay figures with run_rs4_dc_sweep_plot.m.
 %
-% Two modes (set NUM_WORKERS below):
+% Phase 1 — Footprint-based overlap (OOM-safe, parfor-friendly):
+%   Build compact per-family footprints (~5–25 MB each).
+%   Run pairwise intersection in parfor → one "ticket" per pair with the winner
+%   voxel ID and the argmin row identifiers (iSeed, iHead, halfFlag, t_nd).
+%   No full atlas data in workers.
 %
-%   SERIAL  (NUM_WORKERS <= 1)
-%     Phase 1 runs serially with families in memory.
-%     Phase 2 runs serially with checkpoint after every pair.
+% Phase 2 — Targeted DC (2 families per pair):
+%   Re-integrate only the two winning arcs, then call rs4_diffcorr.
+%   Serial mode: one pair at a time with checkpoint after each.
+%   Parallel mode: each worker loads only its 2 families from disk (no OOM).
 %
-%   PARALLEL (NUM_WORKERS >= 2)
-%     Phase 1 parfor uses only footprints (broadcast ~25 MB each, not GB).
-%     Phase 2 uses process-based parpool; each worker loads only its 2
-%     needed families from disk — no large struct broadcast, no OOM.
-%     Checkpoint saved after Phase 2 completes (Phase 1 is fast).
+% Prerequisites:
+%   - Cached atlases for all families must exist in rs3_cache/.
+%   - cfg block (grid / fan / propag) must exactly match the cached atlases.
 %
-% Outputs  (saved to rs3_results/<tag>/rs4_dc_sweep/rs4_dc_sweep_results.mat)
-%   before_mat   [nPairs × 13]  pre-DC metrics
-%   after_mat    [nPairs × 14]  post-DC metrics + solver metadata
-%   traj_cell    {nPairs × 1}   struct per pair — sufficient for plot replay
-%   pairs_ij     [nPairs × 2]   family index pairs (i < j)
-%   families     {13 × 1}       family name strings
-%   BEFORE_COLS / AFTER_COLS    column-name cell arrays
-%   T_summary                   table: per-pair proxy vs DC comparison
-%   cfg                         config used for this run
+% User knobs:
+%   NUM_WORKERS          — 0/1 = serial (with per-pair checkpoint);
+%                          ≥ 2  = Phase 1 parfor + Phase 2 process parfor
+%   families             — cell array of family names to process
+%   cfg.diffcorr.*       — DC solver settings (tolerance, iterations, display)
+%   cfg.grid/fan/propag  — must match cached atlases
+%
+% Outputs written to rs3_results/<timestamp>/rs4_dc_sweep/:
+%   rs4_dc_sweep_results.mat — before_mat, after_mat, traj_cell, pairs_ij,
+%                              T_summary, families, BEFORE_COLS, AFTER_COLS, cfg
+%   (figures: use run_rs4_dc_sweep_plot.m to replay from the .mat file)
 
 clear; clc;
 

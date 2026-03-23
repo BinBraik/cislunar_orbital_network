@@ -1,48 +1,50 @@
-%% RUN_RS4_DC_SWEEP_TMAX
-% Two-phase parametric sweep: footprint overlap (Phase 1) + differential
-% correction (Phase 2) over all (DV_cap_nd, Tmax) combinations.
+%% RUN_RS4_DC_SWEEP_TMAX  —  parametric DC sweep over (DV_cap, Tmax) grid
+%
+% Runs two-phase differential correction over all (DV_cap_nd, Tmax) parameter
+% combinations for all 78 family pairs.  Phase 1 builds compact footprints and
+% finds the best-overlap voxel; Phase 2 re-integrates and applies rs4_diffcorr.
+% Results are written incrementally so the run can be killed and safely resumed.
+% Output is drop-in compatible with run_network_centrality_sweep.m.
 %
 % Strategy:
-%   1. Load base atlases once  (Tmax = pi, DV_cap = 0.2) with dense PO trace.
-%   2. For each (DV_cap, Tmax) cell:
+%   1. Load base atlases once (Tmax = π, DV_cap = 0.2) with dense PO trace.
+%   2. For each (DV_cap, Tmax) grid cell:
 %        a. Derive in-memory subset atlases via rs3_atlas_derive_subset.
-%        b. Phase 1: build extended footprints (compact, ~5-25 MB/family),
-%           run pairwise intersection in parfor → one "ticket" per pair
-%           (winner voxel ID + argmin row identifiers).
-%        c. Phase 2: for each pair, re-integrate only the two winning arcs
-%           and run rs4_diffcorr. Uses sliced parfor so each worker receives
-%           only 2 subset atlases — no broadcast of all families.
-%        d. Assemble post-DC DV/TOF matrices and extended winners table.
-%   3. Checkpoint after EVERY completed cell (safe to kill and requeue).
+%        b. Phase 1: build compact footprints, run pairwise intersection →
+%           one "ticket" per pair (winner voxel + argmin seed/heading indices).
+%        c. Phase 2: re-integrate the two winning arcs per pair, run rs4_diffcorr.
+%           Sliced parfor: each worker receives only 2 subset atlases.
+%        d. Assemble post-DC DV / TOF matrices and extended winners table.
+%   3. Atomic checkpoint after every completed cell (safe to kill + requeue).
 %   4. Write final .mat when all cells are done.
 %
-% Parallelism knobs:
-%   N_WORKERS_P1 — parfor workers for footprint build + pair intersection
-%   N_WORKERS_P2 — parfor workers for Phase 2 DC  (set 0 for serial DC)
+% Prerequisites:
+%   - Base cached atlases (Tmax = π, DV_cap = 0.2) must exist for all families.
+%   - The base cfg block must exactly match those cached atlases.
+%
+% User knobs:
+%   N_WORKERS_P1     — parfor workers for Phase 1 (footprints + intersection)
+%   N_WORKERS_P2     — parfor workers for Phase 2 DC; 0 = serial DC
+%   families         — cell array of family names (must match cached atlases)
+%   CHECKPOINT_FILE  — path for incremental progress saves
+%   OUTPUT_DIR       — directory for final output
+%   DV_cap_list      — DV-budget sweep values (nd); default: 20 pts, 0.025–0.200
+%   Tmax_list        — max integration-time sweep values (nd); default: 20 pts, π/4–π
+%   cfg.diffcorr.*   — DC solver settings (tolerance, max iterations, display)
 %
 % Outputs written to OUTPUT_DIR (rs3_dc_sweep_results/):
-%   sweep_dc_checkpoint.mat   — live progress (atomic write after every cell)
-%   sweep_dc_results.mat      — final authoritative data store
+%   sweep_dc_checkpoint.mat  — live progress (updated after every cell)
+%   sweep_dc_results.mat     — final authoritative store; variables:
+%     DVmatrix_sweep         {nDV×nTmax} cell of [N×N] post-DC DV (m/s)
+%     TOFmatrix_sweep        {nDV×nTmax} cell of [N×N] post-DC TOF (days)
+%     DVmatrix_sweep_proxy   {nDV×nTmax} cell of [N×N] pre-DC proxy DV
+%     TOFmatrix_sweep_proxy  {nDV×nTmax} cell of [N×N] pre-DC proxy TOF
+%     winners_sweep          {nDV×nTmax} cell of extended pair-winner tables
+%     DV_cap_list, Tmax_list, Tmax_labels, families, done_mask
 %
-% Output variables in sweep_dc_results.mat:
-%   DVmatrix_sweep      [N×N per cell]  post-DC DV     (NaN = no overlap / not converged)
-%   TOFmatrix_sweep     [N×N per cell]  post-DC TOF
-%   DVmatrix_sweep_proxy [N×N per cell] pre-DC proxy DV (Phase 1 only)
-%   TOFmatrix_sweep_proxy [N×N per cell] pre-DC proxy TOF
-%   winners_sweep       {nDV×nTmax}     extended winners tables (see below)
-%   DV_cap_list, Tmax_list, Tmax_labels, families — sweep axes
-%   done_mask, source_sweep              — bookkeeping
-%
-% winners_sweep{di,dj} table columns:
-%   FamilyA, FamilyB
-%   minDVproxy_mps, DVlb_mps, DVpatch_ub_mps, EstimatedTOF_days, VoxelId  (Phase 1)
-%   DV_total_dc_mps, TOF_dc_days, converged, exitflag, dv_change_mps       (Phase 2)
-%
-% NOTE: DVmatrix_sweep uses NaN for non-converged pairs (not the proxy),
-% so net_build_graph treats them as no-edge.  DVmatrix_sweep_proxy always
-% holds the proxy value for comparison.
-%
-% Drop-in compatible with run_network_centrality_sweep.m (same var names).
+% Note: DVmatrix_sweep uses NaN for non-converged pairs so that
+% net_build_graph treats them as no-edge.  DVmatrix_sweep_proxy always
+% holds the proxy value for comparison against the DC result.
 
 clear; clc;
 

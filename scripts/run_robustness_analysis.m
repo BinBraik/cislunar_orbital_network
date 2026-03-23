@@ -1,27 +1,44 @@
-%% RUN_ROBUSTNESS_ANALYSIS
-% Cross-run robustness analysis for the verification grid sweep.
-% Loads minDVproxyMat from each run in rs4_verification_runs/ and computes:
+%% RUN_ROBUSTNESS_ANALYSIS  —  cross-run centrality rank stability analysis
 %
-%   Table A  — per-run graph summary
-%              (edges, density, LCC size, avg shortest-path DV, reciprocity)
+% Reads all result.mat files under rs4_verification_runs/ (produced by
+% run_verification_grid_sweep.m) and quantifies how stable the family
+% centrality rankings are across the 7 numerical configurations.
+% Run this script after run_verification_grid_sweep.m has completed.
 %
-%   Table B  — per-family centrality per run
-%              (degree, strength, harmonic closeness, betweenness, PageRank)
+% Computes:
+%   Table A — per-run graph summary
+%             (edge count, density, LCC size, avg shortest-path DV, reciprocity)
+%   Table B — per-family centrality per run
+%             (degree, strength, harmonic closeness, betweenness, PageRank)
+%   Table C — cross-run rank robustness
+%             (mean rank, std rank, best/worst rank, top-3/top-5 count)
+%             computed separately for each centrality metric
+%   Table D — edge persistence
+%             (for each family pair: number of runs with an edge, mean DV, std DV)
 %
-%   Table C  — cross-run robustness
-%              (mean rank, std rank, best rank, worst rank, top-3 / top-5 count)
-%              separately for: degree, strength, harmonic closeness, betweenness, PageRank
-%
-%   Table D  — edge persistence
-%              (for each family pair: n_runs with edge, mean DV, std DV)
-%
-%   Figure 1 — Rank heatmap (families × runs, one subplot per metric)
+%   Figure 1 — Rank heatmap: families × runs, one panel per metric
 %   Figure 2 — Top-5 families per metric with std-rank error bars
-%   Figure 3 — Edge-persistence heatmap (N×N, colour = fraction of runs)
+%   Figure 3 — Edge-persistence heatmap (N×N; colour = fraction of runs)
 %   Figure 4 — Baseline network (Run 0)
 %   Figure 5 — Coarse vs fine network comparison
 %
-% Outputs written to rs4_verification_runs/robustness_analysis/
+% Prerequisites:
+%   - run_verification_grid_sweep.m must have completed; at least one
+%     result.mat must exist under rs4_verification_runs/.
+%
+% User knobs:
+%   DV_CAP_ND     — DV cap used in all verification runs (nd); default 0.2
+%   TMAX_ND       — Tmax used in all verification runs (nd); default π
+%   BUDGET_FACTOR — multiplier on DV_cap for edge-feasibility budget; default 2
+%   SAVE_FIGS     — true to save PNG + FIG; false for display-only
+%
+% Outputs written to rs4_verification_runs/robustness_analysis/:
+%   tables_A_B_C_D.csv / .mat  — all four tables
+%   rank_heatmap.png/fig       — Figure 1
+%   top5_families.png/fig      — Figure 2
+%   edge_persistence.png/fig   — Figure 3
+%   baseline_network.png/fig   — Figure 4
+%   coarse_vs_fine.png/fig     — Figure 5
 
 clear; clc;
 

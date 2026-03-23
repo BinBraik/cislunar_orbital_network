@@ -1,28 +1,28 @@
-%% RUN_RS4_DC_SWEEP_PLOT
-% Replay and save plots from a completed rs4_dc_sweep run.
+%% RUN_RS4_DC_SWEEP_PLOT  —  replay and save figures from a completed DC sweep run
 %
-% Reads rs4_dc_sweep_results.mat (produced by run_rs4_dc_sweep.m) and calls
-% rs4_diffcorr_visualize for each selected pair, saving a side-by-side
-% before/after PNG plus a plain-text info file per pair and a summary CSV.
+% Reads rs4_dc_sweep_results.mat produced by run_rs4_dc_sweep.m and generates
+% side-by-side before/after differential-correction figures for every selected
+% pair.  Run this after run_rs4_dc_sweep.m to produce publication-quality plots
+% without re-running the expensive DC computation.
 %
-% USER SETTINGS
-%   RESULTS_FILE  : full path to rs4_dc_sweep_results.mat
-%                   Leave '' to auto-detect newest run.
+% Prerequisites:
+%   - run_rs4_dc_sweep.m must have completed and written rs4_dc_sweep_results.mat.
 %
-%   PLOT_PAIRS    : which pairs to plot —
-%                     'all'              → every pair with valid trajectory data
-%                     [1 3 7]            → specific pair indices (rows of pairs_ij)
-%                     {'FamA','FamB'}    → single pair, looked up by name
-%                     {{'FA1','FB1'};
-%                      {'FA2','FB2'}}    → several named pairs
+% User knobs:
+%   RESULTS_FILE  — full path to rs4_dc_sweep_results.mat; leave '' to
+%                   auto-detect the newest run under rs3_results/
+%   PLOT_PAIRS    — which pairs to render:
+%                     'all'                — every pair with valid trajectory data
+%                     [1 3 7]              — specific pair indices (rows of pairs_ij)
+%                     {'FamA','FamB'}      — single named pair
+%                     {{'FA1','FB1'}; ...} — list of named pairs
+%   SKIP_DIVERGED — true to skip pairs where DC did not converge;
+%                   false to plot all (convergence status shown in title/info file)
 %
-%   SKIP_DIVERGED : true  → skip pairs where DC did not converge
-%                   false → plot all (converged status shown in title/info file)
-%
-% Outputs  (written to <run_root>/rs4_dc_sweep_plots/)
-%   <pairSafe>/<pairSafe>_diffcorr_compare.png   — side-by-side before/after
-%   <pairSafe>/<pairSafe>_info.txt               — plain-text metrics
-%   transfer_summary.csv                          — one row per pair
+% Outputs written to <run_root>/rs4_dc_sweep_plots/:
+%   <pair>/<pair>_diffcorr_compare.png  — side-by-side before/after figure
+%   <pair>/<pair>_info.txt              — plain-text per-pair metrics
+%   transfer_summary.csv                — one row per plotted pair
 
 clear; clc;
 
