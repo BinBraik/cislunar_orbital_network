@@ -225,8 +225,14 @@ end
 
 %% ═══════════════════════ COMPUTE DEPARTURE / ARRIVAL FRAMES ═════════════════
 
-bus_xpo_xy = Sbus.Xpo(:, 1:2);
-N_xpo      = size(bus_xpo_xy, 1);
+bus_xpo_xy  = Sbus.Xpo(:, 1:2);
+
+% Arc-length of the dense original orbit — used to map departure points
+% correctly onto the arc-length-resampled bus orbit bus_rx/bus_ry.
+% (Sbus.Xpo is time-parameterized, so index fraction ≠ arc-length fraction.)
+d_xpo       = diff(bus_xpo_xy);
+s_xpo       = [0; cumsum(sqrt(sum(d_xpo.^2, 2)))];
+s_xpo_total = s_xpo(end);
 
 dep_frame    = zeros(nCraft, 1);
 arrive_frame = zeros(nCraft, 1);
@@ -234,7 +240,7 @@ arrive_frame = zeros(nCraft, 1);
 for ki = 1:nCraft
     dp = craft(ki).depart_xy;
     [~, dep_raw]     = min(sum((bus_xpo_xy - dp).^2, 2));
-    dep_alpha        = (dep_raw - 1) / N_xpo;          % fractional phase [0,1)
+    dep_alpha        = s_xpo(dep_raw) / s_xpo_total;   % arc-length fraction [0,1)
     dep_frame(ki)    = max(1, round(dep_alpha * N_BUS_LOOP));
     arrive_frame(ki) = dep_frame(ki) + N_TRANSIT;
 end

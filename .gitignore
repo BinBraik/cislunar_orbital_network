@@ -15,6 +15,7 @@
 
 # Figures and exports
 *.fig
+*.gif
 *.png
 *.jpg
 *.jpeg
