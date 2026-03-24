@@ -63,6 +63,13 @@ if isempty(SWEEP_MAT)
     fprintf('Auto-detected sweep: %s\n', SWEEP_MAT);
 end
 
+% If a relative path was supplied, anchor it to the repo root so the
+% script works regardless of MATLAB's current working directory.
+if ~isempty(SWEEP_MAT) && ~java.io.File(SWEEP_MAT).isAbsolute()
+    repo_root = fileparts(fileparts(mfilename('fullpath')));
+    SWEEP_MAT = fullfile(repo_root, SWEEP_MAT);
+end
+
 %% ═══════════════════════ LOAD SWEEP DATA ═════════════════════════════════════
 
 fprintf('Loading sweep data ...\n');
