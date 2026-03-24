@@ -48,11 +48,14 @@ FIG_H        = 740;     % figure height [px]
 %% ═══════════════════════ AUTO-LOCATE SWEEP_MAT ═══════════════════════════════
 
 if isempty(SWEEP_MAT)
-    root       = fileparts(fileparts(mfilename('fullpath')));
-    candidates = dir(fullfile(root, 'rs3_results', '**', 'sweep_summary.mat'));
-    keep = arrayfun(@(f) contains(f.folder, 'Cycler 11a') || ...
-                        contains(f.folder, 'Cyc11a'),  candidates);
-    candidates = candidates(keep);
+    root = fileparts(fileparts(mfilename('fullpath')));
+    % Search the known folder layout: rs3_results/<timestamp>/Cycler 11a/
+    % Use a direct single-wildcard pattern (avoids ** reliability issues).
+    candidates = dir(fullfile(root, 'rs3_results', '*', 'Cycler 11a', 'sweep_summary.mat'));
+    if isempty(candidates)
+        % Also try the short name variant
+        candidates = dir(fullfile(root, 'rs3_results', '*', 'Cyc11a', 'sweep_summary.mat'));
+    end
     if isempty(candidates)
         error(['run_cycler_bus_animation: sweep_summary.mat not found.\n', ...
                'Run run_rs5_single_family_sweep.m with famOrigin = ''Cycler 11a'' first,\n', ...
