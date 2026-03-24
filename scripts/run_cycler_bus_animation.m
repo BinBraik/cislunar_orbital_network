@@ -402,10 +402,8 @@ function S = local_load_family(famName)
 %  Returns a minimal struct with .Xpo [N×3], .mu, .CJ, .Tf_PO.
 %  No cache, no grid3, no cfg required — fully self-contained.
 [mu_f, CJ_f, Tf_f, X04] = rs3_core_family_ic(famName);
-% Convert 4-state [x;y;vx;vy] IC to reduced-model [x;y;theta].
-% theta = heading angle of velocity vector in the synodic frame.
-theta0   = atan2(X04(4), X04(3));
-IC_3d    = [X04(1); X04(2); theta0];
+% X04 is already the reduced-model IC: [x; y; theta].
+IC_3d = X04(1:3);
 ode_opts = odeset('RelTol', 1e-10, 'AbsTol', 1e-10);
 [~, Xpo] = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,CJ_f,mu_f,false), ...
                    linspace(0, Tf_f, 1000), IC_3d, ode_opts);
