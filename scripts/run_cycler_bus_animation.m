@@ -214,9 +214,10 @@ for ki = 1:nCraft
     av_pt  = craft(ki).arrive_xy;
     [~, ci] = min(sum((tgt_xy - av_pt).^2, 2));
 
-    % Wrap-around segment of length N_COAST+1 starting at arrival index
+    % Full target PO resampled to N_COAST+1 arc-length-uniform points,
+    % rotated so it starts at the arrival point → one complete lap in N_COAST frames.
     n_tgt = size(tgt_xy, 1);
-    idx   = mod((ci - 1 : ci - 1 + N_COAST), n_tgt) + 1;
+    idx   = mod((ci - 1 : ci - 1 + n_tgt - 1), n_tgt) + 1;
     seg   = tgt_xy(idx, :);
     [cx, cy] = local_arc_resample(seg(:,1), seg(:,2), N_COAST + 1);
     craft(ki).coast_x = cx;
