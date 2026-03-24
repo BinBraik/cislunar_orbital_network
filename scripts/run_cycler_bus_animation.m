@@ -54,6 +54,7 @@ if isempty(SWEEP_MAT)
     % Filter by family name in MATLAB after the search.
     candidates = dir(fullfile(root, 'rs3_results', '*', '*', 'sweep_summary.mat'));
     keep = arrayfun(@(f) contains(f.folder,'Cycler 11a') || ...
+                        contains(f.folder,'Cycler_11a') || ...
                         contains(f.folder,'Cyc11a'), candidates);
     candidates = candidates(keep);
     if isempty(candidates)
@@ -81,6 +82,16 @@ results    = D.results;
 famOrigin  = D.famOrigin;
 famTargets = D.famTargets;  %#ok<NASGU>
 cfg        = D.cfg;
+
+% The cfg was saved on whatever machine ran the sweep; its cache.dir is an
+% absolute path that may not exist here.  Point it at the standard location
+% relative to the repo root so rs3_cache_try_load_family can find the files.
+repo_root = fileparts(fileparts(mfilename('fullpath')));
+if isfield(cfg,'cache') && isfield(cfg.cache,'dir') && ~exist(cfg.cache.dir,'dir')
+    cfg.cache.dir = fullfile(repo_root, 'rs3_cache');
+end
+% Never rebuild — we only need to read cached atlases.
+cfg.cache.rebuild = false;
 
 nT = numel(results);
 
@@ -111,7 +122,7 @@ end
 %% ═══════════════════════ LOAD BUS ORBIT (Cycler 11a) ════════════════════════
 
 fprintf('Loading bus orbit (%s) ...\n', famOrigin);
-Sbus = rs3_prepare_or_load_family(famOrigin, cfg);
+Sbus = rs3_prepare_or_load_family(famOrigin, cfg, []);
 
 if ~isfield(Sbus,'Xpo') || isempty(Sbus.Xpo)
     error('Sbus.Xpo not found — atlas does not contain dense PO data.');
@@ -176,7 +187,7 @@ for ki = 1:nCraft
 
     % Load target atlas
     try
-        S = rs3_prepare_or_load_family(R.famB, cfg);
+        S = rs3_prepare_or_load_family(R.famB, cfg, []);
         if isfield(S,'Xpo') && ~isempty(S.Xpo)
             if norm(S.Xpo(end,1:2) - S.Xpo(1,1:2)) > 1e-6
                 S.Xpo(end+1,:) = S.Xpo(1,:);
