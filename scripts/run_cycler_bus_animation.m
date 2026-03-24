@@ -49,13 +49,13 @@ FIG_H        = 740;     % figure height [px]
 
 if isempty(SWEEP_MAT)
     root = fileparts(fileparts(mfilename('fullpath')));
-    % Search the known folder layout: rs3_results/<timestamp>/Cycler 11a/
-    % Use a direct single-wildcard pattern (avoids ** reliability issues).
-    candidates = dir(fullfile(root, 'rs3_results', '*', 'Cycler 11a', 'sweep_summary.mat'));
-    if isempty(candidates)
-        % Also try the short name variant
-        candidates = dir(fullfile(root, 'rs3_results', '*', 'Cyc11a', 'sweep_summary.mat'));
-    end
+    % Search two levels deep with wildcards only (a literal space in the
+    % folder name "Cycler 11a" can trip up dir() on some MATLAB versions).
+    % Filter by family name in MATLAB after the search.
+    candidates = dir(fullfile(root, 'rs3_results', '*', '*', 'sweep_summary.mat'));
+    keep = arrayfun(@(f) contains(f.folder,'Cycler 11a') || ...
+                        contains(f.folder,'Cyc11a'), candidates);
+    candidates = candidates(keep);
     if isempty(candidates)
         error(['run_cycler_bus_animation: sweep_summary.mat not found.\n', ...
                'Run run_rs5_single_family_sweep.m with famOrigin = ''Cycler 11a'' first,\n', ...
