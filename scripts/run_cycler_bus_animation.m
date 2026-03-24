@@ -246,7 +246,23 @@ for ki = 1:nCraft
     arrive_frame(ki) = dep_frame(ki) + N_TRANSIT;
 end
 
-N_TOTAL = N_BUS_LOOP + N_TRANSIT + N_COAST;   % ensures all craft finish coasting
+% Per-craft coast duration scaled so the dot moves at the same arc-length/frame
+% as the bus on Cycler 11a.  coast_n(ki) = L_tgt / L_bus * N_BUS_LOOP.
+coast_n = zeros(nCraft, 1);
+for ki = 1:nCraft
+    if isempty(craft(ki).coast_x)
+        coast_n(ki) = N_COAST;
+        continue;
+    end
+    d_tgt       = diff(Stgt{ki}.Xpo(:, 1:2));
+    L_tgt       = sum(sqrt(sum(d_tgt.^2, 2)));
+    coast_n(ki) = max(1, round(L_tgt / s_xpo_total * N_BUS_LOOP));
+    % Resample coast arc to the speed-matched number of points
+    [craft(ki).coast_x, craft(ki).coast_y] = ...
+        local_arc_resample(craft(ki).coast_x, craft(ki).coast_y, coast_n(ki) + 1);
+end
+
+N_TOTAL = N_BUS_LOOP + N_TRANSIT + max(coast_n) + FADE_OUT_FRAMES;
 
 %% ═══════════════════════ BUILD FIGURE & STATIC ELEMENTS ═════════════════════
 
@@ -366,7 +382,7 @@ for fi = 1:N_TOTAL
 
             coast_age = fi - af;   % 1, 2, 3, ...
 
-            if coast_age <= N_COAST
+            if coast_age <= coast_n(ki)
                 % ── Fading in + coasting ─────────────────────────────────────
                 % Fade in target PO: colour lerps from near-white → full over FADE_FRAMES
                 if ~isempty(Stgt{ki})
@@ -386,7 +402,7 @@ for fi = 1:N_TOTAL
                 % ── Coast dot hidden; PO fades back out ──────────────────────
                 set(h_coast(ki), 'XData', NaN, 'YData', NaN);
 
-                fade_out_age = coast_age - N_COAST;
+                fade_out_age = coast_age - coast_n(ki);
                 fade_out_t   = min(fade_out_age / FADE_OUT_FRAMES, 1.0);
 
                 if ~isempty(Stgt{ki})
