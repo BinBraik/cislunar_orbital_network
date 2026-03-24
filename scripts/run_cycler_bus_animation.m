@@ -36,7 +36,7 @@ OUT_GIF      = 'cycler_bus_animation.gif';
 
 N_BUS_LOOP      = 120;  % frames for one complete bus orbit
 N_TRANSIT       = 90;   % frames per transfer arc (arc-length resampled)
-N_COAST         = 35;   % frames coasting on target PO after arrival
+N_COAST         = 60;   % frames coasting on target PO after arrival
 FADE_FRAMES     = 12;   % frames for target PO fade-in on arrival
 FADE_OUT_FRAMES = 15;   % frames for target PO fade-out after coasting ends
 N_SHOW          = 6;    % max craft to animate (evenly spread subset of all ok)
@@ -359,10 +359,9 @@ for fi = 1:N_TOTAL
 
         else
             % ─ Arrived ──────────────────────────────────────────────────────
-            % Full transit arc stays as a permanent trail
-            set(h_trail(ki), 'XData', craft(ki).arc_x, ...
-                             'YData', craft(ki).arc_y);
-            set(h_dot(ki),   'XData', NaN, 'YData', NaN);  % transit dot gone
+            % Trail and transit dot both disappear on arrival
+            set(h_trail(ki), 'XData', NaN, 'YData', NaN);
+            set(h_dot(ki),   'XData', NaN, 'YData', NaN);
 
             coast_age = fi - af;   % 1, 2, 3, ...
 
