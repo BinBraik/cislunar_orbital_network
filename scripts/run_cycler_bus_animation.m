@@ -83,16 +83,6 @@ famOrigin  = D.famOrigin;
 famTargets = D.famTargets;  %#ok<NASGU>
 cfg        = D.cfg;
 
-% The cfg was saved on whatever machine ran the sweep; its cache.dir is an
-% absolute path that may not exist here.  Point it at the standard location
-% relative to the repo root so rs3_cache_try_load_family can find the files.
-repo_root = fileparts(fileparts(mfilename('fullpath')));
-if isfield(cfg,'cache') && isfield(cfg.cache,'dir') && ~exist(cfg.cache.dir,'dir')
-    cfg.cache.dir = fullfile(repo_root, 'rs3_cache');
-end
-% Never rebuild — we only need to read cached atlases.
-cfg.cache.rebuild = false;
-
 nT = numel(results);
 
 %% ═══════════════════════ FILTER SUCCESSFUL TRANSFERS ════════════════════════
@@ -122,7 +112,7 @@ end
 %% ═══════════════════════ LOAD BUS ORBIT (Cycler 11a) ════════════════════════
 
 fprintf('Loading bus orbit (%s) ...\n', famOrigin);
-Sbus = rs3_prepare_or_load_family(famOrigin, cfg, []);
+Sbus = local_load_family(famOrigin);
 
 if ~isfield(Sbus,'Xpo') || isempty(Sbus.Xpo)
     error('Sbus.Xpo not found — atlas does not contain dense PO data.');
@@ -185,17 +175,15 @@ for ki = 1:nCraft
     end
     craft(ki).color = FAM_PALETTE(fam_idx, :);
 
-    % Load target atlas
+    % Load target atlas (integrate PO directly — no cache dependency)
     try
-        S = rs3_prepare_or_load_family(R.famB, cfg, []);
-        if isfield(S,'Xpo') && ~isempty(S.Xpo)
-            if norm(S.Xpo(end,1:2) - S.Xpo(1,1:2)) > 1e-6
-                S.Xpo(end+1,:) = S.Xpo(1,:);
-            end
-            Stgt{ki} = S;
+        S = local_load_family(R.famB);
+        if norm(S.Xpo(end,1:2) - S.Xpo(1,1:2)) > 1e-6
+            S.Xpo(end+1,:) = S.Xpo(1,:);
         end
+        Stgt{ki} = S;
     catch ME
-        warning('Could not load atlas for %s: %s', R.famB, ME.message);
+        warning('Could not integrate PO for %s: %s', R.famB, ME.message);
     end
 end
 
@@ -408,6 +396,24 @@ close(fig);
 fprintf('\nDone.  GIF saved to: %s\n', OUT_GIF);
 
 %% ═══════════════════════ LOCAL HELPERS ════════════════════════════════════════
+
+function S = local_load_family(famName)
+%LOCAL_LOAD_FAMILY  Integrate one full PO period for a named orbit family.
+%  Returns a minimal struct with .Xpo [N×3], .mu, .CJ, .Tf_PO.
+%  No cache, no grid3, no cfg required — fully self-contained.
+[mu_f, CJ_f, Tf_f, X04] = rs3_core_family_ic(famName);
+% Convert 4-state [x;y;vx;vy] IC to reduced-model [x;y;theta].
+% theta = heading angle of velocity vector in the synodic frame.
+theta0   = atan2(X04(4), X04(3));
+IC_3d    = [X04(1); X04(2); theta0];
+ode_opts = odeset('RelTol', 1e-10, 'AbsTol', 1e-10);
+[~, Xpo] = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,CJ_f,mu_f,false), ...
+                   linspace(0, Tf_f, 1000), IC_3d, ode_opts);
+S.Xpo   = Xpo;     % 1000×3  [x, y, theta]
+S.mu    = mu_f;
+S.CJ    = CJ_f;
+S.Tf_PO = Tf_f;
+end
 
 function [xr, yr] = local_arc_resample(x, y, n_out)
 %LOCAL_ARC_RESAMPLE  Resample (x,y) curve to n_out points, uniform arc-length.
