@@ -34,10 +34,12 @@ addpath(genpath(fullfile(fileparts(mfilename('fullpath')), '..', 'src')));
 SWEEP_MAT    = '';                       % ← SET THIS if auto-detect fails
 OUT_GIF      = 'cycler_bus_animation.gif';
 
-N_BUS_LOOP   = 120;     % frames for one complete bus orbit
-N_TRANSIT    = 90;      % frames per transfer arc (arc-length resampled)
-N_COAST      = 35;      % frames coasting on target PO after arrival
-FADE_FRAMES  = 12;      % frames for target PO fade-in
+N_BUS_LOOP      = 120;  % frames for one complete bus orbit
+N_TRANSIT       = 90;   % frames per transfer arc (arc-length resampled)
+N_COAST         = 35;   % frames coasting on target PO after arrival
+FADE_FRAMES     = 12;   % frames for target PO fade-in on arrival
+FADE_OUT_FRAMES = 15;   % frames for target PO fade-out after coasting ends
+N_SHOW          = 6;    % max craft to animate (evenly spread subset of all ok)
 FRAME_DELAY  = 0.05;    % seconds per GIF frame  (0.05 = 20 fps)
 
 BUS_DOT_SZ   = 14;      % bus marker size
@@ -103,8 +105,12 @@ for k = 1:nT
 end
 
 ok_idx = find(ok);
+if numel(ok_idx) > N_SHOW
+    pick   = round(linspace(1, numel(ok_idx), N_SHOW));
+    ok_idx = ok_idx(pick);
+end
 nCraft = numel(ok_idx);
-fprintf('%d / %d transfers successful — animating %d craft.\n', nCraft, nT, nCraft);
+fprintf('%d / %d transfers successful — animating %d craft.\n', numel(find(ok)), nT, nCraft);
 if nCraft == 0
     error('No successful transfers found in %s.', SWEEP_MAT);
 end
@@ -354,21 +360,39 @@ for fi = 1:N_TOTAL
 
             coast_age = fi - af;   % 1, 2, 3, ...
 
-            % Fade in target PO: colour lerps from near-white → full over FADE_FRAMES
-            if ~isempty(Stgt{ki})
-                fade_t = min(coast_age / FADE_FRAMES, 1.0);
-                c_now  = local_lerp_color(craft(ki).color, fade_t);
-                set(h_po(ki), 'Color', c_now, 'Visible', 'on');
-            end
-            set(h_label(ki), 'Visible', 'on');
+            if coast_age <= N_COAST
+                % ── Fading in + coasting ─────────────────────────────────────
+                % Fade in target PO: colour lerps from near-white → full over FADE_FRAMES
+                if ~isempty(Stgt{ki})
+                    fade_t = min(coast_age / FADE_FRAMES, 1.0);
+                    c_now  = local_lerp_color(craft(ki).color, fade_t);
+                    set(h_po(ki), 'Color', c_now, 'Visible', 'on');
+                end
+                set(h_label(ki), 'Visible', 'on');
 
-            % Craft coasts on target PO for N_COAST frames, then hides
-            if coast_age <= N_COAST && ~isempty(craft(ki).coast_x)
-                c_idx = min(coast_age, numel(craft(ki).coast_x));
-                set(h_coast(ki), 'XData', craft(ki).coast_x(c_idx), ...
-                                 'YData', craft(ki).coast_y(c_idx));
+                % Craft coasts on target PO
+                if ~isempty(craft(ki).coast_x)
+                    c_idx = min(coast_age, numel(craft(ki).coast_x));
+                    set(h_coast(ki), 'XData', craft(ki).coast_x(c_idx), ...
+                                     'YData', craft(ki).coast_y(c_idx));
+                end
             else
+                % ── Coast dot hidden; PO fades back out ──────────────────────
                 set(h_coast(ki), 'XData', NaN, 'YData', NaN);
+
+                fade_out_age = coast_age - N_COAST;
+                fade_out_t   = min(fade_out_age / FADE_OUT_FRAMES, 1.0);
+
+                if ~isempty(Stgt{ki})
+                    c_now = local_lerp_color(craft(ki).color, 1.0 - fade_out_t);
+                    set(h_po(ki), 'Color', c_now);
+                    if fade_out_t >= 1.0
+                        set(h_po(ki), 'Visible', 'off');
+                    end
+                end
+                if fade_out_t >= 1.0
+                    set(h_label(ki), 'Visible', 'off');
+                end
             end
         end
     end
