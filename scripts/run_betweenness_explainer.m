@@ -94,6 +94,15 @@ cfg.plot.rs4.bounds_lb    = false;
 cfg.plot.rs4.bounds_ub    = false;
 cfg.plot.rs4.bounds_proxy = false;
 
+% ---- Differential Correction ----
+cfg.diffcorr.tol_patch     = 1e-4;
+cfg.diffcorr.tol_converged = 1e-4;
+cfg.diffcorr.display       = 'off';
+cfg.diffcorr.MaxIterations = 300;
+cfg.diffcorr.MaxFunEvals   = 8000;
+cfg.diffcorr.N_po_dt       = 0.003;
+cfg.diffcorr.N_po_min      = 1001;
+
 VU_mps  = cfg.units.VU_mps;
 TU_days = cfg.units.TU_days;
 
@@ -238,6 +247,9 @@ for ex = 1:size(selected, 1)
     V1 = rs4_overlap_extract_voxel_info(SA, SBr, O1, cfg);
     B1 = rs4_overlap_visualize_bounds(V1, SA, SBr, O1, cfg, ex_dir, [ex_tag '_leg1']);
     T1 = rs4_voxel_traj_extract(SA, SBr, V1, B1, cfg);
+    fprintf('[ex %d] DC Leg 1 ...\n', ex);
+    Tc1 = rs4_diffcorr(T1, SA, SBr, cfg);
+    fprintf('[ex %d]  Leg1 DC: %.1f m/s  (converged=%d)\n', ex, Tc1.DV_total_mps, Tc1.converged);
 
     % ── Leg 2: bridge → dest ─────────────────────────────────────────────────
     fprintf('[ex %d] Leg 2: %s → %s\n', ex, famBr, famB);
@@ -249,26 +261,27 @@ for ex = 1:size(selected, 1)
     V2 = rs4_overlap_extract_voxel_info(SBr, SB, O2, cfg);
     B2 = rs4_overlap_visualize_bounds(V2, SBr, SB, O2, cfg, ex_dir, [ex_tag '_leg2']);
     T2 = rs4_voxel_traj_extract(SBr, SB, V2, B2, cfg);
+    fprintf('[ex %d] DC Leg 2 ...\n', ex);
+    Tc2 = rs4_diffcorr(T2, SBr, SB, cfg);
+    fprintf('[ex %d]  Leg2 DC: %.1f m/s  (converged=%d)\n', ex, Tc2.DV_total_mps, Tc2.converged);
 
-    % ── DV summary ───────────────────────────────────────────────────────────
-    dv_l1      = T1.DV_total_true_mps;
-    dv_l2      = T2.DV_total_true_mps;
+    % ── DV summary (corrected) ───────────────────────────────────────────────
+    dv_l1      = Tc1.DV_total_mps;
+    dv_l2      = Tc2.DV_total_mps;
     dv_via     = dv_l1 + dv_l2;
     dv_direct  = DV_sym(iA, iB);   % proxy from sweep (upper bound for direct)
     savings    = dv_direct - dv_via;
 
-    fprintf('[ex %d] Leg1=%.1f  +  Leg2=%.1f  =  %.1f m/s\n', ex, dv_l1, dv_l2, dv_via);
+    fprintf('[ex %d] Leg1 DC=%.1f  +  Leg2 DC=%.1f  =  %.1f m/s\n', ex, dv_l1, dv_l2, dv_via);
     fprintf('[ex %d] Direct proxy=%.1f m/s  |  Savings=%.1f m/s (%.0f%%)\n', ...
         ex, dv_direct, savings, 100*savings/dv_direct);
 
     % ── Coast arc on bridge PO ───────────────────────────────────────────────
-    % Leg-1 bridge arrival seed (physical):  T1.seed_B_frs(1:2)
-    % Leg-2 bridge departure seed (physical): T2.seed_A(1:2)
-    % Bridge arrival in physical (x,y):  R-transform of FRS IC = (x_B(1), y_B(1))
-    % Bridge departure in physical (x,y): FRS IC of Leg-2 = T2.XA(1,1:2)
+    % Bridge arrival  (x,y): first point of corrected BRS arc (R-transformed)
+    % Bridge departure(x,y): first point of corrected FRS arc for Leg-2
     [coast_arc, coast_time] = local_coast_on_po(SBr, ...
-        [T1.x_B(1); T1.y_B(1)], ...
-        [T2.XA(1,1); T2.XA(1,2)]);
+        [Tc1.x_B(1); Tc1.y_B(1)], ...
+        [Tc2.XA(1,1); Tc2.XA(1,2)]);
 
     % ── Static figure ────────────────────────────────────────────────────────
     c_A  = PALETTE(1,:);
@@ -294,12 +307,12 @@ for ex = 1:size(selected, 1)
     local_plot_po_with_arrows(ax, SBr, c_Br, sprintf('Bridge: %s',  famBr));
     local_plot_po_with_arrows(ax, SB,  c_B,  sprintf('Dest: %s',    famB));
 
-    % ── Transfer A: both arcs in c_A ─────────────────────────────────────────
+    % ── Transfer A: both arcs in c_A (corrected) ─────────────────────────────
     % FRS: origin → patch-1  (physical, forward in time)
-    plot(ax, T1.XA(:,1), T1.XA(:,2), '-', 'Color', c_A, 'LineWidth', 2.0, ...
-        'DisplayName', sprintf('Transfer A (%.0f + %.0f d)', T1.tof_A_days, T1.tof_B_days));
+    plot(ax, Tc1.XA(:,1), Tc1.XA(:,2), '-', 'Color', c_A, 'LineWidth', 2.0, ...
+        'DisplayName', sprintf('Transfer A (%.0f + %.0f d)', Tc1.tof_A_days, Tc1.tof_B_days));
     % BRS: patch-1 → bridge  (reversed; y_B already physical after R-transform)
-    plot(ax, T1.x_B(end:-1:1), T1.y_B(end:-1:1), '-', 'Color', c_A, 'LineWidth', 2.0, ...
+    plot(ax, Tc1.x_B(end:-1:1), Tc1.y_B(end:-1:1), '-', 'Color', c_A, 'LineWidth', 2.0, ...
         'HandleVisibility', 'off');
 
     % ── Coast arc on bridge ───────────────────────────────────────────────────
@@ -308,17 +321,17 @@ for ex = 1:size(selected, 1)
             'LineWidth', 3.5, 'DisplayName', sprintf('Bridge coast (%.0f d)', coast_time*TU_days));
     end
 
-    % ── Transfer B: both arcs in c_B ─────────────────────────────────────────
+    % ── Transfer B: both arcs in c_B (corrected) ─────────────────────────────
     % FRS: bridge → patch-2  (physical, forward in time)
-    plot(ax, T2.XA(:,1), T2.XA(:,2), '-', 'Color', c_B, 'LineWidth', 2.0, ...
-        'DisplayName', sprintf('Transfer B (%.0f + %.0f d)', T2.tof_A_days, T2.tof_B_days));
+    plot(ax, Tc2.XA(:,1), Tc2.XA(:,2), '-', 'Color', c_B, 'LineWidth', 2.0, ...
+        'DisplayName', sprintf('Transfer B (%.0f + %.0f d)', Tc2.tof_A_days, Tc2.tof_B_days));
     % BRS: patch-2 → dest  (reversed; y_B already physical after R-transform)
-    plot(ax, T2.x_B(end:-1:1), T2.y_B(end:-1:1), '-', 'Color', c_B, 'LineWidth', 2.0, ...
+    plot(ax, Tc2.x_B(end:-1:1), Tc2.y_B(end:-1:1), '-', 'Color', c_B, 'LineWidth', 2.0, ...
         'HandleVisibility', 'off');
 
     % ── ΔV patch markers (yellow stars) ──────────────────────────────────────
-    xp1 = T1.XA(T1.i_star, 1);  yp1 = T1.XA(T1.i_star, 2);
-    xp2 = T2.XA(T2.i_star, 1);  yp2 = T2.XA(T2.i_star, 2);
+    xp1 = Tc1.xp;  yp1 = Tc1.yp;
+    xp2 = Tc2.xp;  yp2 = Tc2.yp;
     plot(ax, xp1, yp1, 'p', 'Color','k', 'MarkerFaceColor',[0.95 0.85 0.05], ...
         'MarkerSize', 14, 'LineWidth', 1.2, 'DisplayName', '\DeltaV patch');
     plot(ax, xp2, yp2, 'p', 'Color','k', 'MarkerFaceColor',[0.95 0.85 0.05], ...
@@ -326,19 +339,19 @@ for ex = 1:size(selected, 1)
 
     % ── Event markers: depart A, bridge arrival/departure, arrive B ───────────
     % Departure from A
-    plot(ax, T1.XA(1,1),  T1.XA(1,2),  'o', 'Color','k', ...
+    plot(ax, Tc1.XA(1,1),  Tc1.XA(1,2),  'o', 'Color','k', ...
         'MarkerFaceColor', c_A, 'MarkerSize', 11, 'LineWidth', 1.5, ...
         'DisplayName', 'Depart A');
     % Bridge arrival (end of Transfer A inbound arc)
-    plot(ax, T1.x_B(1),   T1.y_B(1),   'd', 'Color','k', ...
+    plot(ax, Tc1.x_B(1),   Tc1.y_B(1),   'd', 'Color','k', ...
         'MarkerFaceColor', 'w', 'MarkerSize', 11, 'LineWidth', 2.0, ...
         'DisplayName', 'Bridge arrival');
     % Bridge departure (start of Transfer B outbound arc)
-    plot(ax, T2.XA(1,1),  T2.XA(1,2),  'd', 'Color','k', ...
+    plot(ax, Tc2.XA(1,1),  Tc2.XA(1,2),  'd', 'Color','k', ...
         'MarkerFaceColor', c_Br, 'MarkerSize', 11, 'LineWidth', 1.5, ...
         'DisplayName', 'Bridge departure');
     % Arrival at B
-    plot(ax, T2.x_B(1),   T2.y_B(1),   'o', 'Color','k', ...
+    plot(ax, Tc2.x_B(1),   Tc2.y_B(1),   'o', 'Color','k', ...
         'MarkerFaceColor', c_B, 'MarkerSize', 11, 'LineWidth', 1.5, ...
         'DisplayName', 'Arrive B');
 
@@ -355,9 +368,25 @@ for ex = 1:size(selected, 1)
 
     rs3_io_save_figure(fig, ex_dir, ['betweenness_' ex_tag], cfg);
 
+    % ── Save per-example .mat ────────────────────────────────────────────────
+    PO_origin     = SA.Xpo;
+    PO_bridge     = SBr.Xpo;
+    PO_dest       = SB.Xpo;
+    dv_leg1_mps   = dv_l1;
+    dv_leg2_mps   = dv_l2;
+    dv_via_mps    = dv_via;
+    dv_direct_mps = dv_direct;
+    save(fullfile(ex_dir, [ex_tag '_data.mat']), ...
+        'T1', 'T2', 'Tc1', 'Tc2', ...
+        'coast_arc', 'coast_time', ...
+        'PO_origin', 'PO_bridge', 'PO_dest', ...
+        'famA', 'famBr', 'famB', ...
+        'dv_leg1_mps', 'dv_leg2_mps', 'dv_via_mps', 'dv_direct_mps', '-v7.3');
+    fprintf('[ex %d] Saved data .mat\n', ex);
+
     % ── Optional GIF animation ────────────────────────────────────────────────
     if ANIM_ENABLE
-        local_make_gif(T1, T2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c_B, ...
+        local_make_gif(Tc1, Tc2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c_B, ...
             CJbg, mu, famA, famBr, famB, dv_l1, dv_l2, dv_via, dv_direct, ...
             ANIM_N_FRAMES, ANIM_FRAME_DELAY, ex_dir, ex_tag, cfg);
     end
@@ -442,20 +471,20 @@ end
 
 % ─────────────────────────────────────────────────────────────────────────────
 
-function local_make_gif(T1, T2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c_B, ...
+function local_make_gif(Tc1, Tc2, coast_arc, coast_time, SA, SBr, SB, c_A, c_Br, c_B, ...
     CJbg, mu, famA, famBr, famB, dv_l1, dv_l2, dv_via, dv_direct, ...
     N_frames, frame_delay, out_dir, ex_tag, cfg)
-%LOCAL_MAKE_GIF  Animated GIF: spacecraft travels the full multi-leg path.
+%LOCAL_MAKE_GIF  Animated GIF: spacecraft travels the full multi-leg path (corrected arcs).
 %
 % Path phases (physical coords, forward in time):
-%   1. Transfer A out : T1.XA               (origin  → patch-1)   colour: c_A
-%   2. Transfer A in  : T1.BRS reversed     (patch-1 → bridge)    colour: c_A
+%   1. Transfer A out : Tc1.XA              (origin  → patch-1)   colour: c_A
+%   2. Transfer A in  : Tc1.BRS reversed    (patch-1 → bridge)    colour: c_A
 %   3. Coast          : coast_arc           (bridge arrival → departure) colour: c_Br
-%   4. Transfer B out : T2.XA               (bridge  → patch-2)   colour: c_B
-%   5. Transfer B in  : T2.BRS reversed     (patch-2 → dest)      colour: c_B
+%   4. Transfer B out : Tc2.XA              (bridge  → patch-2)   colour: c_B
+%   5. Transfer B in  : Tc2.BRS reversed    (patch-2 → dest)      colour: c_B
 %
-% Frames are allocated proportional to each phase's physical time duration
-% so the animated dot moves at a uniform rate across all segments.
+% Frames are allocated proportional to each phase's arc length so the
+% animated dot moves at visually uniform speed across all segments.
 
 TU_days  = local_cfg_get(cfg, 'units.TU_days', 1.0);
 relTol   = local_cfg_get(cfg, 'propag.relTol', 1e-9);
@@ -467,21 +496,21 @@ ode_opts = odeset('RelTol', relTol, 'AbsTol', absTol);
 N_dense = max(2000, 20 * N_frames);
 
 sol1 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ, SA.mu, false), ...
-               [0, T1.t_A], T1.IC_A, ode_opts);
-D1   = deval(sol1, linspace(0, T1.t_A, N_dense))';   % N_dense×3, physical
+               [0, Tc1.t_A], Tc1.IC_A, ode_opts);
+D1   = deval(sol1, linspace(0, Tc1.t_A, N_dense))';   % N_dense×3, physical
 
 sol2 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
-               [0, T1.t_B], T1.IC_B_frs, ode_opts);
-D2r  = deval(sol2, linspace(0, T1.t_B, N_dense))';   % FRS frame
-D2   = [D2r(end:-1:1,1), -D2r(end:-1:1,2)];          % reversed + R-transform → physical
+               [0, Tc1.t_B], Tc1.IC_B_frs, ode_opts);
+D2r  = deval(sol2, linspace(0, Tc1.t_B, N_dense))';   % FRS frame
+D2   = [D2r(end:-1:1,1), -D2r(end:-1:1,2)];           % reversed + R-transform → physical
 
 sol4 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
-               [0, T2.t_A], T2.IC_A, ode_opts);
-D4   = deval(sol4, linspace(0, T2.t_A, N_dense))';
+               [0, Tc2.t_A], Tc2.IC_A, ode_opts);
+D4   = deval(sol4, linspace(0, Tc2.t_A, N_dense))';
 
 sol5 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ, SB.mu, false), ...
-               [0, T2.t_B], T2.IC_B_frs, ode_opts);
-D5r  = deval(sol5, linspace(0, T2.t_B, N_dense))';
+               [0, Tc2.t_B], Tc2.IC_B_frs, ode_opts);
+D5r  = deval(sol5, linspace(0, Tc2.t_B, N_dense))';
 D5   = [D5r(end:-1:1,1), -D5r(end:-1:1,2)];
 
 % Coast: Xpo is already dense and uniform in time
