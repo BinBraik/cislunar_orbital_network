@@ -60,6 +60,7 @@ if doXY
     local_apply_zoom(cfg, ax);
     rs3_io_save_figure(fig, outdir, ['rs4_' safeTag '_overlap_xy'], cfg, 'Resolution', local_fig_res(cfg));
     local_close_if_hidden(cfg, fig);
+    
 end
 
 % ---------- 3D (x,y,theta) ----------

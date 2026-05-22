@@ -1,8 +1,9 @@
 function net_plot_winner_map(plot_type, map_data, DV_vec, Tmax_vec, ...
     lcc_full_map, budget_pairs_map, short_names, N_fam, out_dir)
-%NET_PLOT_WINNER_MAP  Create, save (PDF + PNG + .fig) one network-centrality figure.
+%NET_PLOT_WINNER_MAP  Create, save (PDF + PNG + .fig + .svg) one
+%network-centrality figure with manuscript-ready styling.
 %
-%   Saves <out_dir>/<plot_type>.{pdf,png,fig}.
+%   Saves <out_dir>/<plot_type>.{pdf,png,svg,fig}.
 %
 % Inputs
 %   plot_type        char   one of:
@@ -24,10 +25,35 @@ function net_plot_winner_map(plot_type, map_data, DV_vec, Tmax_vec, ...
 %   N_fam            scalar     number of families (13)
 %   out_dir          char       output directory (created if absent)
 
-if ~exist(out_dir, 'dir'), mkdir(out_dir); end
+if ~exist(out_dir, 'dir')
+    mkdir(out_dir);
+end
 
 nDV   = numel(DV_vec);
 nTmax = numel(Tmax_vec);
+
+% -------------------------------------------------------------------------
+% Style settings
+% -------------------------------------------------------------------------
+FONT_NAME        = 'Times New Roman';
+AXIS_FS          = 13;
+LABEL_FS         = 16;
+TITLE_FS         = 16;
+CB_FS            = 12;
+CB_LABEL_FS      = 13;
+LEG_FS           = 10;
+LEG_TITLE_FS     = 11;
+
+AXIS_LW          = 1.4;
+CONTOUR_LW       = 1.1;
+LCC_THRESH_LW    = 1.9;
+BUDGET_THRESH_LW = 2.2;
+TIE_BORDER_LW    = 1.0;
+
+FIG_POS          = [100 100 980 740];
+PAPER_W          = 9.8;
+PAPER_H          = 7.4;
+PNG_DPI          = 300;
 
 % Cell half-widths — used for tie-cell patch rendering
 hw = i_cell_hw(DV_vec);
@@ -35,17 +61,21 @@ hh = i_cell_hw(Tmax_vec);
 
 fam_colors = i_fam_colors(N_fam);
 
-fig = figure('Visible', 'off', 'Color', 'white', ...
-             'Units', 'pixels', 'Position', [100 100 860 620]);
+fig = figure('Visible', 'off', ...
+             'Color', 'white', ...
+             'Units', 'pixels', ...
+             'Position', FIG_POS, ...
+             'Renderer', 'painters');
+
 ax  = axes(fig);
 
-% ── MAX PAIRS THRESHOLD (upper triangle of 13×13 network) ────────────────────
+% ── MAX PAIRS THRESHOLD (upper triangle of 13×13 network) ─────────────────
 MAX_PAIRS = N_fam * (N_fam - 1) / 2;   % = 78 for N_fam=13
 
 switch plot_type
 
     % ═══════════════════════════════════════════════════════════════════════
-    %  COUNT HEATMAPS (direct edges  /  budget-feasible paths)
+    %  COUNT HEATMAPS (direct edges / budget-feasible paths)
     % ═══════════════════════════════════════════════════════════════════════
     case {'edges_count_map', 'budget_feasible_pairs_map'}
 
@@ -64,22 +94,29 @@ switch plot_type
         Z(skip_mask) = NaN;
         Z = Z';   % [nTmax × nDV] for imagesc
 
-        % Clim from actual data range (not 0)
+        % Clim from actual data range
         valid_z = Z(isfinite(Z));
         if isempty(valid_z)
             z_lim = [0 1];
         else
             z_lim = [min(valid_z), max(valid_z)];
-            if z_lim(1) == z_lim(2), z_lim(2) = z_lim(1) + 1; end
+            if z_lim(1) == z_lim(2)
+                z_lim(2) = z_lim(1) + 1;
+            end
         end
 
         imagesc(ax, DV_vec, Tmax_vec, Z, z_lim);
         axis(ax, 'xy');
         set(ax, 'Color', [1 1 1]);   % white for NaN/skip cells
         colormap(ax, parula(256));
+
         cb = colorbar(ax);
-        cb.Label.String = cb_label;
-        cb.Label.FontSize = 9;
+        cb.Label.String     = cb_label;
+        cb.Label.FontSize   = CB_LABEL_FS;
+        cb.Label.FontWeight = 'bold';
+        cb.FontSize         = CB_FS;
+        cb.FontName         = FONT_NAME;
+        cb.LineWidth        = 1.0;
 
         hold(ax, 'on');
 
@@ -87,16 +124,21 @@ switch plot_type
         max_level = floor((MAX_PAIRS - 1) / 10) * 10;   % = 70 for MAX_PAIRS=78
         lvls = 10 : 10 : max_level;
         if ~isempty(lvls) && any(isfinite(Z(:)))
-            [~, hc_cnt] = contour(ax, DV_vec, Tmax_vec, Z, lvls, 'k-', 'LineWidth', 0.8);
-            hc_cnt.ShowText    = 'on';
-            hc_cnt.LabelSpacing = 500;
+            [~, hc_cnt] = contour(ax, DV_vec, Tmax_vec, Z, lvls, ...
+                                  'k-', 'LineWidth', CONTOUR_LW);
+            hc_cnt.ShowText     = 'on';
+            hc_cnt.LabelSpacing = 450;
         end
 
-        % Two special contours (black dashed LCC=13, red dashed budget=78)
+        % Two special contours
         i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
+            lcc_full_map, budget_pairs_map, MAX_PAIRS, ...
+            LCC_THRESH_LW, BUDGET_THRESH_LW);
 
-        title(ax, ttl, 'FontSize', 11);
+        title(ax, ttl, ...
+              'FontName', FONT_NAME, ...
+              'FontSize', TITLE_FS, ...
+              'FontWeight', 'bold');
 
     % ═══════════════════════════════════════════════════════════════════════
     %  WINNER MAPS
@@ -104,8 +146,8 @@ switch plot_type
     case {'winner_map_strength', 'winner_map_harmonic_closeness', ...
           'winner_map_betweenness'}
 
-        winner_idx   = map_data.winner_idx;    % [nDV×nTmax]  1-N, 0=tie, NaN=skip
-        winner_names = map_data.winner_names;  % {nDV×nTmax}  semicolon-joined if tie
+        winner_idx   = map_data.winner_idx;    % [nDV×nTmax] 1-N, 0=tie, NaN=skip
+        winner_names = map_data.winner_names;  % {nDV×nTmax} semicolon-joined if tie
 
         % Build RGB background: winners → family colour; ties/skip → white
         rgb = ones(nTmax, nDV, 3);
@@ -122,37 +164,49 @@ switch plot_type
         axis(ax, 'xy');
         hold(ax, 'on');
 
-        % Overlay tie cells as diagonal-split (2-way) or pie-slice (3+-way) patches
+        % Overlay tie cells
         i_draw_tie_cells(ax, winner_idx, winner_names, short_names, fam_colors, ...
-                         DV_vec, Tmax_vec, hw, hh);
+            DV_vec, Tmax_vec, hw, hh, TIE_BORDER_LW);
 
-        % Two special contours (inline labels only, not in legend)
+        % Two special contours
         i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
+            lcc_full_map, budget_pairs_map, MAX_PAIRS, ...
+            LCC_THRESH_LW, BUDGET_THRESH_LW);
 
         % Filtered legend: only families that actually win somewhere
         present_idx = unique(winner_idx(isfinite(winner_idx) & winner_idx > 0));
-        leg_items   = {};
+        leg_items   = gobjects(0);
+
         for k = 1:numel(present_idx)
-            p = patch(ax, NaN, NaN, fam_colors(present_idx(k), :), ...
-                      'EdgeColor', 'none', ...
-                      'DisplayName', short_names{present_idx(k)});
-            leg_items{end+1} = p; %#ok<AGROW>
+            leg_items(end+1) = patch(ax, NaN, NaN, fam_colors(present_idx(k), :), ...
+                'EdgeColor', 'none', ...
+                'DisplayName', short_names{present_idx(k)}); %#ok<AGROW>
         end
+
         if ~isempty(leg_items)
-            legend(ax, [leg_items{:}], 'Location', 'eastoutside', ...
-                   'FontSize', 8, 'Box', 'on');
+            lgd = legend(ax, leg_items, ...
+                'Location', 'eastoutside', ...
+                'FontSize', LEG_FS, ...
+                'Box', 'on');
+            lgd.FontName = FONT_NAME;
+            lgd.Title.String = 'Winner';
+            lgd.Title.FontSize = LEG_TITLE_FS;
+            lgd.Title.FontWeight = 'bold';
         end
 
         switch plot_type
             case 'winner_map_strength'
                 ttl = 'Strength winner';
             case 'winner_map_harmonic_closeness'
-                ttl = 'Harmonic closeness winner';
+                ttl = 'Harmonic-closeness winner';
             case 'winner_map_betweenness'
                 ttl = 'Betweenness winner';
         end
-        title(ax, ttl, 'FontSize', 11);
+
+        title(ax, ttl, ...
+              'FontName', FONT_NAME, ...
+              'FontSize', TITLE_FS, ...
+              'FontWeight', 'bold');
 
     % ═══════════════════════════════════════════════════════════════════════
     %  LCC SIZE MAP
@@ -164,7 +218,8 @@ switch plot_type
 
         valid_sz = lcc_size(~skip_mask);
         if isempty(valid_sz)
-            min_sz = 1;  max_sz = 1;
+            min_sz = 1;
+            max_sz = 1;
         else
             min_sz = min(valid_sz(:));
             max_sz = max(valid_sz(:));
@@ -175,7 +230,7 @@ switch plot_type
         Z(skip_mask) = NaN;
         Z = Z';   % [nTmax × nDV]
 
-        % Discrete colormap (parula slice)
+        % Discrete colormap
         full_cmap = i_lcc_colors(N_fam);
         sub_cmap  = full_cmap(min_sz:max_sz, :);
 
@@ -187,27 +242,38 @@ switch plot_type
         cb = colorbar(ax);
         cb.Ticks      = min_sz : max_sz;
         cb.TickLabels = arrayfun(@num2str, min_sz:max_sz, 'UniformOutput', false);
-        cb.Label.String   = 'Largest connected component size';
-        cb.Label.FontSize = 9;
+        cb.Label.String     = 'Largest connected component size';
+        cb.Label.FontSize   = CB_LABEL_FS;
+        cb.Label.FontWeight = 'bold';
+        cb.FontSize         = CB_FS;
+        cb.FontName         = FONT_NAME;
+        cb.LineWidth        = 1.0;
 
         hold(ax, 'on');
         i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
-        title(ax, 'Largest connected component size', 'FontSize', 11);
+            lcc_full_map, budget_pairs_map, MAX_PAIRS, ...
+            LCC_THRESH_LW, BUDGET_THRESH_LW);
+
+        title(ax, 'Largest connected component size', ...
+              'FontName', FONT_NAME, ...
+              'FontSize', TITLE_FS, ...
+              'FontWeight', 'bold');
 
     % ═══════════════════════════════════════════════════════════════════════
     %  ARTICULATION-POINT COUNT MAP
     % ═══════════════════════════════════════════════════════════════════════
     case 'articulation_map'
 
-        ap_count = double(map_data.ap_count);
+        ap_count  = double(map_data.ap_count);
         skip_mask = map_data.skip_map;
 
-        max_ap   = max(ap_count(:));
-        if max_ap == 0, max_ap = 1; end
+        max_ap = max(ap_count(:));
+        if max_ap == 0
+            max_ap = 1;
+        end
 
-        n_colors  = max_ap + 1;
-        ap_cmap   = parula(max(n_colors, 2));
+        n_colors = max_ap + 1;
+        ap_cmap  = parula(max(n_colors, 2));
 
         rgb = ones(nTmax, nDV, 3);
         for di = 1:nDV
@@ -225,47 +291,63 @@ switch plot_type
         image(ax, DV_vec, Tmax_vec, rgb);
         axis(ax, 'xy');
         hold(ax, 'on');
+
         i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
+            lcc_full_map, budget_pairs_map, MAX_PAIRS, ...
+            LCC_THRESH_LW, BUDGET_THRESH_LW);
 
         n_show = min(n_colors, 8);
         hp = gobjects(n_show, 1);
         for k = 1:n_show
             ci = round((k-1) * (n_colors-1) / max(n_show-1,1)) + 1;
             ci = max(1, min(ci, n_colors));
-            hp(k) = patch(ax, NaN, NaN, ap_cmap(ci,:), 'EdgeColor', 'none', ...
-                          'DisplayName', sprintf('%d', ci-1));
+            hp(k) = patch(ax, NaN, NaN, ap_cmap(ci,:), ...
+                'EdgeColor', 'none', ...
+                'DisplayName', sprintf('%d', ci-1));
         end
-        lgd = legend(ax, hp, 'Location', 'eastoutside', ...
-                     'FontSize', 7, 'Box', 'on');
+
+        lgd = legend(ax, hp, ...
+            'Location', 'eastoutside', ...
+            'FontSize', LEG_FS, ...
+            'Box', 'on');
+        lgd.FontName = FONT_NAME;
         lgd.Title.String = '# articulation pts';
-        title(ax, 'Articulation-point count per snapshot', 'FontSize', 11);
+        lgd.Title.FontSize = LEG_TITLE_FS;
+        lgd.Title.FontWeight = 'bold';
+
+        title(ax, 'Articulation-point count per snapshot', ...
+              'FontName', FONT_NAME, ...
+              'FontSize', TITLE_FS, ...
+              'FontWeight', 'bold');
 
     % ═══════════════════════════════════════════════════════════════════════
     %  CONTINUOUS METRIC CONTOUR MAPS
     % ═══════════════════════════════════════════════════════════════════════
     case {'strength_contour', 'harmonic_closeness_contour'}
 
-        vals_3d  = map_data.values;    % [N × nDV × nTmax]
+        vals_3d   = map_data.values;    % [N × nDV × nTmax]
         skip_mask = map_data.skip_map;
 
         max_vals = squeeze(max(vals_3d, [], 1));   % [nDV × nTmax]
         max_vals(skip_mask) = NaN;
         Z = max_vals';   % [nTmax × nDV]
 
-        % Clim from actual data range (not 0)
+        % Clim from actual data range
         valid_data = Z(isfinite(Z));
         if isempty(valid_data)
             z_lim = [0 1];
         else
             z_lim = [min(valid_data), max(valid_data)];
-            if z_lim(1) == z_lim(2), z_lim(2) = z_lim(1) + eps; end
+            if z_lim(1) == z_lim(2)
+                z_lim(2) = z_lim(1) + eps;
+            end
         end
 
         imagesc(ax, DV_vec, Tmax_vec, Z, z_lim);
         axis(ax, 'xy');
         set(ax, 'Color', [1 1 1]);
         colormap(ax, parula(256));
+
         cb = colorbar(ax);
 
         switch plot_type
@@ -276,45 +358,77 @@ switch plot_type
                 ttl    = 'Harmonic closeness (max over families)';
                 cb_lbl = 'Harmonic closeness';
         end
-        cb.Label.String   = cb_lbl;
-        cb.Label.FontSize = 9;
+
+        cb.Label.String     = cb_lbl;
+        cb.Label.FontSize   = CB_LABEL_FS;
+        cb.Label.FontWeight = 'bold';
+        cb.FontSize         = CB_FS;
+        cb.FontName         = FONT_NAME;
+        cb.LineWidth        = 1.0;
 
         hold(ax, 'on');
+
         if ~isempty(valid_data)
-            vmin = z_lim(1);  vmax = z_lim(2);
+            vmin = z_lim(1);
+            vmax = z_lim(2);
             if vmax > vmin
                 step = i_nice_step((vmax - vmin) / 8);
                 lvls = (ceil(vmin/step)*step) : step : vmax;
                 if numel(lvls) > 1
-                    [~, hc] = contour(ax, DV_vec, Tmax_vec, Z, lvls, 'k-', 'LineWidth', 0.8);
-                    hc.ShowText    = 'on';
-                    hc.LabelSpacing = 500;
+                    [~, hc] = contour(ax, DV_vec, Tmax_vec, Z, lvls, ...
+                                      'k-', 'LineWidth', CONTOUR_LW);
+                    hc.ShowText     = 'on';
+                    hc.LabelSpacing = 450;
                 end
             end
         end
 
         i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                               lcc_full_map, budget_pairs_map, MAX_PAIRS);
-        title(ax, ttl, 'FontSize', 11);
+            lcc_full_map, budget_pairs_map, MAX_PAIRS, ...
+            LCC_THRESH_LW, BUDGET_THRESH_LW);
+
+        title(ax, ttl, ...
+              'FontName', FONT_NAME, ...
+              'FontSize', TITLE_FS, ...
+              'FontWeight', 'bold');
 
     otherwise
         error('net_plot_winner_map: unknown plot_type ''%s''.', plot_type);
 end
 
-% ── Common axis labels + formatting ─────────────────────────────────────────
-xlabel(ax, '\DeltaV_{cap}  [m/s]',  'FontSize', 10);
-ylabel(ax, 'T_{cap}  [days]',       'FontSize', 10);
-set(ax, 'FontSize', 9, 'Box', 'on', 'TickDir', 'out', 'Layer', 'top');
+% ── Common axis labels + formatting ───────────────────────────────────────
+xlabel(ax, '\Delta V_{cap} [m/s]', ...
+    'FontName', FONT_NAME, ...
+    'FontSize', LABEL_FS, ...
+    'FontWeight', 'bold');
+
+ylabel(ax, 'T_{cap} [days]', ...
+    'FontName', FONT_NAME, ...
+    'FontSize', LABEL_FS, ...
+    'FontWeight', 'bold');
+
+set(ax, ...
+    'FontName', FONT_NAME, ...
+    'FontSize', AXIS_FS, ...
+    'FontWeight', 'bold', ...
+    'LineWidth', AXIS_LW, ...
+    'Box', 'on', ...
+    'TickDir', 'out', ...
+    'Layer', 'top');
+
 xlim(ax, [DV_vec(1), DV_vec(end)]);
 ylim(ax, [Tmax_vec(1), Tmax_vec(end)]);
 
-% ── Save: PDF + PNG + .fig ───────────────────────────────────────────────────
+% ── Save: PDF + PNG + SVG + FIG ───────────────────────────────────────────
 base = fullfile(out_dir, plot_type);
 
-set(fig, 'PaperUnits', 'inches', 'PaperPosition', [0 0 8.6 6.2], ...
-         'PaperSize', [8.6 6.2]);
+set(fig, ...
+    'PaperUnits', 'inches', ...
+    'PaperPosition', [0 0 PAPER_W PAPER_H], ...
+    'PaperSize', [PAPER_W PAPER_H]);
+
 print(fig, [base '.pdf'], '-dpdf', '-bestfit');
-print(fig, [base '.png'], '-dpng', '-r150');
+print(fig, [base '.png'], '-dpng', ['-r' num2str(PNG_DPI)]);
 print(fig, [base '.svg'], '-dsvg');
 saveas(fig, [base '.fig']);
 
@@ -327,57 +441,65 @@ end   % end main function
 % ═══════════════════════════════════════════════════════════════════════════
 
 function i_overlay_two_contours(ax, DV_vec, Tmax_vec, ...
-                                 lcc_full_map, budget_pairs_map, max_pairs)
+    lcc_full_map, budget_pairs_map, max_pairs, lcc_lw, budget_lw)
 %I_OVERLAY_TWO_CONTOURS  Draw two special contour lines on ax.
-%   1. Black dashed, inline-labelled "LCC=13" using native contour label style
-%      (line breaks at label, no background box).
-%   2. Red dashed, no label.
+%   1. Black dashed: LCC fully connected
+%   2. Red dashed: all pairs budget-reachable
 %   No legend entries are created.
 
 hold(ax, 'on');
 
-% ── 1. Black dashed: LCC fully connected — inline "LCC=13" label ──────────────
+% ── 1. Black dashed: LCC fully connected ─────────────────────────────────
 Z_lcc = lcc_full_map';   % [nTmax × nDV]
 if any(Z_lcc(:) == 0) && any(Z_lcc(:) == 1)
     contour(ax, DV_vec, Tmax_vec, Z_lcc, [0.5 0.5], ...
-            'k--', 'LineWidth', 1.5);
+        'k--', 'LineWidth', lcc_lw);
 end
 
-% ── 2. Red dashed: all pairs budget-reachable — no label ──────────────────────
+% ── 2. Red dashed: all pairs budget-reachable ────────────────────────────
 if ~isempty(budget_pairs_map) && any(isfinite(budget_pairs_map(:)))
     Z_bp   = budget_pairs_map';   % [nTmax × nDV]
     thresh = max_pairs - 0.5;
     if any(Z_bp(:) < thresh) && any(Z_bp(:) >= thresh)
         contour(ax, DV_vec, Tmax_vec, Z_bp, [thresh thresh], ...
-                'r--', 'LineWidth', 2.0);
+            'r--', 'LineWidth', budget_lw);
     end
 end
 
-end   % end i_overlay_two_contours
+end
 
-% ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────
 
 function i_draw_tie_cells(ax, winner_idx, winner_names, short_names, fam_colors, ...
-                           DV_vec, Tmax_vec, hw, hh)
-%I_DRAW_TIE_CELLS  Overlay diagonal-split (2-way) or pie (3+-way) patches on ax.
+    DV_vec, Tmax_vec, hw, hh, border_lw)
+%I_DRAW_TIE_CELLS  Overlay diagonal-split (2-way) or pie (3+-way) patches.
 %                  Each tie cell gets a black border rectangle on top.
 
 for di = 1:numel(DV_vec)
     for dj = 1:numel(Tmax_vec)
-        if winner_idx(di, dj) ~= 0, continue; end   % only tie cells (0); NaN~=0 is fine
+        if winner_idx(di, dj) ~= 0
+            continue;   % only tie cells (0); NaN~=0 is fine
+        end
 
         name_str = winner_names{di, dj};
-        if isempty(name_str), continue; end
+        if isempty(name_str)
+            continue;
+        end
 
-        parts   = strsplit(name_str, ';');
-        n_tied  = numel(parts);
-        tidx    = zeros(1, n_tied);
+        parts  = strsplit(name_str, ';');
+        n_tied = numel(parts);
+        tidx   = zeros(1, n_tied);
+
         for f = 1:n_tied
             idx = find(strcmp(short_names, strtrim(parts{f})), 1);
             tidx(f) = idx;
         end
+
         valid = tidx > 0 & tidx <= size(fam_colors, 1);
-        if ~any(valid), continue; end
+        if ~any(valid)
+            continue;
+        end
+
         tidx   = tidx(valid);
         n_tied = numel(tidx);
 
@@ -386,13 +508,12 @@ for di = 1:numel(DV_vec)
 
         if n_tied == 2
             % Split along BL→TR diagonal
-            % Upper-left triangle: BL, TL, TR
+            % Upper-left triangle
             patch(ax, [cx-hw  cx-hw  cx+hw], [cy-hh  cy+hh  cy+hh], ...
-                  fam_colors(tidx(1),:), 'EdgeColor', 'none');
-            % Lower-right triangle: BL, BR, TR
+                fam_colors(tidx(1),:), 'EdgeColor', 'none');
+            % Lower-right triangle
             patch(ax, [cx-hw  cx+hw  cx+hw], [cy-hh  cy-hh  cy+hh], ...
-                  fam_colors(tidx(2),:), 'EdgeColor', 'none');
-
+                fam_colors(tidx(2),:), 'EdgeColor', 'none');
         else
             % Equal pie slices
             n_pts = 24;
@@ -409,12 +530,14 @@ for di = 1:numel(DV_vec)
 
         % Black border around the tie cell
         rectangle(ax, 'Position', [cx-hw, cy-hh, 2*hw, 2*hh], ...
-                  'EdgeColor', 'k', 'LineWidth', 0.8, 'FaceColor', 'none');
+            'EdgeColor', 'k', ...
+            'LineWidth', border_lw, ...
+            'FaceColor', 'none');
     end
 end
-end   % end i_draw_tie_cells
+end
 
-% ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────
 
 function hw = i_cell_hw(vec)
 %I_CELL_HW  Half-width of one grid cell along vec.
@@ -425,21 +548,28 @@ else
 end
 end
 
-% ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────
 
 function step = i_nice_step(raw_step)
 %I_NICE_STEP  Round raw_step up to a "nice" number (1, 2, 5 × 10^k).
-if raw_step <= 0, step = 1; return; end
+if raw_step <= 0
+    step = 1;
+    return;
+end
 mag  = 10^floor(log10(raw_step));
 frac = raw_step / mag;
-if     frac <= 1, step = 1 * mag;
-elseif frac <= 2, step = 2 * mag;
-elseif frac <= 5, step = 5 * mag;
-else,             step = 10 * mag;
+if     frac <= 1
+    step = 1 * mag;
+elseif frac <= 2
+    step = 2 * mag;
+elseif frac <= 5
+    step = 5 * mag;
+else
+    step = 10 * mag;
 end
 end
 
-% ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────
 
 function c = i_fam_colors(N)
 %I_FAM_COLORS  N visually distinct colours for the N families.
@@ -451,7 +581,7 @@ else
 end
 end
 
-% ─────────────────────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────────────────
 
 function c = i_lcc_colors(N)
 %I_LCC_COLORS  N sequential colours (parula) for LCC-size values 1..N.

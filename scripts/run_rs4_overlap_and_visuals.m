@@ -17,13 +17,13 @@ cfg.cache.enable  = true;
 cfg.cache.rebuild = false;
 
 % grid settings (must match for both atlases)
-cfg.grid.dx               = 0.001;
-cfg.grid.dy               = 0.001;
-cfg.grid.dtheta           = deg2rad(1);
-cfg.seed.ds_seed          = 0.01;
-cfg.propag.Tmax           = pi;
-cfg.fan.DV_cap_nd         = 0.2;
-cfg.fan.dtheta_fan        = deg2rad(0.5);
+cfg.grid.dx               = 0.01;
+cfg.grid.dy               = 0.01;
+cfg.grid.dtheta           = deg2rad(5);
+cfg.seed.ds_seed          = 0.05;
+cfg.propag.Tmax           = pi/2;
+cfg.fan.DV_cap_nd         = 0.2/1.5;
+cfg.fan.dtheta_fan        = deg2rad(1);
 cfg.propag.absTol         = 1e-8;
 cfg.propag.relTol         = 1e-8;
 cfg.propag.v2tol          = 1e-8;
