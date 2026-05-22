@@ -21,7 +21,7 @@ clear; clc;
 % ── USER KNOBS ───────────────────────────────────────────────────────────────
 
 % Root folder produced by run_betweenness_explainer
-EXPLAINER_DIR = fullfile(rs3_repo_root(), 'rs3_betweenness_explainer');
+EXPLAINER_DIR = fullfile(pwd, 'rs3_betweenness_explainer');
 
 % Grid spacings used in the original run (must match)
 GRID_DX     = 0.001;
