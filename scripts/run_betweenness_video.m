@@ -27,7 +27,7 @@ GRID_DY     = 0.001;
 GRID_DTHETA = deg2rad(1);
 
 FPS            = 30;
-VIDEO_DURATION = 30;       % seconds per example video
+VIDEO_DURATION = 20;       % seconds per example video
 TRAIL_SEC      = 1.5;      % visible fading trail duration [video seconds]
 N_TRAIL_SEG    = 16;       % fade segments (more = smoother fade)
 VIDEO_QUALITY  = 95;       % VideoWriter quality (0-100)
