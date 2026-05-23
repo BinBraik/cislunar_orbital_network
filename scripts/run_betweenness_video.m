@@ -20,7 +20,7 @@
 clear; clc;
 
 % ── USER KNOBS ────────────────────────────────────────────────────────────────
-EXPLAINER_DIR  = fullfile(rs3_repo_root(), 'rs3_betweenness_explainer');
+EXPLAINER_DIR  = fullfile(pwd, 'rs3_betweenness_explainer');
 
 GRID_DX     = 0.001;
 GRID_DY     = 0.001;
