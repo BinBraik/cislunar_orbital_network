@@ -163,11 +163,13 @@ for fi = 1:numel(mat_files)
     XpoB  = local_integrate_po(SB,  ode_opts);
 
     % ── Axis limits ───────────────────────────────────────────────────────────
-    pad      = 0.25;
-    cx_rot   = mean([min(path_x), max(path_x)]);
-    half_rot = max((max(path_x) - min(path_x))/2 + pad, max(abs(path_y)) + pad);
-    rot_xlim = [cx_rot - half_rot, cx_rot + half_rot];
-    rot_ylim = [-half_rot, half_rot];
+    pad = 0.12;
+    % Rotating frame: centred on Earth (0,0), sized to contain all content
+    rot_all_x = [path_x; XpoA(:,1); XpoBr(:,1); XpoB(:,1)];
+    rot_all_y = [path_y; XpoA(:,2); XpoBr(:,2); XpoB(:,2)];
+    half_rot  = max(max(abs(rot_all_x)) + pad, max(abs(rot_all_y)) + pad);
+    rot_xlim  = [-half_rot, half_rot];
+    rot_ylim  = [-half_rot, half_rot];
 
     eci_all_x = [path_x_eci; 0];   % include Earth
     eci_all_y = [path_y_eci; 0];
