@@ -3,6 +3,7 @@
 *.m~
 *.autosave
 *.mlx~
+*.mp4
 
 # MATLAB project and preferences
 *.prj
