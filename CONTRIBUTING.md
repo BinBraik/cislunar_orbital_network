@@ -21,7 +21,7 @@ Thanks for contributing to **cr3bp_reachable_sets**.
 Use the provided test runner:
 
 ```matlab
-run('tests/runtests_rs3.m')
+run('tests/runtests.m')
 ```
 
 Add/update tests in `tests/` for any behavior changes.

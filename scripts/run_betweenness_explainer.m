@@ -11,8 +11,8 @@
 %   3. Select the top N_EXAMPLES pairs (ranked by savings).
 %   4. For each selected pair:
 %       a. Load atlases for origin, bridge, destination.
-%       b. Extract Leg-1 arc  (origin  → bridge) via rs4_voxel_traj_extract.
-%       c. Extract Leg-2 arc  (bridge  → dest  ) via rs4_voxel_traj_extract.
+%       b. Extract Leg-1 arc  (origin  → bridge) via overlap_voxel_traj_extract.
+%       c. Extract Leg-2 arc  (bridge  → dest  ) via overlap_voxel_traj_extract.
 %       d. Compute coast segment on bridge PO between the two seeds.
 %       e. Plot all elements (POs dashed + direction arrows, arcs in
 %          distinct colours, patch markers, DV annotation).
@@ -37,10 +37,10 @@ clear; clc;
 
 % ── USER KNOBS ───────────────────────────────────────────────────────────────
 
-% Input data (produced by run_rs4_dv_tmax_sweep / run_network_centrality_sweep)
-SWEEP_MAT = fullfile(rs3_repo_root(), 'rs3_sweep_results', ...
+% Input data (produced by run_overlap_dv_tmax_sweep / run_network_centrality_sweep)
+SWEEP_MAT = fullfile(repo_root(), 'atlas_sweep_results', ...
                      'sweep_DVmatrix_results.mat');
-NET_MAT   = fullfile(rs3_repo_root(), 'rs3_network_results', ...
+NET_MAT   = fullfile(repo_root(), 'atlas_network_results', ...
                      'network_results.mat');
 
 % Bridge (high-betweenness) orbit family
@@ -59,16 +59,16 @@ ANIM_N_FRAMES    = 150;    % total frames in the GIF
 ANIM_FRAME_DELAY = 0.04;   % seconds per frame
 
 % Output directory
-OUT_DIR = fullfile(rs3_repo_root(), 'rs3_betweenness_explainer');
+OUT_DIR = fullfile(repo_root(), 'betweenness_explainer');
 
 % ── END OF USER KNOBS ────────────────────────────────────────────────────────
 
-rs3_setup();
-addpath(fullfile(rs3_repo_root(), 'src', 'network'));
+setup();
+addpath(fullfile(repo_root(), 'src', 'network'));
 
 if ~exist(OUT_DIR, 'dir'), mkdir(OUT_DIR); end
 
-cfg = rs3_cfg_defaults();
+cfg = atlas_cfg_defaults();
 
 cfg.grid.dx               = 0.001;
 cfg.grid.dy               = 0.001;
@@ -187,7 +187,7 @@ for k = 1:size(selected, 1)
 end
 
 %% ── Build shared grid ────────────────────────────────────────────────────────
-grid3 = rs3_grid_make(cfg);
+grid3 = atlas_grid_make(cfg);
 
 %% ── Per-example colour palette ───────────────────────────────────────────────
 % [origin, bridge, dest] colours
@@ -218,9 +218,9 @@ for ex = 1:size(selected, 1)
 
     % ── Load & densify atlases ───────────────────────────────────────────────
     fprintf('[ex %d] Loading atlases ...\n', ex);
-    [SA,  ~] = rs3_prepare_or_load_family(famA,  cfg, grid3);
-    [SBr, ~] = rs3_prepare_or_load_family(famBr, cfg, grid3);
-    [SB,  ~] = rs3_prepare_or_load_family(famB,  cfg, grid3);
+    [SA,  ~] = atlas_prepare_or_load(famA,  cfg, grid3);
+    [SBr, ~] = atlas_prepare_or_load(famBr, cfg, grid3);
+    [SB,  ~] = atlas_prepare_or_load(famB,  cfg, grid3);
 
     relTol = cfg.propag.relTol;
     absTol = cfg.propag.absTol;
@@ -230,25 +230,25 @@ for ex = 1:size(selected, 1)
 
     % ── Leg 1: origin → bridge ───────────────────────────────────────────────
     fprintf('[ex %d] Leg 1: %s → %s\n', ex, famA, famBr);
-    O1 = rs4_overlap_pair(SA, SBr, cfg);
+    O1 = overlap_pair(SA, SBr, cfg);
     if isempty(O1) || ~isfield(O1,'ids') || isempty(O1.ids)
         fprintf('[ex %d]  WARNING: no overlap for Leg 1 — skipping example.\n', ex);
         continue
     end
-    V1 = rs4_overlap_extract_voxel_info(SA, SBr, O1, cfg);
-    B1 = rs4_overlap_visualize_bounds(V1, SA, SBr, O1, cfg, ex_dir, [ex_tag '_leg1']);
-    T1 = rs4_voxel_traj_extract(SA, SBr, V1, B1, cfg);
+    V1 = overlap_extract_voxel_info(SA, SBr, O1, cfg);
+    B1 = overlap_visualize_bounds(V1, SA, SBr, O1, cfg, ex_dir, [ex_tag '_leg1']);
+    T1 = overlap_voxel_traj_extract(SA, SBr, V1, B1, cfg);
 
     % ── Leg 2: bridge → dest ─────────────────────────────────────────────────
     fprintf('[ex %d] Leg 2: %s → %s\n', ex, famBr, famB);
-    O2 = rs4_overlap_pair(SBr, SB, cfg);
+    O2 = overlap_pair(SBr, SB, cfg);
     if isempty(O2) || ~isfield(O2,'ids') || isempty(O2.ids)
         fprintf('[ex %d]  WARNING: no overlap for Leg 2 — skipping example.\n', ex);
         continue
     end
-    V2 = rs4_overlap_extract_voxel_info(SBr, SB, O2, cfg);
-    B2 = rs4_overlap_visualize_bounds(V2, SBr, SB, O2, cfg, ex_dir, [ex_tag '_leg2']);
-    T2 = rs4_voxel_traj_extract(SBr, SB, V2, B2, cfg);
+    V2 = overlap_extract_voxel_info(SBr, SB, O2, cfg);
+    B2 = overlap_visualize_bounds(V2, SBr, SB, O2, cfg, ex_dir, [ex_tag '_leg2']);
+    T2 = overlap_voxel_traj_extract(SBr, SB, V2, B2, cfg);
 
     % ── DV summary ───────────────────────────────────────────────────────────
     dv_l1      = T1.DV_total_true_mps;
@@ -283,7 +283,7 @@ for ex = 1:size(selected, 1)
         'Visible', cfg.io.fig_visible, ...
         'Units',  'pixels', 'Position', [80 80 1050 820]);
     ax = axes('Parent', fig);
-    rs3_core_plot_cislunar_background(CJbg, mu, ax);
+    cr3bp_plot_background(CJbg, mu, ax);
     set(ax.Children, 'HandleVisibility', 'off');
     hold(ax, 'on');
     axis(ax, 'equal');
@@ -353,7 +353,7 @@ for ex = 1:size(selected, 1)
     ylabel(ax, 'y [nd]');
     legend(ax, 'Location','best', 'FontSize', 8);
 
-    rs3_io_save_figure(fig, ex_dir, ['betweenness_' ex_tag], cfg);
+    io_save_figure(fig, ex_dir, ['betweenness_' ex_tag], cfg);
 
     % ── Optional GIF animation ────────────────────────────────────────────────
     if ANIM_ENABLE
@@ -466,20 +466,20 @@ ode_opts = odeset('RelTol', relTol, 'AbsTol', absTol);
 % N_dense >> N_frames so subsequent arc-length resampling is smooth.
 N_dense = max(2000, 20 * N_frames);
 
-sol1 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ, SA.mu, false), ...
+sol1 = ode113(@(t,X) cr3bp_reduced_ode(t,X,SA.CJ, SA.mu, false), ...
                [0, T1.t_A], T1.IC_A, ode_opts);
 D1   = deval(sol1, linspace(0, T1.t_A, N_dense))';   % N_dense×3, physical
 
-sol2 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+sol2 = ode113(@(t,X) cr3bp_reduced_ode(t,X,SBr.CJ,SBr.mu,false), ...
                [0, T1.t_B], T1.IC_B_frs, ode_opts);
 D2r  = deval(sol2, linspace(0, T1.t_B, N_dense))';   % FRS frame
 D2   = [D2r(end:-1:1,1), -D2r(end:-1:1,2)];          % reversed + R-transform → physical
 
-sol4 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+sol4 = ode113(@(t,X) cr3bp_reduced_ode(t,X,SBr.CJ,SBr.mu,false), ...
                [0, T2.t_A], T2.IC_A, ode_opts);
 D4   = deval(sol4, linspace(0, T2.t_A, N_dense))';
 
-sol5 = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ, SB.mu, false), ...
+sol5 = ode113(@(t,X) cr3bp_reduced_ode(t,X,SB.CJ, SB.mu, false), ...
                [0, T2.t_B], T2.IC_B_frs, ode_opts);
 D5r  = deval(sol5, linspace(0, T2.t_B, N_dense))';
 D5   = [D5r(end:-1:1,1), -D5r(end:-1:1,2)];
@@ -530,7 +530,7 @@ end
 fig_anim = figure('Color','w', 'Visible','off', ...
                   'Units','pixels', 'Position',[100 100 950 760]);
 ax = axes('Parent', fig_anim);
-rs3_core_plot_cislunar_background(CJbg, mu, ax);
+cr3bp_plot_background(CJbg, mu, ax);
 set(ax.Children, 'HandleVisibility','off');
 hold(ax,'on');
 axis(ax,'equal');
@@ -631,7 +631,7 @@ if isfield(S,'Xpo') && ~isempty(S.Xpo) && ...
 end
 fprintf('[betweenness_explainer] Re-integrating PO for "%s" ...\n', S.name);
 opts  = odeset('RelTol', relTol, 'AbsTol', absTol);
-sol   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,S.CJ,S.mu,true), ...
+sol   = ode113(@(t,X) cr3bp_reduced_ode(t,X,S.CJ,S.mu,true), ...
                [0, S.Tf_PO], S.X0, opts);
 td    = linspace(0, S.Tf_PO, N_po)';
 S.t_dense = td;

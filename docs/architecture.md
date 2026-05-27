@@ -4,15 +4,15 @@
 
 The pipeline builds reachable-set atlases for periodic orbit families in the Earth-Moon CR3BP and then finds overlap between two family atlases to identify transfer candidates.
 
-- **Step 2** — Build the 3D (x, y, θ) voxel grid (`rs3_grid_make`, `rs3_grid_validate`).
-- **Step 3** — Sample a periodic orbit densely, extract upper-half seeds, build per-family Keep mask (`rs3_family_prepare_seeds`).
-- **Step 4** — For each (seed × heading) job, integrate forward and backward, log voxel hits into packed row structs, cache the atlas (`rs3_family_build_hits`, `rs3_cache_save_family`).
-- **Step 5 / Overlap** — Compute the intersection of family A's FRS with family B's BRS. Lower-half rows are reconstructed on-the-fly from upper-half via y-axis symmetry (`rs4_overlap_pair`, `rs3_rows_mirror_lower`).
-- **Visualization** — Render FRS/BRS occupancy, overlap voxels, zoom insets, and DV-proxy bounds (`rs4_overlap_visualize`, `rs4_overlap_visualize_combo`, `rs4_overlap_visualize_bounds`).
+- **Step 2** — Build the 3D (x, y, θ) voxel grid (`atlas_grid_make`, `atlas_grid_validate`).
+- **Step 3** — Sample a periodic orbit densely, extract upper-half seeds, build per-family Keep mask (`atlas_family_prepare_seeds`).
+- **Step 4** — For each (seed × heading) job, integrate forward and backward, log voxel hits into packed row structs, cache the atlas (`atlas_family_build_hits`, `atlas_cache_save`).
+- **Step 5 / Overlap** — Compute the intersection of family A's FRS with family B's BRS. Lower-half rows are reconstructed on-the-fly from upper-half via y-axis symmetry (`overlap_pair`, `atlas_rows_mirror_lower`).
+- **Visualization** — Render FRS/BRS occupancy, overlap voxels, zoom insets, and DV-proxy bounds (`overlap_visualize`, `overlap_visualize_combo`, `overlap_visualize_bounds`).
 
 ## Key data structures
 
-- `cfg` — configuration struct (see `rs3_cfg_defaults` for the full schema with inline comments)
+- `cfg` — configuration struct (see `atlas_cfg_defaults` for the full schema with inline comments)
 - `grid3` — grid definition: bin edges, voxel centers, Keep mask, `bin_xyth` function handle
 - `S` — family atlas struct (output of Steps 3–4, stored in cache):
   - `S.SeedsUpper`, `S.SeedsLower` — seed positions (Nx3)
@@ -42,8 +42,8 @@ Hit rows are stored as a struct-of-arrays rather than a double matrix (~4× memo
 The CR3BP has y=0 symmetry: a trajectory `(x, y, θ, t)` in the upper half corresponds to a mirrored trajectory `(x, -y, π−θ, −t)` in the lower half. The pipeline exploits this to:
 - Integrate only from upper-half seeds (Steps 3–4)
 - Store only upper-half hit rows
-- Reconstruct lower-half rows on-the-fly via `rs3_rows_mirror_lower` during overlap (Step 5)
+- Reconstruct lower-half rows on-the-fly via `atlas_rows_mirror_lower` during overlap (Step 5)
 
 ## Caching
 
-Cache keys are MD5 hashes of a fingerprint string that encodes all pipeline parameters (grid, seed, fan, propagation, version tag). A cache hit skips Steps 3–4 entirely. See `rs3_cache_fingerprint_family`, `rs3_cache_try_load_family`, `rs3_cache_save_family`.
+Cache keys are MD5 hashes of a fingerprint string that encodes all pipeline parameters (grid, seed, fan, propagation, version tag). A cache hit skips Steps 3–4 entirely. See `atlas_cache_fingerprint`, `atlas_cache_try_load`, `atlas_cache_save`.

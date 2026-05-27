@@ -19,14 +19,14 @@
 %   Run 7* Stress coarse      dx=dy=0.0015  dtheta=1.5°  fan=1.5°  ds=0.03
 %            (* only if INCLUDE_RUN7 = true)
 %
-% Strategy — identical to run_rs4_dv_tmax_sweep.m + run_rs4_all_pairs_summary.m:
+% Strategy — identical to run_overlap_dv_tmax_sweep.m + run_overlap_all_pairs.m:
 %   1. For each run config: build cfg, load 13 atlases, build footprints.
 %   2. Slice footprints into FA_arr / FB_arr (one per pair).
 %   3. Run 78-pair loop with parfor (sliced footprints — OOM-safe).
 %   4. Assemble N×N minDVproxyMat + TOFmat.
-%   5. Save to rs4_verification_runs/<RunID>/result.mat  (skip-if-exists).
+%   5. Save to verification_runs/<RunID>/result.mat  (skip-if-exists).
 %
-% Output per run:  rs4_verification_runs/<RunID>/result.mat
+% Output per run:  verification_runs/<RunID>/result.mat
 %   Variables: minDVproxyMat [13×13], TOFmat [13×13], T (winners table),
 %              families {13×1}, cfg (run config)
 %
@@ -154,7 +154,7 @@ if INCLUDE_TEST
 end
 
 % ── Output root ──────────────────────────────────────────────────────────────
-verifyRoot = fullfile(repoRoot, 'rs4_verification_runs');
+verifyRoot = fullfile(repoRoot, 'verification_runs');
 if ~exist(verifyRoot, 'dir'), mkdir(verifyRoot); end
 
 % ── Enumerate all 78 pairs (index vectors, computed once) ────────────────────
@@ -198,7 +198,7 @@ for r = 1:nRunsTotal
     tRun = tic;
 
     % ── Build cfg for this run ───────────────────────────────────────────────
-    cfg = rs3_cfg_defaults();
+    cfg = atlas_cfg_defaults();
     cfg.families.list      = families;
     cfg.families.test_only = false;
 
@@ -232,15 +232,15 @@ for r = 1:nRunsTotal
     cfg.plot.rs4.bounds_ub    = false;
     cfg.plot.rs4.bounds_proxy = false;
 
-    if exist('rs3_cfg_validate', 'file') == 2
-        rs3_cfg_validate(cfg);
+    if exist('atlas_cfg_validate', 'file') == 2
+        atlas_cfg_validate(cfg);
     end
 
     VU_mps  = cfg.units.VU_mps;
     TU_days = cfg.units.TU_days;
 
     % ── Build grid ───────────────────────────────────────────────────────────
-    grid3 = rs3_grid_make(cfg);
+    grid3 = atlas_grid_make(cfg);
 
     % ── Create/reuse pool right before atlas parfor ──────────────────────────
     % Pool is started here (fresh per run) so workers are never left idle during
@@ -264,7 +264,7 @@ for r = 1:nRunsTotal
     Fall = cell(N, 1);
     for i = 1:N
         fprintf('[verify]   %2d/%d  %s\n', i, N, families{i});
-        [S, ~] = rs3_prepare_or_load_family(families{i}, cfg, grid3);
+        [S, ~] = atlas_prepare_or_load(families{i}, cfg, grid3);
         Fall{i} = local_compute_footprint(S, grid3, VU_mps, TU_days);
         clear S;
     end
@@ -350,7 +350,7 @@ fprintf('[verify] Output root: %s\n', verifyRoot);
 fprintf('[verify] Next step  : run run_robustness_analysis.m\n');
 
 % ════════════════════════════════════════════════════════════════════════════
-%  LOCAL FUNCTIONS  (identical to run_rs4_dv_tmax_sweep.m / run_rs4_all_pairs_summary.m)
+%  LOCAL FUNCTIONS  (identical to run_overlap_dv_tmax_sweep.m / run_overlap_all_pairs.m)
 % ════════════════════════════════════════════════════════════════════════════
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -406,7 +406,7 @@ try
     x_ok = grid3.x_centers(ix);
     y_ok = grid3.y_centers(iy);
     CJstar = min(FA.CJ, FB.CJ);
-    pot    = rs3_core_cr3bp_U_and_derivs(x_ok(:), y_ok(:), mu);
+    pot    = cr3bp_potential(x_ok(:), y_ok(:), mu);
     v_box  = sqrt(max(2*pot.U - CJstar, 0));
     dv_patch_vec = 2 * v_box .* sin(abs(grid3.dtheta) / 2) * VU_mps;
     dv_lb_vec    = dv_min_A(:) + dv_min_B(:);
@@ -435,7 +435,7 @@ Ny = numel(grid3.y_centers);
 Nx = numel(grid3.x_centers);
 Nt = numel(grid3.th_centers);
 
-thm    = rs3_wrapToPi(pi - grid3.th_centers(:));
+thm    = wrap_to_pi(pi - grid3.th_centers(:));
 lut    = discretize(thm, grid3.th_edges);
 lut(isnan(lut)) = 0;
 it_lut = uint16(lut);
@@ -449,10 +449,10 @@ for s = 1:Ns
     delta_mat(s, 1:numel(v)) = v;
 end
 
-pot_u    = rs3_core_cr3bp_U_and_derivs(S.SeedsUpper(:,1), S.SeedsUpper(:,2), S.mu);
+pot_u    = cr3bp_potential(S.SeedsUpper(:,1), S.SeedsUpper(:,2), S.mu);
 v0_upper = sqrt(max(2*pot_u.U(:) - S.CJ, 0));
 if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
-    pot_l    = rs3_core_cr3bp_U_and_derivs(S.SeedsLower(:,1), S.SeedsLower(:,2), S.mu);
+    pot_l    = cr3bp_potential(S.SeedsLower(:,1), S.SeedsLower(:,2), S.mu);
     v0_lower = sqrt(max(2*pot_l.U(:) - S.CJ, 0));
 else
     v0_lower = v0_upper;

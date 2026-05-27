@@ -1,5 +1,5 @@
 function tests = test_hits_log
-%TEST_HITS_LOG  Unit tests for rs3_hits_log_from_traj (Phase 2 rewrite).
+%TEST_HITS_LOG  Unit tests for atlas_hits_log_from_traj (Phase 2 rewrite).
 %
 % Verifies correctness of the vectorized segment-walk: output struct shape,
 % voxel-index bounds, run-length deduplication, metadata stamping, 4D-state
@@ -11,11 +11,11 @@ end
 % ---- shared setup ----
 
 function [grid3, cfg] = local_setup()
-cfg = rs3_cfg_defaults();
+cfg = atlas_cfg_defaults();
 cfg.grid.dx     = 0.1;
 cfg.grid.dy     = 0.1;
 cfg.grid.dtheta = deg2rad(10);
-grid3 = rs3_grid_make(cfg);
+grid3 = atlas_grid_make(cfg);
 end
 
 % ---- tests ----
@@ -25,7 +25,7 @@ function test_single_point_returns_zero_rows(testCase)
     [grid3, cfg] = local_setup();
     t = 0;
     X = [0, 0, 0];
-    rows = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     verifyEqual(testCase, double(rows.n), 0);
 end
 
@@ -33,7 +33,7 @@ function test_output_is_packed_struct(testCase)
     [grid3, cfg] = local_setup();
     t = [0; 0.5; 1];
     X = [0, 0, 0; 0.15, 0, 0; 0.30, 0, 0];
-    rows = rs3_hits_log_from_traj(1, 2, 1, 1, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(1, 2, 1, 1, t, X, grid3, cfg);
     verifyTrue(testCase, isstruct(rows));
     for f = {'n','ix','iy','it','iSeed','iHead','leg','halfFlag','t'}
         verifyTrue(testCase, isfield(rows, f{1}));
@@ -46,7 +46,7 @@ function test_row_indices_in_valid_range(testCase)
     cfg.log.segwalk.enable = false;
     t = linspace(0, 1, 20)';
     X = [linspace(-0.4, 0.4, 20)', zeros(20,1), zeros(20,1)];
-    rows = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     n = double(rows.n);
     if n > 0
         verifyGreaterThanOrEqual(testCase, double(rows.ix(1:n)), 1);
@@ -64,7 +64,7 @@ function test_no_consecutive_duplicate_voxels(testCase)
     t = linspace(0, 2, 50)';
     X = [linspace(-0.3, 0.3, 50)', linspace(-0.2, 0.2, 50)', ...
          linspace(-pi/4, pi/4, 50)'];
-    rows = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     n = double(rows.n);
     if n > 1
         same_ix = diff(double(rows.ix(1:n))) == 0;
@@ -79,7 +79,7 @@ function test_metadata_fields_stamped_correctly(testCase)
     iSeed = 3; iHead = 7; leg = 2; halfFlag = -1;
     t = [0; 1; 2];
     X = [0, 0, 0; 0.15, 0, 0; 0.30, 0, 0];
-    rows = rs3_hits_log_from_traj(iSeed, iHead, leg, halfFlag, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(iSeed, iHead, leg, halfFlag, t, X, grid3, cfg);
     n = double(rows.n);
     if n > 0
         verifyTrue(testCase, all(rows.iSeed(1:n)    == uint16(iSeed)));
@@ -97,8 +97,8 @@ function test_4d_state_same_result_as_3d(testCase)
     v = 0.3;
     X4 = [0, 0, v, 0; 0.15, 0, v, 0; 0.30, 0, v, 0];   % 4-col, theta=0
     X3 = [0, 0, 0;    0.15, 0, 0;    0.30, 0, 0];        % 3-col, theta=0
-    r4 = rs3_hits_log_from_traj(1, 1, 1, 1, t, X4, grid3, cfg);
-    r3 = rs3_hits_log_from_traj(1, 1, 1, 1, t, X3, grid3, cfg);
+    r4 = atlas_hits_log_from_traj(1, 1, 1, 1, t, X4, grid3, cfg);
+    r3 = atlas_hits_log_from_traj(1, 1, 1, 1, t, X3, grid3, cfg);
     verifyEqual(testCase, double(r4.n), double(r3.n));
     if double(r4.n) > 0
         verifyEqual(testCase, r4.ix(1:r4.n), r3.ix(1:r3.n));
@@ -113,9 +113,9 @@ function test_segwalk_at_least_as_many_rows_as_no_segwalk(testCase)
     t = [0; 1];
     X = [0, 0, 0; 0.45, 0, 0];   % single step spanning ~4-5 voxels
     cfg.log.segwalk.enable = false;
-    rows_no = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows_no = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     cfg.log.segwalk.enable = true;
-    rows_sw = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows_sw = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     verifyGreaterThanOrEqual(testCase, double(rows_sw.n), double(rows_no.n));
 end
 
@@ -125,6 +125,6 @@ function test_out_of_bounds_trajectory_returns_zero_rows(testCase)
     R = grid3.Rdom;
     t = [0; 1];
     X = [R*2, R*2, 0; R*3, R*3, 0];   % way outside domain
-    rows = rs3_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
+    rows = atlas_hits_log_from_traj(1, 1, 1, 1, t, X, grid3, cfg);
     verifyEqual(testCase, double(rows.n), 0);
 end

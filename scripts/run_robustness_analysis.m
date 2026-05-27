@@ -1,6 +1,6 @@
 %% RUN_ROBUSTNESS_ANALYSIS
 % Cross-run robustness analysis for the verification grid sweep.
-% Loads minDVproxyMat from each run in rs4_verification_runs/ and computes:
+% Loads minDVproxyMat from each run in verification_runs/ and computes:
 %
 %   Table A  — per-run graph summary
 %              (edges, density, LCC size, avg shortest-path DV, reciprocity)
@@ -21,7 +21,7 @@
 %   Figure 4 — Baseline network (Run 0)
 %   Figure 5 — Coarse vs fine network comparison
 %
-% Outputs written to rs4_verification_runs/robustness_analysis/
+% Outputs written to verification_runs/robustness_analysis/
 
 clear; clc;
 
@@ -38,10 +38,10 @@ rehash;
 %  USER KNOBS
 % ════════════════════════════════════════════════════════════════════════════
 
-% Run IDs are auto-discovered: every subfolder of rs4_verification_runs/ that
+% Run IDs are auto-discovered: every subfolder of verification_runs/ that
 % contains a result.mat is loaded.  Test runs added via run_verification_grid_sweep.m
 % are picked up automatically — no manual editing needed here.
-verifyRoot_probe = fullfile(repoRoot, 'rs4_verification_runs');
+verifyRoot_probe = fullfile(repoRoot, 'verification_runs');
 d = dir(fullfile(verifyRoot_probe, '*/result.mat'));
 if isempty(d)
     error('[robustness] No result.mat files found under %s\nRun run_verification_grid_sweep.m first.', ...
@@ -60,7 +60,7 @@ BUDGET_FACTOR = 2;     % departure + arrival (same as run_network_centrality_swe
 SAVE_FIGS = true;   % true = save PNG + FIG; false = display only
 
 % ── Paths ────────────────────────────────────────────────────────────────────
-verifyRoot = fullfile(repoRoot, 'rs4_verification_runs');
+verifyRoot = fullfile(repoRoot, 'verification_runs');
 outDir     = fullfile(verifyRoot, 'robustness_analysis');
 if ~exist(outDir, 'dir'), mkdir(outDir); end
 
@@ -151,7 +151,7 @@ edge_sumDV2 = zeros(N, N);
 % ════════════════════════════════════════════════════════════════════════════
 %  PER-RUN NETWORK METRICS
 % ════════════════════════════════════════════════════════════════════════════
-cfg_base = rs3_cfg_defaults();
+cfg_base = atlas_cfg_defaults();
 VU_mps   = cfg_base.units.VU_mps;
 TU_days  = cfg_base.units.TU_days;
 

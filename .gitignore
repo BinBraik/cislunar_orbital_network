@@ -43,7 +43,7 @@ atlas_sweep_results/
 atlas_network_results/
 
 # Betweenness explainer outputs (regenerate with run_betweenness_explainer.m)
-rs3_betweenness_explainer/
+betweenness_explainer/
 
 # Generated web output (template is tracked; built file is not)
 web/sweep_data.js
