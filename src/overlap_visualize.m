@@ -30,8 +30,8 @@ idsB_only = setdiff(idsB, idsO);
 [Bx, By, Bth] = local_ids_to_centers(idsB_only, grid3, Ny_g, Nx, Nt);
 [Ox, Oy, Oth] = local_ids_to_centers(idsO,      grid3, Ny_g, Nx, Nt);
 
-doXY  = local_plot_enabled(cfg, 'plot.rs4.overlap_xy', true);
-doXYZ = local_plot_enabled(cfg, 'plot.rs4.overlap_xyz', true);
+doXY  = local_plot_enabled(cfg, 'plot.overlap.overlap_xy', true);
+doXYZ = local_plot_enabled(cfg, 'plot.overlap.overlap_xyz', true);
 
 % ---------- 2D XY projection ----------
 if doXY

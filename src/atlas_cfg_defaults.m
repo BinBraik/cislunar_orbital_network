@@ -77,8 +77,6 @@ cfg.cache.store_dense_po = false;                 % if true: store full dense PO
 % ---------------- Overlap ----------------
 cfg.overlap = struct();
 cfg.overlap.primary_buffer_frac = 0.05;   % fractional exclusion buffer around Earth/Moon (applied to RE_nd/RM_nd)
-
-cfg.rs4 = struct();
 cfg.overlap.extract = struct();
 cfg.overlap.extract.parallel = false;  % parallelize overlap voxel metadata extraction (requires parpool)
 

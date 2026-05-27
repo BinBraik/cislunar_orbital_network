@@ -20,9 +20,9 @@ if ~isstruct(V) || ~isfield(V,'x') || isempty(V.x)
     return;
 end
 
-doLB    = local_plot_enabled(cfg, 'plot.rs4.bounds_lb',    true);
-doUB    = local_plot_enabled(cfg, 'plot.rs4.bounds_ub',    false);
-doProxy = local_plot_enabled(cfg, 'plot.rs4.bounds_proxy', true);
+doLB    = local_plot_enabled(cfg, 'plot.overlap.bounds_lb',    true);
+doUB    = local_plot_enabled(cfg, 'plot.overlap.bounds_ub',    false);
+doProxy = local_plot_enabled(cfg, 'plot.overlap.bounds_proxy', true);
 
 grid3   = SA.grid3;
 safeTag = sanitize_fname(tag);

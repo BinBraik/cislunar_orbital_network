@@ -29,7 +29,7 @@ Nt = numel(grid3.th_centers);
 
 VU_mps  = local_cfg_get(cfg, 'units.VU_mps',  1.0);
 TU_days = local_cfg_get(cfg, 'units.TU_days', 1.0);
-usePar = local_cfg_get(cfg, 'rs4.extract.parallel', false);
+usePar = local_cfg_get(cfg, 'overlap.extract.parallel', false);
 
 if usePar && isempty(gcp('nocreate'))
     warning('[overlap] cfg.overlap.extract.parallel=true but no parpool exists. Running serial extraction.');

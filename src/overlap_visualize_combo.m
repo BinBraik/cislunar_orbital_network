@@ -37,8 +37,8 @@ idsB_only = setdiff(idsB, idsO);
 [Bx, By, Bth] = local_ids_to_centers(idsB_only, grid3, Ny, Nx, Nt);
 [Ox, Oy, Oth] = local_ids_to_centers(idsO,      grid3, Ny, Nx, Nt);
 
-doXY  = local_plot_enabled(cfg, 'plot.rs4.combo_xy', true);
-doXYZ = local_plot_enabled(cfg, 'plot.rs4.combo_xyz', true);
+doXY  = local_plot_enabled(cfg, 'plot.overlap.combo_xy', true);
+doXYZ = local_plot_enabled(cfg, 'plot.overlap.combo_xyz', true);
 
 % ---------------- 2D XY combined ----------------
 if doXY
