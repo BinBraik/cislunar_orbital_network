@@ -1,9 +1,43 @@
 function [mu,CJ,Tf_base,X0] = cr3bp_family_ic(name)
-%RS3_CORE_FAMILY_IC_CJ313  Corrected family ICs at CJ = 3.1294.
-% Returns:
-%   mu, CJ, Tf_base, X0 (reduced IC: [x;y;theta])
+%CR3BP_FAMILY_IC  Initial conditions for the 13 representative periodic orbits.
 %
-% Auto-generated from correct_po_to_cj313_v2.m output.
+% These are the orbits listed in Table 2 of the paper, all corrected to the
+% common Jacobi constant CJ = 3.1294 in the planar Earth-Moon CR3BP.
+% Initial conditions were computed with correct_po_to_cj313_v2.m and
+% verified against the instability rates and periods in Table 2.
+%
+% Usage:
+%   [mu, CJ, Tf_base, X0] = cr3bp_family_ic(name)
+%
+% Input:
+%   name    — family name string (see cases below)
+%
+% Outputs:
+%   mu      — Earth-Moon mass parameter (0.012150584270572)
+%   CJ      — Jacobi constant (nominally 3.1294; see note below)
+%   Tf_base — nondimensional period (one full orbit, TU units)
+%   X0      — reduced 3D IC: [x; y; theta] on the y=0 section
+%
+% Family name → paper abbreviation (Table 2) mapping:
+%   'Lyapunov L1'           → LL1   (12.811 days)
+%   'Lyapunov L2'           → LL2   (15.117 days)
+%   'Cycler 11a'            → C11a  (42.140 days)
+%   'Cycler 11b'            → C11b  (55.995 days)
+%   'Cycler 21'             → C21   (84.533 days)
+%   'Cycler 32'             → C32   (78.613 days)
+%   'Resonant 2to1 Stable'  → R21-S (26.500 days)
+%   'Resonant 2to1 Unstable'→ R21-U (31.039 days)
+%   'Resonant 3to1 Stable'  → R31-S (27.252 days)
+%   'Resonant 3to1 Unstable'→ R31-U (28.066 days)
+%   'Resonant 5to2 Stable'  → R52-S (54.802 days)
+%   'Resonant 5to2 Unstable'→ R52-U (56.436 days)
+%   'Distant Prograde Orbit'→ DPO   (11.184 days)
+%
+% Note: a handful of families could not be converged to CJ = 3.1294 exactly;
+% their stored CJ values differ in the last few digits (e.g., Cycler 21 at
+% CJ = 3.129389...). This is noted in Table 2 of the paper and does not
+% affect the shared-energy-manifold analysis because all representatives
+% lie within < 0.001% of the nominal value.
 switch name
     case 'Lyapunov L1'
         mu=0.012150584270572; CJ=3.1294; Tf_base=2.946253150022597;

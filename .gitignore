@@ -41,6 +41,9 @@ __pycache__/
 atlas_results/
 atlas_sweep_results/
 atlas_network_results/
+atlas_cache/
+atlas_cache_quickstart/
+quickstart_output/
 
 # Betweenness explainer outputs (regenerate with run_betweenness_explainer.m)
 betweenness_explainer/
