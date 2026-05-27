@@ -3,7 +3,6 @@
 *.m~
 *.autosave
 *.mlx~
-*.mp4
 
 # MATLAB project and preferences
 *.prj
@@ -22,6 +21,10 @@
 *.pdf
 *.svg
 
+# Animation outputs (regenerate with run_betweenness_video.m)
+*.mp4
+*.gif
+
 # Logs and caches
 *.log
 cache/
@@ -35,13 +38,17 @@ __pycache__/
 *.pyc
 
 # Generated pipeline output directories
-rs3_sweep_results/
-rs3_network_results/
+atlas_results/
+atlas_sweep_results/
+atlas_network_results/
+
+# Betweenness explainer outputs (regenerate with run_betweenness_explainer.m)
+rs3_betweenness_explainer/
 
 # Generated web output (template is tracked; built file is not)
+web/sweep_data.js
 web/dv_map.html
 
 # Editor / IDE
 .vscode/
 .idea/
-.claude/worktrees/epic-solomon/
