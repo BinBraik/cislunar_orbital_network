@@ -49,7 +49,7 @@ atlas_cfg_validate(cfg);
 fprintf('\n[quickstart] Building grid...\n');
 grid3 = atlas_grid_make(cfg);
 fprintf('[quickstart] Grid: %d x %d x %d voxels (%d total)\n', ...
-    grid3.Ny, grid3.Nx, grid3.Nt, grid3.Ny * grid3.Nx * grid3.Nt);
+    grid3.Ny, grid3.Nx, grid3.Nth, grid3.Ny * grid3.Nx * grid3.Nth);
 
 %% 3. Build / load family atlases
 famA_name = 'Lyapunov L1';    % LL1 in paper Table 2
