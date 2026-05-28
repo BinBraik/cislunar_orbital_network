@@ -106,6 +106,17 @@ cfg.io.fig_resolution = 220;    % PNG DPI
 cfg.io.fig_visible   = 'off';   % figure visibility during rendering
 cfg.io.verbose       = true;    % print progress messages
 
+% ---------------- Plot flags (overlap_visualize* functions) ----------------
+cfg.plot = struct();
+cfg.plot.overlap = struct();
+cfg.plot.overlap.overlap_xy   = true;   % 2D scatter of FRS/BRS overlap voxels
+cfg.plot.overlap.overlap_xyz  = true;   % 3D scatter of overlap voxels
+cfg.plot.overlap.combo_xy     = true;   % combined FRS+BRS 2D view
+cfg.plot.overlap.combo_xyz    = true;   % combined FRS+BRS 3D view
+cfg.plot.overlap.bounds_lb    = true;   % DV lower-bound scatter
+cfg.plot.overlap.bounds_ub    = true;   % DV upper-bound scatter
+cfg.plot.overlap.bounds_proxy = true;   % DV proxy scatter
+
 % ---------------- Diagnostics ----------------
 cfg.diag = struct();
 cfg.diag.progress    = true;    % enable per-job progress reporting in PARFOR
