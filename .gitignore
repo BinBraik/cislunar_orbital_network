@@ -45,6 +45,11 @@ atlas_cache/
 atlas_cache_quickstart/
 quickstart_output/
 
+# Legacy output directories (pre-rename rs3_ prefix)
+rs3_betweenness_explainer/
+rs3_network_results/
+rs3_sweep_results/
+
 # Betweenness explainer outputs (regenerate with run_betweenness_explainer.m)
 betweenness_explainer/
 
