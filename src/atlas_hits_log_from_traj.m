@@ -1,5 +1,5 @@
 function rows = atlas_hits_log_from_traj(iSeed, iHead, leg, halfFlag, t, X, grid3, cfg)
-%RS3_HITS_LOG_FROM_TRAJ  Log (x,y,theta) voxel hits along a trajectory.
+%ATLAS_HITS_LOG_FROM_TRAJ  Log (x,y,theta) voxel hits along a trajectory.
 %
 % Returns a PACKED ROW STRUCT (atlas_rows_empty schema) for memory efficiency.
 % Legacy callers expecting [N x 8] double should use atlas_rows_to_matrix().

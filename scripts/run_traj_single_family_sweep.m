@@ -76,9 +76,9 @@ cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 
 % Suppress intermediate bound heatmaps (we only need B.imin from that step)
-cfg.plot.rs4.bounds_lb    = false;
-cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.overlap.bounds_lb    = false;
+cfg.plot.overlap.bounds_ub    = false;
+cfg.plot.overlap.bounds_proxy = false;
 
 % ---- Differential Correction (traj_diffcorr knobs) ----
 cfg.diffcorr.tol_patch     = 1e-4;   % normalized convergence threshold
@@ -164,7 +164,7 @@ fprintf('[sweep] Done.\n');
 % =========================================================================
 
 function R = local_run_pair(SA, SB, cfg, outroot)
-%LOCAL_RUN_PAIR  Full rs4 pipeline for one (SA, SB) pair + save outputs.
+%LOCAL_RUN_PAIR  Full overlap pipeline for one (SA, SB) pair + save outputs.
 
 famA     = SA.name;
 famB     = SB.name;

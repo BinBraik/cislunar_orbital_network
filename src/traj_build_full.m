@@ -1,5 +1,5 @@
 function traj = traj_build_full(T)
-%RS5_BUILD_FULL_TRAJ  Build a single concatenated trajectory struct.
+%TRAJ_BUILD_FULL  Build a single concatenated trajectory struct.
 %
 % Combines the departure arc A (forward from PO_A to patch) and the BRS
 % arrival arc B (reversed, so it runs chronologically from patch toward

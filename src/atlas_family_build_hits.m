@@ -1,5 +1,5 @@
 function S = atlas_family_build_hits(S, cfg, grid3)
-%RS3_FAMILY_BUILD_HITS  Step 4: propagate fan from seeds and log voxel hits.
+%ATLAS_FAMILY_BUILD_HITS  Step 4: propagate fan from seeds and log voxel hits.
 %
 % Exploits CR3BP time-reversal symmetry: BRS = R(FRS).
 % Integrates FORWARD only, from both upper and lower seeds.

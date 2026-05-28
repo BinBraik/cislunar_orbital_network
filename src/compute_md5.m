@@ -1,5 +1,5 @@
 function h = compute_md5(str)
-%RS3_MD5  Compute MD5 hex digest of a character vector.
+%COMPUTE_MD5  Compute MD5 hex digest of a character vector.
 % Uses Java MessageDigest (standard MATLAB).
 
 if isstring(str)

@@ -1,5 +1,5 @@
 function O = overlap_pair(SA, SB, cfg)
-%RS4_OVERLAP_PAIR  Overlap voxels between A.FRS_full and B.BRS_full,
+%OVERLAP_PAIR  Overlap voxels between A.FRS_full and B.BRS_full,
 % with conservative filtering:
 %   - forbidden region removed via KeepA & KeepB
 %   - buffers around primaries: r > (1+bufFrac)*R

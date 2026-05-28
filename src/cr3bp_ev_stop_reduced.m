@@ -1,5 +1,5 @@
 function [value,isterminal,direction] = cr3bp_ev_stop_reduced(~, X, mu, RE, RM, Rdom, CJ, v2tol)
-%RS3_EV_STOP_REDUCED  Event function for reduced model integration.
+%CR3BP_EV_STOP_REDUCED  Event function for reduced model integration.
 % Stops when:
 %  - enters Earth/Moon (rE<RE or rM<RM),
 %  - exits domain (r>Rdom),

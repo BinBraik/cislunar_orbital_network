@@ -1,5 +1,5 @@
 function atlas_grid_validate(grid3, cfg)
-%RS3_GRID_VALIDATE  Unit/sanity tests for symmetric grid and theta binning.
+%ATLAS_GRID_VALIDATE  Unit/sanity tests for symmetric grid and theta binning.
 %
 % Checks
 %   1) y=0 is an edge and no voxel straddles it

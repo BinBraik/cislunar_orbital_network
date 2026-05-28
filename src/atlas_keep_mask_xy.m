@@ -1,5 +1,5 @@
 function Keep = atlas_keep_mask_xy(grid3, CJ, mu, RE_nd, RM_nd)
-%RS3_KEEP_MASK_XY  Allowed-mask on (x,y) cell centers.
+%ATLAS_KEEP_MASK_XY  Allowed-mask on (x,y) cell centers.
 % Keep(iy,ix)=true when ALL are satisfied at the cell center:
 %   1) inside analysis domain (r <= Rdom)
 %   2) energetically allowed (v^2 = 2U - CJ >= 0)

@@ -86,13 +86,13 @@ cfg.io.save_figs   = false;
 cfg.io.save_fig    = false;
 cfg.io.fig_visible = 'off';
 
-cfg.plot.rs4.overlap_xy   = false;
-cfg.plot.rs4.overlap_xyz  = false;
-cfg.plot.rs4.combo_xy     = false;
-cfg.plot.rs4.combo_xyz    = false;
-cfg.plot.rs4.bounds_lb    = false;
-cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.overlap.overlap_xy   = false;
+cfg.plot.overlap.overlap_xyz  = false;
+cfg.plot.overlap.combo_xy     = false;
+cfg.plot.overlap.combo_xyz    = false;
+cfg.plot.overlap.bounds_lb    = false;
+cfg.plot.overlap.bounds_ub    = false;
+cfg.plot.overlap.bounds_proxy = false;
 
 if exist('atlas_cfg_validate', 'file') == 2
     atlas_cfg_validate(cfg);
@@ -122,8 +122,8 @@ outRoot    = fullfile(cfg.io.out_root, cfg.io.tag, batchTag);
 summaryDir = fullfile(outRoot, 'Summary');
 if ~exist(summaryDir, 'dir'), mkdir(summaryDir); end
 
-fprintf('[rs4-batch] Output: %s\n', summaryDir);
-fprintf('[rs4-batch] Mode  : %s\n\n', ...
+fprintf('[overlap-batch] Output: %s\n', summaryDir);
+fprintf('[overlap-batch] Mode  : %s\n\n', ...
     ternary(N_WORKERS > 0, sprintf('PARALLEL (%d workers)', N_WORKERS), 'SERIAL'));
 
 % ════════════════════════════════════════════════════════════════════════════
@@ -133,20 +133,20 @@ if ~POOL_AFTER_ATLAS && N_WORKERS > 0
     pool = gcp('nocreate');
     if isempty(pool)
         parpool('local', N_WORKERS);
-        fprintf('[rs4-batch] Started parpool with %d workers.\n', N_WORKERS);
+        fprintf('[overlap-batch] Started parpool with %d workers.\n', N_WORKERS);
     else
-        fprintf('[rs4-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
+        fprintf('[overlap-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
     end
 end
 
-fprintf('[rs4-batch] Loading %d family atlases...\n', N);
+fprintf('[overlap-batch] Loading %d family atlases...\n', N);
 grid3 = atlas_grid_make(cfg);
 Sall  = cell(N, 1);
 for i = 1:N
-    fprintf('[rs4-batch]   %d/%d  %s\n', i, N, families{i});
+    fprintf('[overlap-batch]   %d/%d  %s\n', i, N, families{i});
     [Sall{i}, ~] = atlas_prepare_or_load(families{i}, cfg, grid3);
 end
-fprintf('[rs4-batch] Atlases loaded.\n\n');
+fprintf('[overlap-batch] Atlases loaded.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
 %  2. BUILD COMPACT FOOTPRINTS  (~5-25 MB each vs ~0.5-2 GB full atlas)
@@ -155,12 +155,12 @@ if POOL_AFTER_ATLAS && N_WORKERS > 0
     pool = gcp('nocreate');
     if isempty(pool)
         parpool('local', N_WORKERS);
-        fprintf('[rs4-batch] Started parpool with %d workers.\n', N_WORKERS);
+        fprintf('[overlap-batch] Started parpool with %d workers.\n', N_WORKERS);
     else
-        fprintf('[rs4-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
+        fprintf('[overlap-batch] Using existing parpool (%d workers).\n', pool.NumWorkers);
     end
 end
-fprintf('[rs4-batch] Building voxel footprints...\n');
+fprintf('[overlap-batch] Building voxel footprints...\n');
 Fall = cell(N, 1);
 if N_WORKERS > 0
     parfor i = 1:N
@@ -172,7 +172,7 @@ else
     end
 end
 clear Sall;
-fprintf('[rs4-batch] Footprints built. Full atlases released.\n\n');
+fprintf('[overlap-batch] Footprints built. Full atlases released.\n\n');
 
 % ════════════════════════════════════════════════════════════════════════════
 %  3. SLICE INTO PER-PAIR ARRAYS  (required for parfor slicing)
@@ -188,7 +188,7 @@ clear Fall;
 % ════════════════════════════════════════════════════════════════════════════
 %  4. PAIR LOOP  (parfor over 78 pairs — sliced footprints only)
 % ════════════════════════════════════════════════════════════════════════════
-fprintf('[rs4-batch] Running %d pair intersections...\n', nPairs);
+fprintf('[overlap-batch] Running %d pair intersections...\n', nPairs);
 tPairs = tic;
 
 pair_minDV   = nan(nPairs, 1);
@@ -209,7 +209,7 @@ if N_WORKERS > 0
     end
 else
     for p = 1:nPairs
-        fprintf('[rs4-batch]   pair %d/%d: %-28s → %s\n', ...
+        fprintf('[overlap-batch]   pair %d/%d: %-28s → %s\n', ...
             p, nPairs, families{pairI(p)}, families{pairJ(p)});
         [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
             pair_TOF(p), pair_voxelId(p)] = ...
@@ -219,7 +219,7 @@ end
 clear FA_arr FB_arr;
 
 n_overlap = sum(isfinite(pair_minDV));
-fprintf('[rs4-batch] Pair loop done in %.1f s — %d/%d pairs have overlap.\n\n', ...
+fprintf('[overlap-batch] Pair loop done in %.1f s — %d/%d pairs have overlap.\n\n', ...
     toc(tPairs), n_overlap, nPairs);
 
 % ════════════════════════════════════════════════════════════════════════════
@@ -249,7 +249,7 @@ T = sortrows(T, 'minDVproxy_mps', 'MissingPlacement', 'last');
 % ════════════════════════════════════════════════════════════════════════════
 %  6. PRINT SUMMARY
 % ════════════════════════════════════════════════════════════════════════════
-fprintf('[rs4-batch] ===== DV PROXY SUMMARY =====\n');
+fprintf('[overlap-batch] ===== DV PROXY SUMMARY =====\n');
 fprintf('  Total pairs        : %d\n', nPairs);
 fprintf('  Pairs with overlap : %d\n', n_overlap);
 fprintf('  Pairs no overlap   : %d\n', nPairs - n_overlap);
@@ -288,7 +288,7 @@ writetable(T, fullfile(summaryDir, 'pair_winners_top1.csv'));
 save(fullfile(summaryDir, 'batch_summary_workspace.mat'), ...
     'families', 'minDVproxyMat', 'TOFmat', 'T', 'cfg', '-v7.3');
 
-fprintf('\n[rs4-batch] Done.\n');
+fprintf('\n[overlap-batch] Done.\n');
 fprintf('  Summary dir: %s\n', summaryDir);
 
 % ════════════════════════════════════════════════════════════════════════════
@@ -368,7 +368,7 @@ try
     voxelId = idsO(iWin);
     tof     = t_mean_A(iWin) + t_mean_B(iWin);
 catch ME
-    warning('[rs4-batch:pair] %s', ME.message);
+    warning('[overlap-batch:pair] %s', ME.message);
 end
 end
 

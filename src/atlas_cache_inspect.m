@@ -1,5 +1,5 @@
 function entries = atlas_cache_inspect(cacheDir, verbose)
-%RS3_CACHE_INSPECT  Scan a cache directory and return parsed metadata for every entry.
+%ATLAS_CACHE_INSPECT  Scan a cache directory and return parsed metadata for every entry.
 %
 % Usage:
 %   entries = atlas_cache_inspect()                    % uses default cache dir

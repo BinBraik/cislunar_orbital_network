@@ -1,5 +1,5 @@
 function traj_visualize_full(T, traj, SA, SB, cfg, outdir, tag)
-%RS5_VISUALIZE_FULL_TRAJ  Plot a complete transfer trajectory with directional arrows.
+%TRAJ_VISUALIZE_FULL  Plot a complete transfer trajectory with directional arrows.
 %
 % Draws the full transfer from PO_A to the target orbit as a single coherent
 % picture:

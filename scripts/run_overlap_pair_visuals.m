@@ -37,13 +37,13 @@ cfg.diag.zoom.ylim = [-0.45 0.45];
 
 
 % Figure toggles (optional)
-cfg.plot.rs4.overlap_xy = true;
-cfg.plot.rs4.overlap_xyz = false;
-cfg.plot.rs4.combo_xy = true;
-cfg.plot.rs4.combo_xyz = false;
-cfg.plot.rs4.bounds_lb = true;
-cfg.plot.rs4.bounds_ub = false;
-cfg.plot.rs4.bounds_proxy = true;
+cfg.plot.overlap.overlap_xy = true;
+cfg.plot.overlap.overlap_xyz = false;
+cfg.plot.overlap.combo_xy = true;
+cfg.plot.overlap.combo_xyz = false;
+cfg.plot.overlap.bounds_lb = true;
+cfg.plot.overlap.bounds_ub = false;
+cfg.plot.overlap.bounds_proxy = true;
 
 atlas_cfg_validate(cfg);
 

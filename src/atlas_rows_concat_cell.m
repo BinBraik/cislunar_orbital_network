@@ -1,5 +1,5 @@
 function r = atlas_rows_concat_cell(cellArr)
-%RS3_ROWS_CONCAT_CELL  Concatenate cell array of packed row structs.
+%ATLAS_ROWS_CONCAT_CELL  Concatenate cell array of packed row structs.
 %
 % Equivalent to vertcat(cellArr{:}) for the old double-matrix format.
 % Pre-allocates output for efficiency.

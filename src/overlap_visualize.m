@@ -1,5 +1,5 @@
 function overlap_visualize(O, SA, SB, cfg, outdir, tag)
-%RS4_OVERLAP_VISUALIZE  Optional 2D/3D plots for overlap voxels.
+%OVERLAP_VISUALIZE  Optional 2D/3D plots for overlap voxels.
 % Shows FRS (red, faint), BRS (blue, faint), and overlap (green, solid).
 
 if nargin < 6 || isempty(tag), tag = 'overlap'; end

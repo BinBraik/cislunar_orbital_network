@@ -1,5 +1,5 @@
 function tests = test_smoke
-%TEST_SMOKE  Minimal rs3 smoke tests (fast, no heavy integrations).
+%TEST_SMOKE  Minimal smoke tests (fast, no heavy integrations).
 %
 % Run with:
 %   setup

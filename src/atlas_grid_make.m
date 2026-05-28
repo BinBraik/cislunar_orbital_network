@@ -1,5 +1,5 @@
 function grid3 = atlas_grid_make(cfg)
-%RS3_GRID_MAKE  Create symmetric (x,y,theta) voxel grid.
+%ATLAS_GRID_MAKE  Create symmetric (x,y,theta) voxel grid.
 %
 % Requirements enforced:
 % - y=0 is an EDGE (no voxel straddles y=0)

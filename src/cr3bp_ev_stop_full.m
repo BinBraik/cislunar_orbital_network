@@ -1,5 +1,5 @@
 function [value,isterminal,direction] = cr3bp_ev_stop_full(~, X, mu, RE, RM, Rdom)
-%RS3_EV_STOP_FULL4D  Event function for full 4D model integration.
+%CR3BP_EV_STOP_FULL  Event function for full 4D model integration.
 % Stops when:
 %  - enters Earth/Moon (rE<RE or rM<RM),
 %  - exits domain (r>Rdom).

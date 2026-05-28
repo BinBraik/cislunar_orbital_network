@@ -1,5 +1,5 @@
 function T = overlap_voxel_traj_extract(SA, SB, V, B, cfg)
-%RS4_VOXEL_TRAJ_EXTRACT  Re-integrate the argmin-DV trajectory pair for the
+%OVERLAP_VOXEL_TRAJ_EXTRACT  Re-integrate the argmin-DV trajectory pair for the
 % best overlap voxel and compute the true DV_patch.
 %
 % Takes the best voxel (B.imin into V), finds the single A-row and B-row

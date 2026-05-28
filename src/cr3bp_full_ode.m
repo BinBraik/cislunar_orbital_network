@@ -1,5 +1,5 @@
 function Xdot = cr3bp_full_ode(~, X, mu)
-%RS3_CORE_FULL4D_CR3BP_MODEL  Full planar CR3BP model in (x,y,xd,yd).
+%CR3BP_FULL_ODE  Full planar CR3BP model in (x,y,xd,yd).
 % Reused from baseline nested full4d_cr3bp_model.
     x = X(1); y = X(2); xd = X(3); yd = X(4);
     pot = cr3bp_potential(x,y,mu);

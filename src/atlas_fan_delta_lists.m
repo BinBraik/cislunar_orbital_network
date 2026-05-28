@@ -1,5 +1,5 @@
 function [delta_lists, stats] = atlas_fan_delta_lists(SeedsUpper, CJ, mu, cfg)
-%RS3_FAN_DELTA_LISTS  Build per-seed heading delta lists (fan wedge).
+%ATLAS_FAN_DELTA_LISTS  Build per-seed heading delta lists (fan wedge).
 %
 % For each seed, compute speed v0 from CJ and U(x,y), then compute max heading
 % change dmax allowed by cfg.fan.DV_cap_nd:

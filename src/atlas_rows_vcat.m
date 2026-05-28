@@ -1,5 +1,5 @@
 function r = atlas_rows_vcat(a, b)
-%RS3_ROWS_VCAT  Concatenate two packed row structs.
+%ATLAS_ROWS_VCAT  Concatenate two packed row structs.
 
 na = double(a.n);
 nb = double(b.n);

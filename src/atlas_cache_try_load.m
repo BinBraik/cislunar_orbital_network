@@ -1,5 +1,5 @@
 function [S, hit, info] = atlas_cache_try_load(familyName, mu, CJ, cfg)
-%RS3_CACHE_TRY_LOAD_FAMILY  Load cached family atlas if present and valid.
+%ATLAS_CACHE_TRY_LOAD  Load cached family atlas if present and valid.
 
 S = [];
 hit = false;

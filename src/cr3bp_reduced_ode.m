@@ -1,5 +1,5 @@
 function Xdot = cr3bp_reduced_ode(~,X,CJ,mu,hard_fail)
-%RS3_CORE_REDUCED_CR3BP_MODEL  Reduced planar CR3BP model in (x,y,theta).
+%CR3BP_REDUCED_ODE  Reduced planar CR3BP model in (x,y,theta).
 % Reused from baseline nested reduced_cr3bp_model.
     x  = X(1); y  = X(2); th = X(3);
     pot = cr3bp_potential(x,y,mu);

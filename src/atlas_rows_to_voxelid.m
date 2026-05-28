@@ -1,5 +1,5 @@
 function vid = atlas_rows_to_voxelid(rows, grid3)
-%RS3_ROWS_TO_VOXELID  Convert hit rows to linear voxel IDs.
+%ATLAS_ROWS_TO_VOXELID  Convert hit rows to linear voxel IDs.
 % Handles both packed struct and legacy [N x 8] double matrix.
 
 if isstruct(rows)

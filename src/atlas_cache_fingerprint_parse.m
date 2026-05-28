@@ -1,10 +1,10 @@
 function p = atlas_cache_fingerprint_parse(fp)
-%RS3_CACHE_FINGERPRINT_PARSE  Parse fingerprint string into a readable struct.
+%ATLAS_CACHE_FINGERPRINT_PARSE  Parse fingerprint string into a readable struct.
 %
 % Input:
 %   fp  — fingerprint string from cache_meta.fingerprint
 %         Format (from atlas_cache_fingerprint):
-%           rs3|{family}|mu=...|CJ=...|grid:R=...,dx=...,dy=...,dth=...|
+%           atlas|{family}|mu=...|CJ=...|grid:R=...,dx=...,dy=...,dth=...|
 %           seed:TfS=...,N=...,ds=...,yE=...,minSeg=...|fan:dth=...,DV=...|
 %           prop:T=...,rt=...,at=...,v2=...|log:seg=...,frac=...,slf=...,msf=...|ver=...
 %
@@ -33,7 +33,7 @@ p.version_tag = '';
 if isempty(fp), return; end
 
 parts = strsplit(fp, '|');
-% parts{1} = 'rs3'
+% parts{1} = 'atlas'
 % parts{2} = familyName
 % parts{3} = 'mu=...'
 % parts{4} = 'CJ=...'

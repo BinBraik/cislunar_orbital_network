@@ -1,5 +1,5 @@
 function tag = atlas_family_short_tag(name)
-%RS3_FAMILY_SHORT_TAG  Compact tag for file names (Windows path-safe).
+%ATLAS_FAMILY_SHORT_TAG  Compact tag for file names (Windows path-safe).
 
 if isstring(name)
     name = char(name);

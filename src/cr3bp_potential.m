@@ -1,5 +1,5 @@
 function pot = cr3bp_potential(x,y,mu)
-%RS3_CORE_CR3BP_U_AND_DERIVS  Potential U and derivatives for planar CR3BP.
+%CR3BP_POTENTIAL  Potential U and derivatives for planar CR3BP.
 % Reused from baseline nested cr3bp_U_and_derivs.
     x1 = x + mu;      y1 = y;
     x2 = x - 1 + mu;  y2 = y;

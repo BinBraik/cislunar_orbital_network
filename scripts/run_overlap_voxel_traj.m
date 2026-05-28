@@ -43,9 +43,9 @@ cfg.propag.v2tol          = 1e-8;
 cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 % Disable all bound plots (we only need B.imin from visualize_bounds)
-cfg.plot.rs4.bounds_lb    = false;
-cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.overlap.bounds_lb    = false;
+cfg.plot.overlap.bounds_ub    = false;
+cfg.plot.overlap.bounds_proxy = false;
 
 % ---- Differential Correction (traj_diffcorr knobs) ----
 cfg.diffcorr.tol_patch     = 1e-4;   % normalized convergence threshold

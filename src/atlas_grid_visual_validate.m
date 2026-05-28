@@ -1,5 +1,5 @@
 function atlas_grid_visual_validate(grid3, cfg, outdir)
-%RS3_GRID_VISUAL_VALIDATE  Produce Step 2 visuals for grid + theta seam.
+%ATLAS_GRID_VISUAL_VALIDATE  Produce Step 2 visuals for grid + theta seam.
 %
 % Saves a few small figures illustrating:
 % - y=0 edge location within y edges
@@ -18,7 +18,7 @@ f1 = figure('Visible', figvis);
 plot(grid3.y_edges, 0*grid3.y_edges, '.-'); hold on;
 yl = ylim;
 plot([0 0], yl, 'k-');
-title('rs3 Step2: y-edges (y=0 is an edge)');
+title('Grid: y-edges (y=0 is an edge)');
 xlabel('y edge value');
 ylabel('dummy');
 grid on;
@@ -46,7 +46,7 @@ for k = 1:numel(ys2)
     plot([xs(1) xs(end)], [ys2(k) ys2(k)], '-');
 end
 axis equal tight;
-title('rs3 Step2: local (x,y) grid view around y=0');
+title('Grid: local (x,y) view around y=0');
 xlabel('x'); ylabel('y');
 grid on;
 io_save_figure(f2, outdir, 'step2_xy_grid_near_y0', cfg);
@@ -69,7 +69,7 @@ f3 = figure('Visible', figvis);
 plot(grid3.th_centers, zeros(size(grid3.th_centers)), '.'); hold on;
 plot(cA, 0, 'o');
 plot(cB, 0, 'o');
-title(sprintf('rs3 Step2: theta seam test (dc=%.3g rad, dtheta=%.3g)', dc, grid3.dtheta));
+title(sprintf('Grid: theta seam test (dc=%.3g rad, dtheta=%.3g)', dc, grid3.dtheta));
 xlabel('theta bin centers (rad)');
 ylabel('dummy');
 grid on;

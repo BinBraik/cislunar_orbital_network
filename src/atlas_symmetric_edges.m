@@ -1,5 +1,5 @@
 function edges = atlas_symmetric_edges(R, d)
-%RS3_SYMMETRIC_EDGES  Build edges symmetric about 0 and including 0 exactly.
+%ATLAS_SYMMETRIC_EDGES  Build edges symmetric about 0 and including 0 exactly.
 %
 % edges = atlas_symmetric_edges(R, d) returns a monotone increasing edge vector
 % spanning [-R, +R] with nominal spacing d, guaranteed to include 0 exactly.

@@ -1,5 +1,5 @@
 function M = atlas_rows_to_matrix(r)
-%RS3_ROWS_TO_MATRIX  Convert packed row struct to [N x 8] double matrix.
+%ATLAS_ROWS_TO_MATRIX  Convert packed row struct to [N x 8] double matrix.
 %
 % Used when small subsets of rows are needed in double format (e.g.,
 % per-voxel candidate extracts for Step 8 scoring).

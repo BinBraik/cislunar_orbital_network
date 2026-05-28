@@ -1,5 +1,5 @@
 function [t, X] = cr3bp_integrate(X0red, tspan, CJ, mu, v2tol, optsR, opts4)
-%RS3_CORE_INTEGRATE_REDUCED_WITH_FALLBACK
+%CR3BP_INTEGRATE
 % Reduced integration with event stop; if stop due to v2tol, redo from same
 % IC in full planar 4D.
 %

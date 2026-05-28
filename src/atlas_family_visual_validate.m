@@ -1,5 +1,5 @@
 function atlas_family_visual_validate(S, cfg, outdir)
-%RS3_FAMILY_VISUAL_VALIDATE  Step 3 visuals: background + PO + seeds + Keep mask.
+%ATLAS_FAMILY_VISUAL_VALIDATE  Step 3 visuals: background + PO + seeds + Keep mask.
 %
 % Saves PNG figures into outdir.
 
@@ -21,9 +21,9 @@ if ~isempty(S.SeedsLower)
     plot(ax1, S.SeedsLower(:,1), S.SeedsLower(:,2), '.', 'MarkerSize', 6);
 end
 if hasPO
-    title(ax1, sprintf('rs3 Step3: %s | PO + seeds', S.name), 'Interpreter','none');
+    title(ax1, sprintf('%s | PO + seeds', S.name), 'Interpreter','none');
 else
-    title(ax1, sprintf('rs3 Step3: %s | seeds (PO not cached)', S.name), 'Interpreter','none');
+    title(ax1, sprintf('%s | seeds (PO not cached)', S.name), 'Interpreter','none');
 end
 drawnow;
 saveas(f1, fullfile(outdir, sprintf('step3_%s_po_seeds.png', safeName)));
@@ -35,7 +35,7 @@ ax2 = axes('Parent', f2);
 imagesc(ax2, S.grid3.x_centers, S.grid3.y_centers, double(S.grid3.Keep));
 set(ax2, 'YDir','normal'); axis(ax2,'equal'); grid(ax2,'on');
 xlabel(ax2,'x'); ylabel(ax2,'y');
-title(ax2, sprintf('rs3 Step3: %s | Keep mask (CJ allowed)', S.name), 'Interpreter','none');
+title(ax2, sprintf('%s | Keep mask (CJ allowed)', S.name), 'Interpreter','none');
 hold(ax2,'on');
 if hasPO
     plot(ax2, S.Xpo(:,1), S.Xpo(:,2), 'k-', 'LineWidth', 0.8);
@@ -54,7 +54,7 @@ if isempty(S.SeedsUpper)
 else
     histogram(ax3, S.SeedsUpper(:,3), 50);
     xlabel(ax3,'theta (rad)'); ylabel(ax3,'count');
-    title(ax3, sprintf('rs3 Step3: %s | upper seed theta', S.name), 'Interpreter','none');
+    title(ax3, sprintf('%s | upper seed theta', S.name), 'Interpreter','none');
     grid(ax3,'on');
 end
 saveas(f3, fullfile(outdir, sprintf('step3_%s_theta_hist.png', safeName)));

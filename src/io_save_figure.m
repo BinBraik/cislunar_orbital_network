@@ -1,5 +1,5 @@
 function io_save_figure(fig, outdir, baseName, cfg, varargin)
-%RS3_IO_SAVE_FIGURE  Save figure as PNG and/or FIG based on cfg.
+%IO_SAVE_FIGURE  Save figure as PNG and/or FIG based on cfg.
 %
 % Usage:
 %   io_save_figure(fig, outdir, baseName, cfg)

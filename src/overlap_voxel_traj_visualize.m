@@ -1,5 +1,5 @@
 function overlap_voxel_traj_visualize(T, SA, SB, cfg, outdir, tag)
-%RS4_VOXEL_TRAJ_VISUALIZE_SINGLE  Plot one transfer trajectory pair.
+%OVERLAP_VOXEL_TRAJ_VISUALIZE  Plot one transfer trajectory pair.
 %
 % Shows the cislunar background, both periodic orbits (dashed), the
 % departure arc A (blue) and arrival arc B (red, after R-transform), the

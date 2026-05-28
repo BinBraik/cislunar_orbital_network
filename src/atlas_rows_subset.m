@@ -1,5 +1,5 @@
 function r = atlas_rows_subset(src, idx)
-%RS3_ROWS_SUBSET  Extract a subset of packed rows by logical mask or indices.
+%ATLAS_ROWS_SUBSET  Extract a subset of packed rows by logical mask or indices.
 %
 % idx can be a logical vector or an integer index vector.
 

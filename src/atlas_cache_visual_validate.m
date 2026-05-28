@@ -1,5 +1,5 @@
 function atlas_cache_visual_validate(S, cfg, outdir, cacheInfo)
-%RS3_CACHE_VISUAL_VALIDATE  Step 5 visuals: cache stats summary.
+%ATLAS_CACHE_VISUAL_VALIDATE  Step 5 visuals: cache stats summary.
 
 if ~cfg.io.save_figs
     return;

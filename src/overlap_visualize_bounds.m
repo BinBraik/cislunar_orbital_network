@@ -1,5 +1,5 @@
 function B = overlap_visualize_bounds(V, SA, SB, O, cfg, outdir, tag)
-%RS4_OVERLAP_VISUALIZE_BOUNDS  Plot voxel-wise DVtotal bounds (vectorized).
+%OVERLAP_VISUALIZE_BOUNDS  Plot voxel-wise DVtotal bounds (vectorized).
 %
 % Bounds (m/s) per overlap voxel:
 %   LB    = min(dv_turn_A) + min(dv_turn_B)

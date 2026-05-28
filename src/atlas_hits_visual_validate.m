@@ -1,5 +1,5 @@
 function atlas_hits_visual_validate(S, cfg, outdir)
-%RS3_HITS_VISUAL_VALIDATE  Visual checks for Step 4 hit logging.
+%ATLAS_HITS_VISUAL_VALIDATE  Visual checks for Step 4 hit logging.
 %
 % Updates:
 %   - Plots FRS and BRS on separate figures.
@@ -44,7 +44,7 @@ maskB_l = local_rows_to_mask_xy(rowsB_l, Ny, Nx);
 safeName = sanitize_fname(S.name);
 
 % ===================== FIG 1: FRS (upper+lower) =====================
-fig = figure('Color','w','Name',['rs3 FRS hits ' S.name], 'Visible', local_get_fig_visible(cfg));
+fig = figure('Color','w','Name',['FRS hits ' S.name], 'Visible', local_get_fig_visible(cfg));
 ax = gca;
 cr3bp_plot_background(S.CJ, S.mu, ax);
 set(ax.Children,'HandleVisibility','off');
@@ -69,7 +69,7 @@ io_save_figure(fig, outdir, ['step4_' safeName '_FRS_xy'], cfg, ...
 local_close_if_hidden(cfg, fig);
 
 % ===================== FIG 2: BRS (upper+lower) =====================
-fig = figure('Color','w','Name',['rs3 BRS hits ' S.name], 'Visible', local_get_fig_visible(cfg));
+fig = figure('Color','w','Name',['BRS hits ' S.name], 'Visible', local_get_fig_visible(cfg));
 ax = gca;
 cr3bp_plot_background(S.CJ, S.mu, ax);
 set(ax.Children,'HandleVisibility','off');
@@ -94,7 +94,7 @@ io_save_figure(fig, outdir, ['step4_' safeName '_BRS_xy'], cfg, ...
 local_close_if_hidden(cfg, fig);
 
 % ===================== FIG 3: Theta histograms (full) =====================
-fig = figure('Color','w','Name',['rs3 theta hist ' S.name], 'Visible', local_get_fig_visible(cfg));
+fig = figure('Color','w','Name',['theta hist ' S.name], 'Visible', local_get_fig_visible(cfg));
 ax = gca;
 
 thF = local_rows_to_theta(rowsF_full, grid3);

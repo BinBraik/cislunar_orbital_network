@@ -1,5 +1,5 @@
 function [S, cacheInfo] = atlas_prepare_or_load(familyName, cfg, grid3)
-%RS3_PREPARE_OR_LOAD_FAMILY  Step 5: load cached atlas or build and cache it.
+%ATLAS_PREPARE_OR_LOAD  Step 5: load cached atlas or build and cache it.
 
 % Always query family_ic first to get CJ/mu for deterministic cache key.
 [mu, CJ, ~, ~] = cr3bp_family_ic(char(familyName));

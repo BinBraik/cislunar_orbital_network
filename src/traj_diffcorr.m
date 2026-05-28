@@ -1,5 +1,5 @@
 function Tc = traj_diffcorr(T, SA, SB, cfg)
-%RS4_DIFFCORR  Differential correction of the voxel-overlap transfer pair.
+%TRAJ_DIFFCORR  Differential correction of the voxel-overlap transfer pair.
 %
 % Starting from the argmin-DV arcs in T (from overlap_voxel_traj_extract),
 % refines the 6-vector

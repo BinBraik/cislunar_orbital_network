@@ -224,13 +224,13 @@ for r = 1:nRunsTotal
     cfg.io.save_fig    = false;
     cfg.io.fig_visible = 'off';
 
-    cfg.plot.rs4.overlap_xy   = false;
-    cfg.plot.rs4.overlap_xyz  = false;
-    cfg.plot.rs4.combo_xy     = false;
-    cfg.plot.rs4.combo_xyz    = false;
-    cfg.plot.rs4.bounds_lb    = false;
-    cfg.plot.rs4.bounds_ub    = false;
-    cfg.plot.rs4.bounds_proxy = false;
+    cfg.plot.overlap.overlap_xy   = false;
+    cfg.plot.overlap.overlap_xyz  = false;
+    cfg.plot.overlap.combo_xy     = false;
+    cfg.plot.overlap.combo_xyz    = false;
+    cfg.plot.overlap.bounds_lb    = false;
+    cfg.plot.overlap.bounds_ub    = false;
+    cfg.plot.overlap.bounds_proxy = false;
 
     if exist('atlas_cfg_validate', 'file') == 2
         atlas_cfg_validate(cfg);

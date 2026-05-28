@@ -1,5 +1,5 @@
 function info = atlas_cache_get_path(familyName, mu, CJ, cfg)
-%RS3_CACHE_GET_PATH  Compute short cache filename + metadata.
+%ATLAS_CACHE_GET_PATH  Compute short cache filename + metadata.
 
 if isstring(familyName), familyName = char(familyName); end
 

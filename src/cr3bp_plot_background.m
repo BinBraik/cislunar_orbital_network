@@ -1,5 +1,5 @@
 function h = cr3bp_plot_background(CJ, mu, ax)
-%RS3_CORE_PLOT_CISLUNAR_BACKGROUND  ZVC + primaries background plot.
+%CR3BP_PLOT_BACKGROUND  ZVC + primaries background plot.
 % Reused (copied) from baseline plot_cislunar_background.
     if nargin < 3 || isempty(ax)
         figure('Color','w'); ax = axes; hold(ax,'on');

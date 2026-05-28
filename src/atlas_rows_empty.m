@@ -1,5 +1,5 @@
 function r = atlas_rows_empty(nAlloc)
-%RS3_ROWS_EMPTY  Create an empty (or pre-allocated) packed row struct.
+%ATLAS_ROWS_EMPTY  Create an empty (or pre-allocated) packed row struct.
 %
 % Packed row format (struct-of-arrays, ~14 bytes/row vs 64 for double):
 %   iSeed    uint16

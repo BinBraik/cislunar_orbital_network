@@ -1,5 +1,5 @@
 function overlap_visualize_combo(SA, SB, O, cfg, outdir, tag)
-%RS4_OVERLAP_VISUALIZE_COMBO
+%OVERLAP_VISUALIZE_COMBO
 % Plot A.FRS_full, B.BRS_full, and overlap together.
 % Optional outputs:
 %   - 2D XY scatter with overlap colored by DVpatch upper bound (m/s)

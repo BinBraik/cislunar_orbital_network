@@ -124,11 +124,11 @@ cfg.cache.rebuild = false;
 cfg.io.save_figs   = false;
 cfg.io.save_fig    = false;
 cfg.io.fig_visible = 'off';
-cfg.plot.rs4.overlap_xy   = false;
-cfg.plot.rs4.overlap_xyz  = false;
-cfg.plot.rs4.bounds_lb    = false;
-cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.overlap.overlap_xy   = false;
+cfg.plot.overlap.overlap_xyz  = false;
+cfg.plot.overlap.bounds_lb    = false;
+cfg.plot.overlap.bounds_ub    = false;
+cfg.plot.overlap.bounds_proxy = false;
 % ---- Differential Correction (traj_diffcorr knobs) ----
 cfg.diffcorr.tol_patch     = 1e-4;   % normalized convergence threshold
 cfg.diffcorr.tol_converged = 1e-4;   % report CONVERGED if ||r_sc|| <= this (can be >= tol_patch)

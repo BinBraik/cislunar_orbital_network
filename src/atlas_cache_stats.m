@@ -1,5 +1,5 @@
 function st = atlas_cache_stats(S, cfg)
-%RS3_CACHE_FAMILY_STATS  Compute basic stats for cache validation and size estimates.
+%ATLAS_CACHE_STATS  Compute basic stats for cache validation and size estimates.
 
 st = struct();
 

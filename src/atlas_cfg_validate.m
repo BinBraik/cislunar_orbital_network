@@ -1,11 +1,11 @@
 
 function atlas_cfg_validate(cfg)
-%RS3_CFG_VALIDATE  Validate cfg struct schema and values (rs3).
+%ATLAS_CFG_VALIDATE  Validate cfg struct schema and values.
 
 req = {'sys','families','seed','grid','fan','propag','log','cache','par','io','diag'};
 for k = 1:numel(req)
     if ~isfield(cfg, req{k})
-        error('rs3:cfg:missingField', 'cfg.%s is missing', req{k});
+        error('atlas:cfg:missingField', 'cfg.%s is missing', req{k});
     end
 end
 
@@ -40,16 +40,16 @@ mustFinite(cfg.propag.v2tol, 'cfg.propag.v2tol');
 mustPos(cfg.log.step_len_factor, 'cfg.log.step_len_factor');
 mustPos(cfg.log.maxstep_factor,  'cfg.log.maxstep_factor');
 if ~isfield(cfg.log,'segwalk') || ~isstruct(cfg.log.segwalk)
-    error('rs3:cfg:log', 'cfg.log.segwalk struct is required');
+    error('atlas:cfg:log', 'cfg.log.segwalk struct is required');
 end
 if ~islogical(cfg.log.segwalk.enable)
-    error('rs3:cfg:log', 'cfg.log.segwalk.enable must be logical');
+    error('atlas:cfg:log', 'cfg.log.segwalk.enable must be logical');
 end
 mustPos(cfg.log.segwalk.frac, 'cfg.log.segwalk.frac');
 
 % --- Parallel ---
 if ~islogical(cfg.par.enable)
-    error('rs3:cfg:par', 'cfg.par.enable must be logical');
+    error('atlas:cfg:par', 'cfg.par.enable must be logical');
 end
 
 % --- IO ---
@@ -61,24 +61,24 @@ end
 % ---------------- helpers ----------------
 function mustPos(v, name)
 if ~isscalar(v) || ~isnumeric(v) || ~isfinite(v) || v <= 0
-    error('rs3:cfg:badValue', '%s must be a finite positive scalar', name);
+    error('atlas:cfg:badValue', '%s must be a finite positive scalar', name);
 end
 end
 
 function mustFinite(v, name)
 if ~isscalar(v) || ~isnumeric(v) || ~isfinite(v)
-    error('rs3:cfg:badValue', '%s must be a finite scalar', name);
+    error('atlas:cfg:badValue', '%s must be a finite scalar', name);
 end
 end
 
 function mustIntGe(v, lo, name)
 if ~isscalar(v) || ~isnumeric(v) || ~isfinite(v) || floor(v)~=v || v < lo
-    error('rs3:cfg:badValue', '%s must be an integer >= %d', name, lo);
+    error('atlas:cfg:badValue', '%s must be an integer >= %d', name, lo);
 end
 end
 
 function mustText(v, name)
 if ~(ischar(v) || isstring(v))
-    error('rs3:cfg:badValue', '%s must be a string', name);
+    error('atlas:cfg:badValue', '%s must be a string', name);
 end
 end

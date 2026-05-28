@@ -90,9 +90,9 @@ cfg.cache.rebuild       = false;
 cfg.propag.Tmax         = pi;
 cfg.fan.DV_cap_nd       = 0.2;
 % Suppress intermediate bound plots (we only need B.imin)
-cfg.plot.rs4.bounds_lb    = false;
-cfg.plot.rs4.bounds_ub    = false;
-cfg.plot.rs4.bounds_proxy = false;
+cfg.plot.overlap.bounds_lb    = false;
+cfg.plot.overlap.bounds_ub    = false;
+cfg.plot.overlap.bounds_proxy = false;
 
 VU_mps  = cfg.units.VU_mps;
 TU_days = cfg.units.TU_days;

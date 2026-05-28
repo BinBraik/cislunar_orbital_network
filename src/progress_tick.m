@@ -1,5 +1,5 @@
 function progress_tick(cmd, total, every, tag)
-%RS3_PROGRESS_TICK  Lightweight progress ticker for PARFOR jobs.
+%PROGRESS_TICK  Lightweight progress ticker for PARFOR jobs.
 %
 % Usage:
 %   progress_tick('init', nJobs, everyN)

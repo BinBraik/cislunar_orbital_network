@@ -1,5 +1,5 @@
 function V = overlap_extract_voxel_info(SA, SB, O, cfg)
-%RS4_OVERLAP_EXTRACT_VOXEL_INFO  Build voxel-wise overlap candidate metadata.
+%OVERLAP_EXTRACT_VOXEL_INFO  Build voxel-wise overlap candidate metadata.
 %
 % Vectorized implementation: avoids per-voxel O(N_rows) search and struct
 % array construction. Uses ismember + accumarray to compute per-voxel

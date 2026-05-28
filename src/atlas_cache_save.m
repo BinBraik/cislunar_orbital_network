@@ -1,5 +1,5 @@
 function info = atlas_cache_save(S, cfg)
-%RS3_CACHE_SAVE_FAMILY  Save minimal family atlas to cache (deterministic key).
+%ATLAS_CACHE_SAVE  Save minimal family atlas to cache (deterministic key).
 
 if ~cfg.cache.enable
     info = struct();

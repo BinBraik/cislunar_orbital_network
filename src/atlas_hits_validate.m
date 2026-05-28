@@ -1,5 +1,5 @@
 function atlas_hits_validate(rowsF_u, rowsF_l, grid3)
-%RS3_HITS_VALIDATE  Sanity checks for voxel hit rows.
+%ATLAS_HITS_VALIDATE  Sanity checks for voxel hit rows.
 % Handles both packed struct and legacy [N x 8] double matrix formats.
 %
 % rowsF_u : rows_FRS_upper (leg=1, halfFlag=+1, t>=0)

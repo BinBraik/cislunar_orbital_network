@@ -1,9 +1,9 @@
 function S = atlas_family_prepare_seeds(familyName, cfg, grid3geom)
-%RS3_FAMILY_PREPARE_SEEDS  Step 3: integrate PO, select seeds, build per-family Keep mask.
+%ATLAS_FAMILY_PREPARE_SEEDS  Step 3: integrate PO, select seeds, build per-family Keep mask.
 %
 % Inputs
 %   familyName : char/string
-%   cfg        : rs3 config
+%   cfg        : atlas config
 %   grid3geom  : output of atlas_grid_make(cfg) (geometry only)
 %
 % Output

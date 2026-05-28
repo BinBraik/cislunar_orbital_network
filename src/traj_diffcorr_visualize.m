@@ -1,5 +1,5 @@
 function traj_diffcorr_visualize(T, Tc, SA, SB, cfg, outdir, tag)
-%RS4_DIFFCORR_VISUALIZE  Side-by-side before/after differential correction.
+%TRAJ_DIFFCORR_VISUALIZE  Side-by-side before/after differential correction.
 %
 % Creates a 1×2 figure:
 %   Left  panel  — original arcs (T)  showing miss distances to voxel centre

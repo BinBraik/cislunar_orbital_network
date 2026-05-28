@@ -1,5 +1,5 @@
 function [ix, iy, it] = atlas_bin_xyth(x, y, th, grid3)
-%RS3_BIN_XYTH  Bin (x,y,theta) to voxel indices using grid edges.
+%ATLAS_BIN_XYTH  Bin (x,y,theta) to voxel indices using grid edges.
 % Out-of-bounds => NaN indices.
 %
 % Theta is wrapped to [-pi,pi) before binning.
