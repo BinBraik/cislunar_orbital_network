@@ -28,19 +28,19 @@
 %    baseline_betweenness.{pdf,png,svg,fig}
 %    [optional] animation_Tmax<dj>.gif
 %
-%  Dependencies: rs3_cfg_defaults, src/network/*.m  (added to path below)
+%  Dependencies: atlas_cfg_defaults, src/network/*.m  (added to path below)
 % =========================================================================
 
 %% ========================================================================
 %  USER KNOBS — edit this block; do not change code below the divider
 % =========================================================================
 
-% Path to the sweep .mat produced by run_rs4_dv_tmax_sweep.m
-SWEEP_MAT = fullfile(rs3_repo_root(), 'rs3_sweep_results', ...
+% Path to the sweep .mat produced by run_overlap_dv_tmax_sweep.m
+SWEEP_MAT = fullfile(repo_root(), 'atlas_sweep_results', ...
                      'sweep_DVmatrix_results.mat');
 
 % Output directory (created automatically if absent)
-OUT_DIR = fullfile(rs3_repo_root(), 'rs3_network_results');
+OUT_DIR = fullfile(repo_root(), 'atlas_network_results');
 
 % Physical budget multiplier  (2 = departure manoeuvre + arrival manoeuvre)
 BUDGET_FACTOR = 2;
@@ -64,12 +64,12 @@ GIF_FRAME_DELAY = 0.5;
 % =========================================================================
 
 %% Setup ------------------------------------------------------------------
-rs3_setup();
-addpath(fullfile(rs3_repo_root(), 'src', 'network'));
+setup();
+addpath(fullfile(repo_root(), 'src', 'network'));
 
 if ~exist(OUT_DIR, 'dir'), mkdir(OUT_DIR); end
 
-cfg     = rs3_cfg_defaults();
+cfg     = atlas_cfg_defaults();
 VU_mps  = cfg.units.VU_mps;
 TU_days = cfg.units.TU_days;
 

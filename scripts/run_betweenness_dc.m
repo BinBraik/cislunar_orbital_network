@@ -5,12 +5,12 @@
 %
 % Does NOT require the reachable-set cache or any atlas/overlap computation.
 % All inputs come from:
-%   1. The *_data.mat files under rs3_betweenness_explainer/
-%   2. rs3_core_family_ic  — mu, CJ, Tf_PO for each family (hardcoded constants)
+%   1. The *_data.mat files under betweenness_explainer/
+%   2. cr3bp_family_ic  — mu, CJ, Tf_PO for each family (hardcoded constants)
 %
 % For each mat file found:
-%   a. Builds minimal family structs from rs3_core_family_ic + PO_* arrays in mat
-%   b. Runs rs4_diffcorr on T1 (origin→bridge) and T2 (bridge→dest)
+%   a. Builds minimal family structs from cr3bp_family_ic + PO_* arrays in mat
+%   b. Runs traj_diffcorr on T1 (origin→bridge) and T2 (bridge→dest)
 %   c. Recomputes coast arc using corrected bridge endpoints
 %   d. Prints raw vs corrected DV comparison table
 %   e. Saves <ex_dir>/<tag>_dc.mat  (Tc1, Tc2, corrected DV scalars)
@@ -21,7 +21,7 @@ clear; clc;
 % ── USER KNOBS ───────────────────────────────────────────────────────────────
 
 % Root folder produced by run_betweenness_explainer
-EXPLAINER_DIR = fullfile(pwd, 'rs3_betweenness_explainer');
+EXPLAINER_DIR = fullfile(pwd, 'betweenness_explainer');
 
 % Grid spacings used in the original run (must match)
 GRID_DX     = 0.001;
@@ -40,10 +40,10 @@ FIG_VISIBLE = 'on';
 
 % ── END USER KNOBS ───────────────────────────────────────────────────────────
 
-rs3_setup();
+setup();
 
 % ── cfg (only propag + diffcorr fields needed — no grid sweep, no atlas) ─────
-cfg = rs3_cfg_defaults();
+cfg = atlas_cfg_defaults();
 cfg.propag.relTol        = 1e-8;
 cfg.propag.absTol        = 1e-8;
 cfg.propag.Tmax          = pi;
@@ -115,7 +115,7 @@ for fi = 1:numel(mat_files)
     % ── Differential correction — Leg 1 ──────────────────────────────────────
     fprintf('  DC Leg 1 (%s → %s) ...\n', famA, famBr);
     try
-        Tc1 = rs4_diffcorr(D.T1, SA, SBr, cfg);
+        Tc1 = traj_diffcorr(D.T1, SA, SBr, cfg);
         fprintf('  Leg1 DC: %.1f m/s  (converged=%d, exitflag=%d)\n', ...
             Tc1.DV_total_mps, Tc1.converged, Tc1.exitflag);
     catch ME
@@ -126,7 +126,7 @@ for fi = 1:numel(mat_files)
     % ── Differential correction — Leg 2 ──────────────────────────────────────
     fprintf('  DC Leg 2 (%s → %s) ...\n', famBr, famB);
     try
-        Tc2 = rs4_diffcorr(D.T2, SBr, SB, cfg);
+        Tc2 = traj_diffcorr(D.T2, SBr, SB, cfg);
         fprintf('  Leg2 DC: %.1f m/s  (converged=%d, exitflag=%d)\n', ...
             Tc2.DV_total_mps, Tc2.converged, Tc2.exitflag);
     catch ME
@@ -186,7 +186,7 @@ for fi = 1:numel(mat_files)
         'Visible', cfg.io.fig_visible, ...
         'Units',   'pixels', 'Position', [80 80 1050 820]);
     ax = axes('Parent', fig);
-    rs3_core_plot_cislunar_background(CJbg, mu, ax);
+    cr3bp_plot_background(CJbg, mu, ax);
     set(ax.Children, 'HandleVisibility', 'off');
     hold(ax, 'on');
     axis(ax, 'equal');
@@ -241,7 +241,7 @@ for fi = 1:numel(mat_files)
     ylabel(ax, 'y [nd]');
     legend(ax, 'Location','best', 'FontSize', 8);
 
-    rs3_io_save_figure(fig, ex_dir, ex_tag_dc, cfg);
+    io_save_figure(fig, ex_dir, ex_tag_dc, cfg);
     fprintf('  Figure saved.\n');
     fprintf('[%d/%d] Done.\n\n', fi, numel(mat_files));
 end
@@ -253,12 +253,12 @@ fprintf('[betweenness_dc] All examples complete.\n');
 % =============================================================================
 
 function S = local_build_family_struct(fam_name, Xpo_mat, grid3)
-%LOCAL_BUILD_FAMILY_STRUCT  Minimal struct for rs4_diffcorr — no cache needed.
-% mu, CJ, Tf_PO, X0 from rs3_core_family_ic (hardcoded corrected constants).
+%LOCAL_BUILD_FAMILY_STRUCT  Minimal struct for traj_diffcorr — no cache needed.
+% mu, CJ, Tf_PO, X0 from cr3bp_family_ic (hardcoded corrected constants).
 % Xpo and t_dense reconstructed from the PO array stored in the data mat.
-% pp_xy / pp_th are built automatically inside rs4_diffcorr's local_ensure_xpo
+% pp_xy / pp_th are built automatically inside traj_diffcorr's local_ensure_xpo
 % once Xpo and t_dense are present.
-    [mu, CJ, Tf_PO, X0] = rs3_core_family_ic(fam_name);
+    [mu, CJ, Tf_PO, X0] = cr3bp_family_ic(fam_name);
     N_po      = size(Xpo_mat, 1);
     S.name    = fam_name;
     S.mu      = mu;

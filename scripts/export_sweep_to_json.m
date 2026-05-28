@@ -2,8 +2,8 @@
 % Generate a self-contained web/dv_map.html from sweep results.
 %
 % Reads:
-%   rs3_sweep_results/sweep_DVmatrix_results.mat  — DV/TOF matrices (required)
-%   rs3_network_results/network_results.mat        — centrality data (optional)
+%   atlas_sweep_results/sweep_DVmatrix_results.mat  — DV/TOF matrices (required)
+%   atlas_network_results/network_results.mat        — centrality data (optional)
 %
 % If network_results.mat is absent the script computes harmonic closeness
 % locally using the corrected formula from net_centrality.m Step 6.
@@ -17,8 +17,8 @@ clear; clc;
 thisFile = mfilename('fullpath');
 repoRoot = fileparts(fileparts(thisFile));
 
-SWEEP_MAT   = fullfile(repoRoot, 'rs3_sweep_results', 'sweep_DVmatrix_results.mat');
-NET_MAT     = fullfile(repoRoot, 'rs3_network_results', 'network_results.mat');
+SWEEP_MAT   = fullfile(repoRoot, 'atlas_sweep_results', 'sweep_DVmatrix_results.mat');
+NET_MAT     = fullfile(repoRoot, 'atlas_network_results', 'network_results.mat');
 HTML_TMPL   = fullfile(repoRoot, 'web', 'dv_map_template.html');
 HTML_OUT    = fullfile(repoRoot, 'web', 'dv_map.html');
 

@@ -4,15 +4,15 @@ function tests = test_config
 tests = functiontests(localfunctions);
 end
 
-% ---- rs3_cfg_defaults ----
+% ---- atlas_cfg_defaults ----
 
 function test_defaults_returns_struct(testCase)
-    cfg = rs3_cfg_defaults();
+    cfg = atlas_cfg_defaults();
     verifyTrue(testCase, isstruct(cfg));
 end
 
 function test_defaults_has_all_sections(testCase)
-    cfg = rs3_cfg_defaults();
+    cfg = atlas_cfg_defaults();
     verifyTrue(testCase, isfield(cfg, 'sys'));
     verifyTrue(testCase, isfield(cfg, 'units'));
     verifyTrue(testCase, isfield(cfg, 'families'));
@@ -29,20 +29,20 @@ function test_defaults_has_all_sections(testCase)
 end
 
 function test_defaults_validate_passes(testCase)
-    cfg = rs3_cfg_defaults();
+    cfg = atlas_cfg_defaults();
     % Should not throw
-    rs3_cfg_validate(cfg);
+    atlas_cfg_validate(cfg);
     verifyTrue(testCase, true);
 end
 
 function test_defaults_units_consistent(testCase)
-    cfg = rs3_cfg_defaults();
+    cfg = atlas_cfg_defaults();
     % VU = LU / TU
     VU_expected = cfg.units.LU_m / cfg.units.TU_s;
     verifyEqual(testCase, cfg.units.VU_mps, VU_expected, 'RelTol', 1e-10);
 end
 
-% ---- rs3_core_family_ic ----
+% ---- cr3bp_family_ic ----
 
 function test_family_ic_all_families(testCase)
     families = {'Lyapunov L1', 'Lyapunov L2', 'Cycler 21', 'Cycler 11a', ...
@@ -51,7 +51,7 @@ function test_family_ic_all_families(testCase)
                 'Resonant 3to1 Unstable', 'Resonant 5to2 Stable', ...
                 'Resonant 5to2 Unstable', 'Distant Prograde Orbit'};
     for i = 1:numel(families)
-        [mu, CJ, Tf, X0] = rs3_core_family_ic(families{i});
+        [mu, CJ, Tf, X0] = cr3bp_family_ic(families{i});
         verifyGreaterThan(testCase, mu, 0);
         verifyGreaterThan(testCase, CJ, 0);
         verifyGreaterThan(testCase, Tf, 0);
@@ -62,7 +62,7 @@ end
 function test_family_ic_unknown_errors(testCase)
     threw = false;
     try
-        rs3_core_family_ic('Nonexistent');
+        cr3bp_family_ic('Nonexistent');
     catch
         threw = true;
     end

@@ -20,7 +20,7 @@
 clear; clc;
 
 % ── USER KNOBS ────────────────────────────────────────────────────────────────
-EXPLAINER_DIR  = fullfile(pwd, 'rs3_betweenness_explainer');
+EXPLAINER_DIR  = fullfile(pwd, 'betweenness_explainer');
 
 GRID_DX     = 0.001;
 GRID_DY     = 0.001;
@@ -33,12 +33,12 @@ N_TRAIL_SEG    = 16;       % fade segments (more = smoother fade)
 VIDEO_QUALITY  = 95;       % VideoWriter quality (0-100)
 % ── END USER KNOBS ────────────────────────────────────────────────────────────
 
-rs3_setup();
+setup();
 
 ode_opts = odeset('RelTol', 1e-9, 'AbsTol', 1e-9);
 grid3    = struct('dx', GRID_DX, 'dy', GRID_DY, 'dtheta', GRID_DTHETA);
 
-cfg = rs3_cfg_defaults();
+cfg = atlas_cfg_defaults();
 TU_days = cfg.units.TU_days;
 
 % Colour palette (matches betweenness explainer)
@@ -96,13 +96,13 @@ for fi = 1:numel(mat_files)
     fprintf('  Integrating arcs (N_dense=%d) ...\n', N_dense);
 
     % Phase 1: Leg-1 FRS  (origin → patch-1)
-    sol1   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SA.CJ,SA.mu,false), ...
+    sol1   = ode113(@(t,X) cr3bp_reduced_ode(t,X,SA.CJ,SA.mu,false), ...
                     [0, Tc1.t_A], Tc1.IC_A, ode_opts);
     t1_ev  = linspace(0, Tc1.t_A, N_dense)';
     D1     = deval(sol1, t1_ev)';            % N_dense×3 [x y th]
 
     % Phase 2: Leg-1 BRS reversed  (patch-1 → bridge arrival)
-    sol2   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+    sol2   = ode113(@(t,X) cr3bp_reduced_ode(t,X,SBr.CJ,SBr.mu,false), ...
                     [0, Tc1.t_B], Tc1.IC_B_frs, ode_opts);
     D2_frs = flipud(deval(sol2, linspace(0, Tc1.t_B, N_dense))');  % reversed → patch→bridge
     D2_x   =  D2_frs(:,1);
@@ -114,13 +114,13 @@ for fi = 1:numel(mat_files)
     D3_y = coast_arc_dc(:,2);
 
     % Phase 4: Leg-2 FRS  (bridge departure → patch-2)
-    sol4   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SBr.CJ,SBr.mu,false), ...
+    sol4   = ode113(@(t,X) cr3bp_reduced_ode(t,X,SBr.CJ,SBr.mu,false), ...
                     [0, Tc2.t_A], Tc2.IC_A, ode_opts);
     t4_ev  = linspace(0, Tc2.t_A, N_dense)';
     D4     = deval(sol4, t4_ev)';
 
     % Phase 5: Leg-2 BRS reversed  (patch-2 → dest arrival)
-    sol5   = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t,X,SB.CJ,SB.mu,false), ...
+    sol5   = ode113(@(t,X) cr3bp_reduced_ode(t,X,SB.CJ,SB.mu,false), ...
                     [0, Tc2.t_B], Tc2.IC_B_frs, ode_opts);
     D5_frs = flipud(deval(sol5, linspace(0, Tc2.t_B, N_dense))');
     D5_x   =  D5_frs(:,1);
@@ -203,7 +203,7 @@ for fi = 1:numel(mat_files)
 
     % ── Static rotating frame ─────────────────────────────────────────────────
     CJbg = min([SA.CJ, SBr.CJ, SB.CJ]);
-    rs3_core_plot_cislunar_background(CJbg, mu, ax_rot);
+    cr3bp_plot_background(CJbg, mu, ax_rot);
     set(ax_rot.Children, 'HandleVisibility', 'off');
     hold(ax_rot, 'on');
     set(ax_rot, 'XLim', rot_xlim, 'YLim', rot_ylim, 'DataAspectRatio', [1 1 1]);
@@ -342,7 +342,7 @@ fprintf('[video] All examples complete.\n');
 % =============================================================================
 
 function S = local_build_fam(fam_name, grid3)
-    [mu, CJ, Tf_PO, X0] = rs3_core_family_ic(fam_name);
+    [mu, CJ, Tf_PO, X0] = cr3bp_family_ic(fam_name);
     S.name  = fam_name;
     S.mu    = mu;
     S.CJ    = CJ;
@@ -354,7 +354,7 @@ end
 % ─────────────────────────────────────────────────────────────────────────────
 
 function Xpo = local_integrate_po(S, ode_opts)
-    sol = ode113(@(t,X) rs3_core_reduced_cr3bp_model(t, X, S.CJ, S.mu, false), ...
+    sol = ode113(@(t,X) cr3bp_reduced_ode(t, X, S.CJ, S.mu, false), ...
                  [0, S.Tf_PO], S.X0, ode_opts);
     td  = linspace(0, min(S.Tf_PO, sol.x(end)), 1001)';
     Xpo = deval(sol, td)';
