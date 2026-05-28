@@ -82,12 +82,12 @@ end
 fprintf('\n[quickstart] Extracting voxel metrics...\n');
 V = overlap_extract_voxel_info(SA, SB, O, cfg);
 
-% Unit conversion
-VU_mps = cfg.units.VU_mps;
+VU_mps  = cfg.units.VU_mps;
 TU_days = cfg.units.TU_days;
 
-dv_mps  = V.dv_proxy_nd  * VU_mps;
-tof_days = V.tof_fwd_nd * TU_days + V.tof_bwd_nd * TU_days;
+% Proxy DV = min turn cost from A + min turn cost from B (already in m/s)
+dv_mps   = V.dv_turn_mps_min_A + V.dv_turn_mps_min_B;
+tof_days = V.t_days_min_A      + V.t_days_min_B;
 
 [best_dv, k] = min(dv_mps);
 best_tof = tof_days(k);
