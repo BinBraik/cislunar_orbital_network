@@ -133,14 +133,14 @@
 
   /* ── Sidebar ── */
   .sidebar {
-    width: 240px;
+    width: 280px;
     border-left: 1px solid var(--border);
     background: var(--surface);
     padding: 16px 14px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
   }
   .sidebar h2 { font-size: 13px; color: var(--muted); font-weight: 500; }
   .hint-label {
@@ -238,10 +238,115 @@
     display: none;
     z-index: 999;
     box-shadow: 0 4px 16px rgba(0,0,0,.5);
-    max-width: 220px;
+    max-width: 260px;
   }
   #tooltip strong { color: var(--text); }
   #tooltip span { color: var(--muted); }
+
+  /* ── Intro box ── */
+  .intro-box {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .intro-box summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: 12px;
+    user-select: none;
+    list-style: none;
+  }
+  .intro-box summary::-webkit-details-marker { display: none; }
+  .intro-box summary::before { content: '▶  '; font-size: 10px; }
+  .intro-box[open] > summary::before { content: '▼  '; }
+  .intro-box p { margin-top: 6px; }
+
+  /* ── Sidebar info sections ── */
+  .info-section {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+  .info-section > summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+    user-select: none;
+    list-style: none;
+  }
+  .info-section > summary::-webkit-details-marker { display: none; }
+  .info-section > summary::before { content: '▶  '; font-size: 10px; }
+  .info-section[open] > summary::before { content: '▼  '; }
+  .info-text {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 6px;
+  }
+  .info-text ul { padding-left: 14px; margin-top: 2px; }
+  .info-text li { margin-bottom: 3px; }
+  .info-text p { margin-bottom: 4px; }
+  .info-text strong { color: var(--text); }
+
+  /* ── Info tables (roles, abbreviations) ── */
+  .info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  .info-table th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 500;
+    padding: 3px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .info-table td {
+    padding: 3px 4px;
+    color: var(--muted);
+    vertical-align: top;
+  }
+  .info-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .info-table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+
+  /* ── Slider label full-width layout ── */
+  .slider-row {
+    flex-wrap: wrap;
+  }
+  .slider-row label {
+    width: 100% !important;
+    min-width: unset !important;
+  }
+  .slider-val {
+    width: auto !important;
+    min-width: 60px;
+  }
+
+  /* ── Mobile responsiveness ── */
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 16px;
+    }
+    #legend { font-size: 10px; gap: 6px; }
+    .tabs { padding: 8px 12px 0; flex-wrap: wrap; }
+    .intro-box { padding: 10px 16px; }
+    .main { flex-direction: column; overflow: visible; }
+    .graph-panel { padding: 10px; }
+    #graph-svg { width: 100% !important; height: auto !important; }
+    .sidebar {
+      width: 100% !important;
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+    #budget-controls { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -256,48 +361,53 @@
     <div class="legend-item"><div class="legend-swatch" style="background:#b0d060"></div>5–20 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#f07840"></div>20–100 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#e04050"></div>&gt;100 m/s</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>infeasible</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>No connection</div>
     <div class="legend-item" style="margin-left:6px">
       <svg width="22" height="22"><circle cx="11" cy="11" r="8" fill="#1a1d27" stroke="#4f8ef7" stroke-width="2" stroke-dasharray="3,2"/></svg>
-      articulation pt
+      Structural bottleneck
     </div>
     <div class="legend-item">
       <svg width="22" height="22">
         <circle cx="11" cy="11" r="5" fill="#4f8ef7" opacity=".7"/>
         <circle cx="11" cy="11" r="9" fill="#4f8ef7" opacity=".3"/>
       </svg>
-      size = reach
+      Node size ∝ harmonic closeness
     </div>
   </div>
 </header>
 
 <div class="tabs">
-  <button class="tab-btn active" id="tab-best">Best Case</button>
+  <button class="tab-btn active" id="tab-best">Maximum Budget</button>
   <button class="tab-btn"        id="tab-budget">Budget Explorer</button>
 </div>
 
+<details class="intro-box" open>
+  <summary>About this map</summary>
+  <p>This interactive ΔV map visualizes budget-dependent accessibility among 13 representative cislunar periodic-orbit families in the planar Earth–Moon CR3BP (Jacobi level C<sub>J</sub> = 3.1294). Edges represent candidate family-to-family connections inferred from reachable-set overlap and weighted by proxy maneuver cost; corrected trajectory costs typically lie below these proxy estimates.</p>
+</details>
+
 <div class="main">
   <div class="graph-panel">
-    <svg id="graph-svg" width="760" height="520"></svg>
+    <svg id="graph-svg" width="760" height="520" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"></svg>
 
     <div id="budget-controls">
       <div class="slider-row">
-        <label>ΔV cap</label>
+        <label>Maneuver budget, ΔV<sub>max</sub></label>
         <input type="range" id="sl-dv" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-dv">— m/s</span>
+        <span class="slider-val" id="lbl-dv">—</span>
       </div>
       <div class="slider-row">
-        <label>T<sub>max</sub></label>
+        <label>Time-of-flight budget, T<sub>max</sub></label>
         <input type="range" id="sl-tmax" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-tmax">— days</span>
+        <span class="slider-val" id="lbl-tmax">—</span>
       </div>
     </div>
   </div>
 
   <div class="sidebar">
     <div>
-      <h2>Shortest path</h2>
-      <p class="hint-label" id="selection-hint">Click a node to select source</p>
+      <h2>Minimum-cost path</h2>
+      <p class="hint-label" id="selection-hint">Select a family to set the source</p>
     </div>
 
     <div id="path-info">
@@ -310,11 +420,79 @@
       <div class="path-hops" id="path-hops"></div>
     </div>
 
-    <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.5">
-      Node size ∝ harmonic closeness (reach).<br>
-      Dashed ring = articulation point.<br>
-      Click 2 nodes to trace shortest path.
+    <div style="font-size:11px; color:var(--muted); line-height:1.5; padding-top:4px">
+      Select two families to compute the minimum-cost multileg route.
     </div>
+
+    <details class="info-section">
+      <summary>How to read this map</summary>
+      <div class="info-text">
+        <ul>
+          <li><strong>Nodes</strong> are representative periodic-orbit families.</li>
+          <li><strong>Edges</strong> show candidate family-to-family connections.</li>
+          <li><strong>Edge color</strong> represents proxy maneuver cost.</li>
+          <li><strong>Larger nodes</strong> have higher harmonic closeness — better global gateway or staging families.</li>
+          <li><strong>Structural bottlenecks</strong> are families whose removal strongly changes network connectivity.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Network roles</summary>
+      <div class="info-text">
+        <table class="info-table">
+          <thead><tr><th>Metric</th><th>Role</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Strength</td><td>Hub score</td><td>Many low-cost direct connections</td></tr>
+            <tr><td>Harmonic closeness</td><td>Gateway / staging score</td><td>Efficient access to many other families</td></tr>
+            <tr><td>Betweenness</td><td>Relay score</td><td>Often lies along minimum-cost multileg routes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Maximum Budget summary</summary>
+      <div class="info-text">
+        <p>At the maximum-budget case, the network contains 75 of 78 possible direct family pairs. The (3,2)-cycler, C32, appears as the dominant hub, gateway, and relay. The 2:1 stable resonant family, R21-S, remains the hardest-access family, with missing direct pairs LL1–R21-S, LL2–R21-S, and DPO–R21-S.</p>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Budget regimes</summary>
+      <div class="info-text">
+        <p>The network transitions through three distinct operational regimes as budgets increase:</p>
+        <ul>
+          <li><strong>Sparse direct accessibility</strong> — time-critical retasking.</li>
+          <li><strong>Graph connectedness</strong> — sustained coverage.</li>
+          <li><strong>Multileg accessibility</strong> — time-flexible redistribution.</li>
+        </ul>
+        <p style="margin-top:4px">At low time-of-flight budgets, the (1,1)a-cycler (C11a) emerges as the dominant gateway family.</p>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Family abbreviations</summary>
+      <div class="info-text">
+        <table class="info-table">
+          <tbody>
+            <tr><td>LL1</td><td>L1 Lyapunov</td></tr>
+            <tr><td>LL2</td><td>L2 Lyapunov</td></tr>
+            <tr><td>C11a</td><td>(1,1)a-cycler</td></tr>
+            <tr><td>C11b</td><td>(1,1)b-cycler</td></tr>
+            <tr><td>C21</td><td>(2,1)-cycler</td></tr>
+            <tr><td>C32</td><td>(3,2)-cycler</td></tr>
+            <tr><td>R21-S</td><td>2:1 stable resonant</td></tr>
+            <tr><td>R21-U</td><td>2:1 unstable resonant</td></tr>
+            <tr><td>R31-S</td><td>3:1 stable resonant</td></tr>
+            <tr><td>R31-U</td><td>3:1 unstable resonant</td></tr>
+            <tr><td>R52-S</td><td>5:2 stable resonant</td></tr>
+            <tr><td>R52-U</td><td>5:2 unstable resonant</td></tr>
+            <tr><td>DPO</td><td>Distant prograde orbit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -325,8 +503,8 @@
 //  DATA  — injected by export_sweep_to_json.m
 // ════════════════════════════════════════════════════════════════════════════
 const DATA = {
-  "families": ["Lyapunov L1","Lyapunov L2","Cycler 21","Cycler 11a","Cycler 11b","Cycler 32","Resonant 2to1 Stable","Resonant 2to1 Unstable","Resonant 3to1 Stable","Resonant 3to1 Unstable","Resonant 5to2 Stable","Resonant 5to2 Unstable","Distant Prograde Orbit"],
-  "shortNames": ["LyapL1","LyapL2","Cyc21","Cyc11a","Cyc11b","Cyc32","R21S","R21U","R31S","R31U","R52S","R52U","DPO"],
+  "families": ["L1 Lyapunov","L2 Lyapunov","(2,1)-cycler","(1,1)a-cycler","(1,1)b-cycler","(3,2)-cycler","2:1 stable resonant","2:1 unstable resonant","3:1 stable resonant","3:1 unstable resonant","5:2 stable resonant","5:2 unstable resonant","Distant prograde orbit"],
+  "shortNames": ["LL1","LL2","C21","C11a","C11b","C32","R21-S","R21-U","R31-S","R31-U","R52-S","R52-U","DPO"],
   "dvCapList": [0.025,0.03229166666666667,0.039583333333333338,0.046875,0.054166666666666669,0.061458333333333337,0.06875,0.076041666666666674,0.083333333333333343,0.090625000000000011,0.09791666666666668,0.10520833333333335,0.11250000000000002,0.11979166666666669,0.12708333333333335,0.13437500000000002,0.14166666666666669,0.14895833333333333,0.15625,0.16354166666666667,0.17083333333333334,0.178125,0.18541666666666667,0.19270833333333334,0.2],
   "tmaxList": [0.78539816339744828,0.88357293382212931,0.98174770424681035,1.0799224746714913,1.1780972450961724,1.2762720155208533,1.3744467859455345,1.4726215563702154,1.5707963267948966,1.6689710972195777,1.7671458676442584,1.8653206380689398,1.9634954084936207,2.0616701789183018,2.1598449493429825,2.2580197197676641,2.3561944901923448,2.4543692606170255,2.5525440310417071,2.6507188014663878,2.7488935718910685,2.84706834231575,2.9452431127404313,3.043417883165112,3.1415926535897931],
   "bestCase": {"dv":[[null,9.3616543100428053,4.5846894438481174,4.0216991232286272,4.2856846324693443,6.2496195583556258,null,5.75802786778579,176.91371080955216,85.513048141067216,59.232615532851078,6.7969054273853136,5.694713450358444],[9.3616543100428053,null,6.9277921940312437,8.1681575365043741,8.47798524193447,5.5498201041040431,null,18.378786563683953,243.63462745922055,180.76679166685253,105.32028406797177,16.006032619798404,6.2634252917512789],[4.5846894438481174,6.9277921940312437,null,2.8598958868384696,2.1666818999102224,3.2569380981612581,327.840814110447,6.3431521539636844,186.82292886287155,74.719819877020115,66.03261055911139,10.505639664321421,4.5763908903776374],[4.0216991232286272,8.1681575365043741,2.8598958868384696,null,3.4841151108621906,3.3997725797456093,342.25070546908535,2.13115552179576,178.31391850319105,56.102583031336323,50.916546584472314,10.1858803725931,3.4081835689043602],[4.2856846324693443,8.47798524193447,2.1666818999102224,3.4841151108621906,null,3.2702231364589429,394.82354856246894,7.6539402755911921,186.42735184479849,78.783641719643981,64.368604461491586,9.0878503508569413,4.3634951932998929],[6.2496195583556258,5.5498201041040431,3.2569380981612581,3.3997725797456093,3.2702231364589429,null,201.07596373521281,7.1583734335666094,120.75871993639427,42.76145380770437,66.673641373399,0.62075210933101233,2.6999281750648],[null,null,327.840814110447,342.25070546908535,394.82354856246894,201.07596373521281,null,339.58680594795339,344.49629275575433,369.80638031551888,213.31588652120098,205.68151550339712,null],[5.75802786778579,18.378786563683953,6.3431521539636844,2.13115552179576,7.6539402755911921,7.1583734335666094,339.58680594795339,null,172.35839130602224,54.071032072083618,48.61205322610251,7.787130251212897,10.9477018158148],[176.91371080955216,243.63462745922055,186.82292886287155,178.31391850319105,186.42735184479849,120.75871993639427,344.49629275575433,172.35839130602224,null,236.55892973646138,167.9021270382284,122.67466405550417,206.7432247764535],[85.513048141067216,180.76679166685253,74.719819877020115,56.102583031336323,78.783641719643981,42.76145380770437,369.80638031551888,54.071032072083618,236.55892973646138,null,123.70148198904238,35.071292387562977,173.90140647583527],[59.232615532851078,105.32028406797177,66.03261055911139,50.916546584472314,64.368604461491586,66.673641373399,213.31588652120098,48.61205322610251,167.9021270382284,123.70148198904238,null,69.817925179900186,98.506555378408265],[6.7969054273853136,16.006032619798404,10.505639664321421,10.1858803725931,9.0878503508569413,0.62075210933101233,205.68151550339712,7.787130251212897,122.67466405550417,35.071292387562977,69.817925179900186,null,13.764688119895409],[5.694713450358444,6.2634252917512789,4.5763908903776374,3.4081835689043602,4.3634951932998929,2.6999281750648,null,10.9477018158148,206.7432247764535,173.90140647583527,98.506555378408265,13.764688119895409,null]],"tof":[[null,18.976075413292033,10.779863995377674,11.429129692351118,10.857302660456334,15.95845049138612,null,8.4907605871185563,26.598208067284588,20.480173483145123,27.01539396032571,16.791938128530269,15.730217329634133],[18.976075413292033,null,13.584331947308165,13.994693654754666,12.955361670350875,18.668995384599558,null,17.806024235518343,26.091126972442304,13.815624332020491,21.163766828803492,22.946648071357735,16.367371899206265],[10.779863995377674,13.584331947308165,null,2.7108689839361113,5.59461326344675,10.134804602205946,16.358320119449143,18.874439134581078,24.850779497644581,19.339906084586282,26.440083848376545,18.147780562117525,13.150854890848549],[11.429129692351118,13.994693654754666,2.7108689839361113,null,4.8923890400962158,10.489544505593978,26.475582137585089,2.6704878160632992,24.814875845457092,20.123148743522531,25.33372501116969,19.995141127828919,13.362461336983221],[10.857302660456334,12.955361670350875,5.59461326344675,4.8923890400962158,null,9.7233334050877076,16.286159807160278,12.582364637055376,24.970877524367964,20.143851802366591,26.954901570406481,17.934400565645362,9.43341468008154],[15.95845049138612,18.668995384599558,10.134804602205946,10.489544505593978,9.7233334050877076,null,15.2411700847465,19.126943204732065,22.465666235629087,19.675838471762276,27.177838768018276,8.8525344213179551,10.354271923038752],[null,null,16.358320119449143,26.475582137585089,16.286159807160278,15.2411700847465,null,26.595257522430174,10.849823678181062,14.058110768373075,21.39358171951584,23.193316282137129,null],[8.4907605871185563,17.806024235518343,18.874439134581078,2.6704878160632992,12.582364637055376,19.126943204732065,26.595257522430174,null,24.27107207859774,21.817342406551763,25.137830915270079,12.208155770523387,20.4852223775376],[26.598208067284588,26.091126972442304,24.850779497644581,24.814875845457092,24.970877524367964,22.465666235629087,10.849823678181062,24.27107207859774,null,27.314436761316831,22.829579554058832,22.056692312296967,25.218252960498091],[20.480173483145123,13.815624332020491,19.339906084586282,20.123148743522531,20.143851802366591,19.675838471762276,14.058110768373075,21.817342406551763,27.314436761316831,null,21.489402201484928,18.348504352292359,6.493803586098716],[27.01539396032571,21.163766828803492,26.440083848376545,25.33372501116969,26.954901570406481,27.177838768018276,21.39358171951584,25.137830915270079,22.829579554058832,21.489402201484928,null,26.706764998759624,20.472585886464437],[16.791938128530269,22.946648071357735,18.147780562117525,19.995141127828919,17.934400565645362,8.8525344213179551,23.193316282137129,12.208155770523387,22.056692312296967,18.348504352292359,26.706764998759624,null,19.078113214580412],[15.730217329634133,16.367371899206265,13.150854890848549,13.362461336983221,9.43341468008154,10.354271923038752,null,20.4852223775376,25.218252960498091,6.493803586098716,20.472585886464437,19.078113214580412,null]],"reach":[0.12652528388223919,0.095376594762055789,0.18456192846503328,0.19762432649056519,0.17724642256946568,0.28908595532117781,0.0046698702083568045,0.14165927028389866,0.0073302984172947264,0.021136335573379111,0.015809467980297195,0.26728491934234683,0.16549401624835339]},
@@ -539,7 +717,7 @@ edgeHitSel
     if (!snap || !snap.dv) return;
     const dv  = snap.dv[d.i][d.j];
     const tof = snap.tof ? snap.tof[d.i][d.j] : null;
-    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'infeasible';
+    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'No connection within selected budgets';
     const tofStr = (tof !== null && isFinite(tof)) ? tof.toFixed(2) + ' days' : '—';
     showTooltip(
       `<strong>${DATA.shortNames[d.i]} ↔ ${DATA.shortNames[d.j]}</strong><br>
@@ -668,11 +846,11 @@ function updateNodeHighlight() {
     .attr('stroke-width', i => (i === nodeA || i === nodeB) ? 2.5 : 2);
 
   if (nodeA === null) {
-    hintEl.textContent = 'Click a node to select source';
+    hintEl.textContent = 'Select a family to set the source';
   } else if (nodeB === null) {
-    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Click another node for destination.`;
+    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Select another family for the destination.`;
   } else {
-    hintEl.textContent = 'Click any node to start a new path.';
+    hintEl.textContent = 'Click any family to start a new route.';
   }
 }
 
@@ -724,7 +902,7 @@ function renderPath() {
   hopsEl.innerHTML = '';
 
   if (!path) {
-    totalEl.innerHTML = '<span class="path-unreachable">No feasible path</span>';
+    totalEl.innerHTML = '<span class="path-unreachable">No connection within selected budgets</span>';
     return;
   }
 
