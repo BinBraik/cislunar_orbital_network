@@ -2,11 +2,11 @@
 % Generate a self-contained web/dv_map.html from sweep results.
 %
 % Reads:
-%   rs3_sweep_results/sweep_DVmatrix_results.mat  — DV/TOF matrices (required)
-%   rs3_network_results/network_results.mat        — centrality data (optional)
+%   atlas_sweep_results/sweep_DVmatrix_results.mat  — DV/TOF matrices (required)
+%   atlas_network_results/network_results.mat        — centrality data (optional)
 %
 % If network_results.mat is absent the script computes harmonic closeness
-% (reach) locally using the same formula as net_centrality.m Step 6.
+% locally using the corrected formula from net_centrality.m Step 6.
 %
 % Writes:
 %   web/dv_map.html   — fully self-contained, open directly in any browser
@@ -17,8 +17,8 @@ clear; clc;
 thisFile = mfilename('fullpath');
 repoRoot = fileparts(fileparts(thisFile));
 
-SWEEP_MAT   = fullfile(repoRoot, 'rs3_sweep_results', 'sweep_DVmatrix_results.mat');
-NET_MAT     = fullfile(repoRoot, 'rs3_network_results', 'network_results.mat');
+SWEEP_MAT   = fullfile(repoRoot, 'atlas_sweep_results', 'sweep_DVmatrix_results.mat');
+NET_MAT     = fullfile(repoRoot, 'atlas_network_results', 'network_results.mat');
 HTML_TMPL   = fullfile(repoRoot, 'web', 'dv_map_template.html');
 HTML_OUT    = fullfile(repoRoot, 'web', 'dv_map.html');
 
@@ -70,37 +70,42 @@ bestDV(isinf(bestDV))   = NaN;
 bestDV(1:N+1:end)       = NaN;   % diagonal → NaN
 bestTOF(1:N+1:end)      = NaN;
 
-% ── load or compute reach (harmonic closeness) ────────────────────────────────
-reach_all = NaN(N, nDV, nTmax);
+% ── load or compute harmonic closeness ────────────────────────────────────────
+hc_all    = NaN(N, nDV, nTmax);
 is_ap_all = false(N, nDV, nTmax);
 
 if isfile(NET_MAT)
     fprintf('Loading network centrality from: %s\n', NET_MAT);
-    NET = load(NET_MAT, 'reach_all', 'is_ap_all');
-    if isfield(NET, 'reach_all') && isequal(size(NET.reach_all), [N, nDV, nTmax])
-        reach_all = NET.reach_all;
+    NET = load(NET_MAT);
+    % Support both old field name (reach_all) and new (harmonic_closeness_all)
+    if isfield(NET, 'harmonic_closeness_all') && ...
+            isequal(size(NET.harmonic_closeness_all), [N, nDV, nTmax])
+        hc_all = NET.harmonic_closeness_all;
+    elseif isfield(NET, 'reach_all') && isequal(size(NET.reach_all), [N, nDV, nTmax])
+        hc_all = NET.reach_all;
+        warning('Using legacy reach_all field; re-run sweep for corrected harmonic_closeness_all.');
     else
-        warning('reach_all in network_results.mat has unexpected size — recomputing.');
+        warning('harmonic_closeness_all not found or wrong size — recomputing locally.');
     end
     if isfield(NET, 'is_ap_all') && isequal(size(NET.is_ap_all), [N, nDV, nTmax])
         is_ap_all = NET.is_ap_all;
     end
 else
-    fprintf('network_results.mat not found — computing reach locally...\n');
+    fprintf('network_results.mat not found — computing harmonic closeness locally...\n');
 end
 
-% Fill any remaining NaN snapshots by computing reach from the DV matrix
+% Fill any remaining NaN snapshots by computing harmonic closeness from DV matrix
 for di = 1:nDV
     for dj = 1:nTmax
-        if all(isfinite(reach_all(:, di, dj))), continue; end
+        if all(isfinite(hc_all(:, di, dj))), continue; end
         M = DVmatrix_sweep{di, dj};
         if isempty(M) || ~isnumeric(M), continue; end
-        reach_all(:, di, dj) = local_compute_reach(M, N);
+        hc_all(:, di, dj) = local_compute_harmonic_closeness(M, N);
     end
 end
 
-% best-case reach: use max-budget snapshot
-bestReach = reach_all(:, nDV, nTmax);
+% best-case: use max-budget snapshot
+bestReach = hc_all(:, nDV, nTmax);
 bestIsAP  = is_ap_all(:, nDV, nTmax);
 
 % ── build JSON ────────────────────────────────────────────────────────────────
@@ -124,9 +129,9 @@ k = 0;
 for di = 1:nDV
     for dj = 1:nTmax
         k = k + 1;
-        M = DVmatrix_sweep{di, dj};
-        T = TOFmatrix_sweep{di, dj};
-        R = reach_all(:, di, dj);
+        M  = DVmatrix_sweep{di, dj};
+        T  = TOFmatrix_sweep{di, dj};
+        R  = hc_all(:, di, dj);
         AP = is_ap_all(:, di, dj);
 
         if isempty(M) || ~isnumeric(M)
@@ -138,7 +143,6 @@ for di = 1:nDV
             dvStr  = mat2json(M);
             tofStr = mat2json(T);
         end
-
         sweepParts{k} = sprintf( ...
             '{"di":%d,"dj":%d,"dvCap":%.6g,"tmax":%.6g,"dv":%s,"tof":%s,"reach":%s,"isAP":%s}', ...
             di - 1, dj - 1, ...                  % 0-indexed for JS
@@ -201,9 +205,10 @@ fprintf('Done.\n');
 
 % ── local functions ────────────────────────────────────────────────────────────
 
-function reach = local_compute_reach(M, N)
-%LOCAL_COMPUTE_REACH  Harmonic closeness centrality (net_centrality Step 6).
+function reach = local_compute_harmonic_closeness(M, N)
+%LOCAL_COMPUTE_HARMONIC_CLOSENESS  Harmonic closeness (net_centrality Step 6).
 %   Uses Floyd-Warshall on the raw DV matrix; treats NaN as no direct edge.
+%   Applies budget-reachability filter: pairs with dist > max(M(:)) contribute 0.
 
 W = M;
 W(isnan(W)) = Inf;

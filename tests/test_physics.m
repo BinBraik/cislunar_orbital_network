@@ -4,11 +4,11 @@ function tests = test_physics
 tests = functiontests(localfunctions);
 end
 
-% ---- rs3_core_cr3bp_U_and_derivs ----
+% ---- cr3bp_potential ----
 
 function test_potential_at_origin(testCase)
     mu = 0.012150584270572;
-    pot = rs3_core_cr3bp_U_and_derivs(0, 0, mu);
+    pot = cr3bp_potential(0, 0, mu);
     verifyTrue(testCase, isstruct(pot));
     verifyTrue(testCase, isfield(pot, 'U'));
     verifyTrue(testCase, isfinite(pot.U));
@@ -18,7 +18,7 @@ function test_potential_vectorized(testCase)
     mu = 0.012150584270572;
     x = linspace(-1, 1, 50)';
     y = zeros(50, 1);
-    pot = rs3_core_cr3bp_U_and_derivs(x, y, mu);
+    pot = cr3bp_potential(x, y, mu);
     verifySize(testCase, pot.U, [50 1]);
 end
 

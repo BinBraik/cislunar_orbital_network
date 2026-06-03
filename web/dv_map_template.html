@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>CR3BP Transfer Network — Earth–Moon</title>
+<title>Cislunar Orbital Network — ΔV Map</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
   :root {
@@ -20,6 +20,7 @@
     --orange: #f07840;
     --red: #e04050;
     --grey: #3a3f55;
+    --path-color: #ffffff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -142,23 +143,63 @@
     gap: 14px;
   }
   .sidebar h2 { font-size: 13px; color: var(--muted); font-weight: 500; }
-  .source-label {
+  .hint-label {
     font-size: 12px;
     color: var(--muted);
     font-style: italic;
+    line-height: 1.5;
   }
 
-  #path-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  #path-table th {
-    color: var(--muted);
-    font-weight: 500;
-    text-align: left;
-    padding: 4px 4px 6px;
-    border-bottom: 1px solid var(--border);
+  /* ── Path display ── */
+  #path-info { display: none; flex-direction: column; gap: 8px; }
+  #path-info.visible { display: flex; }
+
+  .path-endpoints {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
   }
-  #path-table td { padding: 5px 4px; }
-  #path-table tr.unreachable td { color: var(--muted); }
-  #path-table tr.self td { color: var(--muted); font-style: italic; }
+  .node-chip {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .node-chip.src  { background: #f0c04033; color: var(--yellow); border: 1px solid var(--yellow); }
+  .node-chip.dst  { background: #3ecf8e33; color: var(--green);  border: 1px solid var(--green); }
+  .path-arrow { color: var(--muted); font-size: 11px; }
+
+  .path-total {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .path-total strong { color: var(--text); font-size: 14px; }
+
+  .path-hops { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+  .path-hop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .hop-node {
+    min-width: 56px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .hop-cost {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .hop-arrow { color: var(--border); font-size: 10px; }
+  .path-unreachable {
+    font-size: 12px;
+    color: var(--red);
+    font-style: italic;
+  }
 
   .dv-chip {
     display: inline-block;
@@ -207,7 +248,7 @@
 
 <header>
   <div>
-    <h1>CR3BP Transfer Network</h1>
+    <h1>Cislunar Orbital Network — ΔV Map</h1>
     <p>Earth–Moon system · 13 periodic orbit families</p>
   </div>
   <div class="legend" id="legend">
@@ -255,19 +296,24 @@
 
   <div class="sidebar">
     <div>
-      <h2>Shortest path from source</h2>
-      <p class="source-label" id="source-label">Click a node to select source</p>
+      <h2>Shortest path</h2>
+      <p class="hint-label" id="selection-hint">Click a node to select source</p>
     </div>
-    <table id="path-table">
-      <thead>
-        <tr><th>Family</th><th>Δv (m/s)</th></tr>
-      </thead>
-      <tbody id="path-body"></tbody>
-    </table>
+
+    <div id="path-info">
+      <div class="path-endpoints">
+        <span class="node-chip src" id="chip-src">—</span>
+        <span class="path-arrow">▶</span>
+        <span class="node-chip dst" id="chip-dst">—</span>
+      </div>
+      <div class="path-total" id="path-total"></div>
+      <div class="path-hops" id="path-hops"></div>
+    </div>
+
     <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.5">
-      Node size ∝ harmonic closeness centrality (reach).<br>
+      Node size ∝ harmonic closeness (reach).<br>
       Dashed ring = articulation point.<br>
-      Edge color = direct transfer cost.
+      Click 2 nodes to trace shortest path.
     </div>
   </div>
 </div>
@@ -286,25 +332,39 @@ const DATA = /*INJECT_DATA*/null/*END_INJECT*/;
 const W = 760, H = 520;
 const RMIN = 8, RMAX = 26;
 
-// Node positions (manually tuned to reflect orbital hierarchy)
-// L-point orbits: centre; Cyclers: inner ring; Resonant: middle; DPO: bottom
-const NODE_POS = [
-  { x: 260, y: 260 },   //  0  LyapL1
-  { x: 500, y: 260 },   //  1  LyapL2
-  { x: 380, y: 185 },   //  2  Cyc21
-  { x: 310, y: 135 },   //  3  Cyc11a
-  { x: 450, y: 135 },   //  4  Cyc11b
-  { x: 380, y: 345 },   //  5  Cyc32
-  { x: 170, y: 170 },   //  6  R21S
-  { x: 590, y: 170 },   //  7  R21U
-  { x: 155, y: 345 },   //  8  R52S
-  { x: 605, y: 345 },   //  9  R52U
-  { x: 120, y:  90 },   // 10  R31S
-  { x: 640, y:  90 },   // 11  R31U
-  { x: 380, y: 450 },   // 12  DPO
-];
+// Physical unit conversions (derived from CR3BP Earth–Moon system)
+const LU_M        = 384400e3;
+const PERIOD_DAYS = 27.321661;
+const PERIOD_S    = PERIOD_DAYS * 86400;
+const TU_S        = PERIOD_S / (2 * Math.PI);
+const TU_DAYS     = PERIOD_DAYS / (2 * Math.PI);   // ≈ 4.3484 days
+const VU_MPS      = LU_M / TU_S;                   // ≈ 1023.2 m/s
 
-// ── colour scale (log) ────────────────────────────────────────────────────
+// ── Circular node layout ──────────────────────────────────────────────────
+// N nodes equally spaced on a circle; node 0 at the top (–π/2).
+const CX = 370, CY = 255, RING_R = 185;
+
+function nodeAngle(i, n) { return (2 * Math.PI * i / n) - Math.PI / 2; }
+
+function nodeXY(i, n) {
+  const a = nodeAngle(i, n);
+  return { x: CX + RING_R * Math.cos(a), y: CY + RING_R * Math.sin(a) };
+}
+
+// Radial label position (pushed outward from circle centre)
+function labelXY(i, n, nodeR) {
+  const a   = nodeAngle(i, n);
+  const r   = RING_R + nodeR + 14;
+  const x   = CX + r * Math.cos(a);
+  const y   = CY + r * Math.sin(a);
+  const cos = Math.cos(a);
+  const anchor = cos >  0.15 ? 'start'
+               : cos < -0.15 ? 'end'
+               :               'middle';
+  return { x, y, anchor };
+}
+
+// ── colour scale ──────────────────────────────────────────────────────────
 function dvColor(v) {
   if (v === null || !isFinite(v)) return '#3a3f55';
   if (v <   5) return '#3ecf8e';
@@ -313,32 +373,53 @@ function dvColor(v) {
   return '#e04050';
 }
 
-function dvOpacity(v) {
-  if (v === null || !isFinite(v)) return 0;   // hide infeasible
-  return 0.75;
-}
-
 // ── state ─────────────────────────────────────────────────────────────────
-let mode   = 'bestCase';
-let diIdx  = 19;   // 0-based index into DATA.dvCapList
-let djIdx  = 19;
-let source = null; // selected node index
-let distCache = null;
+let mode  = 'bestCase';
+let diIdx = 19;
+let djIdx = 19;
+let nodeA = null;   // first selected node (source)
+let nodeB = null;   // second selected node (destination)
+let fwCache = null; // { d, nxt } from floydWarshallWithPath
 
 // ════════════════════════════════════════════════════════════════════════════
-//  FLOYD-WARSHALL (JS)
+//  FLOYD-WARSHALL  (with next-hop reconstruction)
 // ════════════════════════════════════════════════════════════════════════════
-function floydWarshall(dvMatrix) {
+function floydWarshallWithPath(dvMatrix) {
   const n = dvMatrix.length;
-  const d = dvMatrix.map(row => row.map(v => (v === null || !isFinite(v)) ? Infinity : v));
-  for (let i = 0; i < n; i++) d[i][i] = 0;
+  const d = dvMatrix.map((row, i) =>
+    row.map((v, j) => {
+      if (i === j) return 0;
+      return (v === null || !isFinite(v)) ? Infinity : v;
+    })
+  );
+  // nxt[i][j] = next node on shortest path i → j (-1 = no path)
+  const nxt = d.map((row, i) =>
+    row.map((v, j) => (i === j || !isFinite(v)) ? -1 : j)
+  );
   for (let k = 0; k < n; k++)
     for (let i = 0; i < n; i++)
       for (let j = 0; j < n; j++) {
         const alt = d[i][k] + d[k][j];
-        if (alt < d[i][j]) d[i][j] = alt;
+        if (alt < d[i][j] - 1e-10) {
+          d[i][j] = alt;
+          nxt[i][j] = nxt[i][k];
+        }
       }
-  return d;
+  return { d, nxt };
+}
+
+// Reconstruct node sequence for path a → b using next-hop matrix
+function reconstructPath(nxt, a, b) {
+  if (a === b) return [a];
+  if (nxt[a][b] === -1) return null;   // unreachable
+  const path = [a];
+  let cur = a;
+  while (cur !== b) {
+    cur = nxt[cur][b];
+    if (cur === -1 || path.length > 20) return null;
+    path.push(cur);
+  }
+  return path;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -346,12 +427,10 @@ function floydWarshall(dvMatrix) {
 // ════════════════════════════════════════════════════════════════════════════
 function getSnapshot() {
   if (mode === 'bestCase') return DATA.bestCase;
-  // find the matching sweep cell (0-indexed di/dj)
   return DATA.sweep.find(s => s.di === diIdx && s.dj === djIdx) || null;
 }
 
 function maxReach() {
-  // normalise relative to the max-budget snapshot reach
   const last = DATA.sweep[DATA.sweep.length - 1];
   return Math.max(...last.reach.filter(r => r !== null && isFinite(r)), 1e-9);
 }
@@ -367,7 +446,7 @@ function nodeRadius(reachVal) {
 const svg = d3.select('#graph-svg');
 const N = DATA.families.length;
 
-// build edge list (upper triangle only, drawn as undirected)
+// Build edge list (upper triangle, drawn as undirected)
 const edges = [];
 for (let i = 0; i < N; i++)
   for (let j = i + 1; j < N; j++)
@@ -375,78 +454,62 @@ for (let i = 0; i < N; i++)
 
 // layers
 const edgeGroup    = svg.append('g').attr('class', 'edges');
-const edgeHitGroup = svg.append('g').attr('class', 'edge-hits');  // wider invisible hit area
+const edgeHitGroup = svg.append('g').attr('class', 'edge-hits');
 const nodeGroup    = svg.append('g').attr('class', 'nodes');
 const labelGroup   = svg.append('g').attr('class', 'labels');
 
 // ── edges ─────────────────────────────────────────────────────────────────
 const edgeSel = edgeGroup.selectAll('line')
   .data(edges).enter().append('line')
-  .attr('x1', d => NODE_POS[d.i].x)
-  .attr('y1', d => NODE_POS[d.i].y)
-  .attr('x2', d => NODE_POS[d.j].x)
-  .attr('y2', d => NODE_POS[d.j].y)
+  .attr('x1', d => nodeXY(d.i, N).x)
+  .attr('y1', d => nodeXY(d.i, N).y)
+  .attr('x2', d => nodeXY(d.j, N).x)
+  .attr('y2', d => nodeXY(d.j, N).y)
   .attr('stroke-width', 2)
   .attr('stroke-linecap', 'round');
 
-// invisible wider lines for hover hit area
+// invisible wider hit lines for hover
 const edgeHitSel = edgeHitGroup.selectAll('line')
   .data(edges).enter().append('line')
-  .attr('x1', d => NODE_POS[d.i].x)
-  .attr('y1', d => NODE_POS[d.i].y)
-  .attr('x2', d => NODE_POS[d.j].x)
-  .attr('y2', d => NODE_POS[d.j].y)
+  .attr('x1', d => nodeXY(d.i, N).x)
+  .attr('y1', d => nodeXY(d.i, N).y)
+  .attr('x2', d => nodeXY(d.j, N).x)
+  .attr('y2', d => nodeXY(d.j, N).y)
   .attr('stroke', 'transparent')
   .attr('stroke-width', 12)
   .style('cursor', 'default');
 
-// ── articulation point ring (dashed outer) ────────────────────────────────
+// ── articulation point ring ────────────────────────────────────────────────
 const apRingSel = nodeGroup.selectAll('circle.ap-ring')
   .data(d3.range(N)).enter().append('circle')
   .attr('class', 'ap-ring')
-  .attr('cx', i => NODE_POS[i].x)
-  .attr('cy', i => NODE_POS[i].y)
+  .attr('cx', i => nodeXY(i, N).x)
+  .attr('cy', i => nodeXY(i, N).y)
   .attr('fill', 'none')
   .attr('stroke', '#4f8ef7')
   .attr('stroke-width', 1.5)
   .attr('stroke-dasharray', '3,2')
   .attr('opacity', 0);
 
-// ── node circles ─────────────────────────────────────────────────────────
+// ── node circles ──────────────────────────────────────────────────────────
 const nodeSel = nodeGroup.selectAll('circle.node')
   .data(d3.range(N)).enter().append('circle')
   .attr('class', 'node')
-  .attr('cx', i => NODE_POS[i].x)
-  .attr('cy', i => NODE_POS[i].y)
+  .attr('cx', i => nodeXY(i, N).x)
+  .attr('cy', i => nodeXY(i, N).y)
   .attr('fill', '#4f8ef7')
   .attr('stroke', '#1a1d27')
   .attr('stroke-width', 2)
   .style('cursor', 'pointer');
 
-// ── node labels ───────────────────────────────────────────────────────────
+// ── node labels (radial, pushed outward) ──────────────────────────────────
 const nameLabelSel = labelGroup.selectAll('text.name')
   .data(d3.range(N)).enter().append('text')
   .attr('class', 'name')
-  .attr('x', i => NODE_POS[i].x)
-  .attr('y', i => NODE_POS[i].y - RMAX - 5)
-  .attr('text-anchor', 'middle')
   .attr('font-size', '11px')
   .attr('fill', '#c0c8e0')
   .attr('pointer-events', 'none')
   .text(i => DATA.shortNames[i]);
-
-// dv labels (shown when source is selected)
-const dvLabelSel = labelGroup.selectAll('text.dv')
-  .data(d3.range(N)).enter().append('text')
-  .attr('class', 'dv')
-  .attr('x', i => NODE_POS[i].x)
-  .attr('y', i => NODE_POS[i].y + RMAX + 13)
-  .attr('text-anchor', 'middle')
-  .attr('font-size', '10px')
-  .attr('font-weight', '600')
-  .attr('fill', '#3ecf8e')
-  .attr('pointer-events', 'none')
-  .attr('display', 'none');
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TOOLTIP
@@ -487,34 +550,46 @@ nodeSel
     const reachStr = (reach !== null && isFinite(reach)) ? reach.toFixed(4) : '—';
     showTooltip(
       `<strong>${DATA.families[i]}</strong><br>
-       <span>Reach (harmonic closeness):</span><br>
+       <span>Harmonic closeness:</span><br>
        <strong>${reachStr}</strong>`,
       event.clientX, event.clientY);
   })
   .on('mouseleave', hideTooltip);
 
-// ── node click (select source) ────────────────────────────────────────────
+// ── node click: 2-node path selection ────────────────────────────────────
 nodeSel.on('click', function(event, i) {
-  if (source === i) {
-    source = null;
-    distCache = null;
-    clearPaths();
-  } else {
-    source = i;
-    const snap = getSnapshot();
-    if (snap && snap.dv) {
-      distCache = floydWarshall(snap.dv);
-      renderPaths();
+  hideTooltip();
+  if (nodeA === null) {
+    // Select source
+    nodeA = i;
+  } else if (nodeB === null) {
+    if (i === nodeA) {
+      // Deselect source
+      nodeA = null;
+    } else {
+      // Select destination — compute path
+      nodeB = i;
+      const snap = getSnapshot();
+      if (snap && snap.dv) fwCache = floydWarshallWithPath(snap.dv);
+      renderPath();
     }
+  } else {
+    // Both already selected — reset and start fresh with this node
+    nodeA = i;
+    nodeB = null;
+    fwCache = null;
+    clearPath();
   }
   updateNodeHighlight();
   event.stopPropagation();
 });
 
+// Click background → clear selection
 svg.on('click', () => {
-  source = null;
-  distCache = null;
-  clearPaths();
+  nodeA = null;
+  nodeB = null;
+  fwCache = null;
+  clearPath();
   updateNodeHighlight();
 });
 
@@ -525,7 +600,19 @@ function updateGraph() {
   const snap = getSnapshot();
   if (!snap) return;
 
-  // edges
+  // Update label positions now that we know node radii
+  const reach = snap.reach || DATA.bestCase.reach;
+  nameLabelSel.each(function(i) {
+    const r   = nodeRadius(reach ? reach[i] : null);
+    const lp  = labelXY(i, N, r);
+    d3.select(this)
+      .attr('x', lp.x)
+      .attr('y', lp.y)
+      .attr('text-anchor', lp.anchor)
+      .attr('dominant-baseline', 'central');
+  });
+
+  // Edge colours
   edgeSel
     .attr('stroke', d => snap.dv ? dvColor(snap.dv[d.i][d.j]) : '#3a3f55')
     .attr('opacity', d => {
@@ -537,129 +624,157 @@ function updateGraph() {
       if (!snap.dv) return '4,3';
       const v = snap.dv[d.i][d.j];
       return (v === null || !isFinite(v)) ? '4,3' : null;
-    });
+    })
+    .attr('stroke-width', 2);
 
-  // nodes — size by reach
-  const reach = snap.reach || DATA.bestCase.reach;
+  // Node size by reach
   nodeSel.attr('r', i => nodeRadius(reach ? reach[i] : null));
-  nameLabelSel.attr('y', i => NODE_POS[i].y - nodeRadius(reach ? reach[i] : null) - 5);
-  dvLabelSel.attr('y', i => NODE_POS[i].y + nodeRadius(reach ? reach[i] : null) + 13);
 
-  // articulation rings
+  // Articulation rings
   const isAP = snap.isAP || Array(N).fill(false);
   apRingSel
     .attr('r', i => nodeRadius(reach ? reach[i] : null) + 5)
     .attr('opacity', i => isAP[i] ? 0.9 : 0);
 
-  // re-render paths if source selected
-  if (source !== null && snap.dv) {
-    distCache = floydWarshall(snap.dv);
-    renderPaths();
+  // Re-render path if both nodes selected
+  if (nodeA !== null && nodeB !== null && snap.dv) {
+    fwCache = floydWarshallWithPath(snap.dv);
+    renderPath();
   } else {
-    clearPaths();
+    clearPath();
   }
 }
 
 function updateNodeHighlight() {
+  const hintEl   = document.getElementById('selection-hint');
   nodeSel
-    .attr('fill', i => i === source ? '#f0c040' : '#4f8ef7')
-    .attr('stroke-width', i => i === source ? 2.5 : 2);
+    .attr('fill', i => {
+      if (i === nodeA) return '#f0c040';   // yellow = source
+      if (i === nodeB) return '#3ecf8e';   // green  = destination
+      return '#4f8ef7';
+    })
+    .attr('opacity', i => {
+      if (nodeA === null) return 1;
+      if (i === nodeA || i === nodeB) return 1;
+      return 0.45;
+    })
+    .attr('stroke-width', i => (i === nodeA || i === nodeB) ? 2.5 : 2);
+
+  if (nodeA === null) {
+    hintEl.textContent = 'Click a node to select source';
+  } else if (nodeB === null) {
+    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Click another node for destination.`;
+  } else {
+    hintEl.textContent = 'Click any node to start a new path.';
+  }
 }
 
-function renderPaths() {
-  if (source === null || !distCache) return;
+function renderPath() {
+  if (nodeA === null || nodeB === null || !fwCache) return;
 
-  // sidebar table
-  document.getElementById('source-label').textContent =
-    'Source: ' + DATA.families[source];
-
+  const { d, nxt } = fwCache;
+  const path = reconstructPath(nxt, nodeA, nodeB);
   const snap = getSnapshot();
-  const rows = d3.range(N).map(i => ({
-    i, dist: distCache[source][i]
-  })).filter(r => r.i !== source)
-     .sort((a, b) => a.dist - b.dist);
 
-  const tbody = document.getElementById('path-body');
-  tbody.innerHTML = '';
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
-    const finite = isFinite(r.dist) && r.dist > 0;
-    tr.className = finite ? '' : 'unreachable';
-    const td1 = document.createElement('td');
-    td1.textContent = DATA.shortNames[r.i];
-    const td2 = document.createElement('td');
-    if (finite) {
-      const chip = document.createElement('span');
-      chip.className = 'dv-chip';
-      chip.style.background = dvColor(r.dist) + '33';
-      chip.style.color = dvColor(r.dist);
-      chip.textContent = r.dist.toFixed(1);
-      td2.appendChild(chip);
-    } else {
-      td2.textContent = '∞';
-      td2.style.color = 'var(--muted)';
+  // ── Highlight path edges; dim everything else ──────────────────────────
+  const pathEdgeSet = new Set();
+  if (path && path.length > 1) {
+    for (let k = 0; k < path.length - 1; k++) {
+      const a = path[k], b = path[k + 1];
+      pathEdgeSet.add(`${Math.min(a,b)}-${Math.max(a,b)}`);
     }
-    tr.appendChild(td1);
-    tr.appendChild(td2);
-    tbody.appendChild(tr);
-  });
+  }
 
-  // highlight shortest-path edges in blue
-  edgeSel.attr('stroke', d => {
-    if (!snap || !snap.dv) return dvColor(null);
-    const onPath = (
-      isFinite(distCache[source][d.i]) && isFinite(distCache[source][d.j]) &&
-      snap.dv[d.i][d.j] !== null && isFinite(snap.dv[d.i][d.j])
-    );
-    if (onPath) {
-      // check if this edge is on a shortest path
-      const via_ij = Math.abs(distCache[source][d.i] + snap.dv[d.i][d.j] - distCache[source][d.j]) < 0.1;
-      const via_ji = Math.abs(distCache[source][d.j] + snap.dv[d.j][d.i] - distCache[source][d.i]) < 0.1;
-      if (via_ij || via_ji) return '#4f8ef7';
+  edgeSel
+    .attr('stroke', ed => {
+      if (!snap || !snap.dv) return dvColor(null);
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      if (pathEdgeSet.has(key)) return '#ffffff';       // path = bright white
+      return dvColor(snap.dv[ed.i][ed.j]);
+    })
+    .attr('stroke-width', ed => {
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      return pathEdgeSet.has(key) ? 3.5 : 2;
+    })
+    .attr('opacity', ed => {
+      if (!snap || !snap.dv) return 0;
+      const v   = snap.dv[ed.i][ed.j];
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      if (pathEdgeSet.has(key)) return 1;
+      if (v === null || !isFinite(v)) return 0;
+      return 0.18;   // dim non-path edges
+    });
+
+  // ── Sidebar path info ──────────────────────────────────────────────────
+  const pathInfo = document.getElementById('path-info');
+  pathInfo.classList.add('visible');
+
+  document.getElementById('chip-src').textContent = DATA.shortNames[nodeA];
+  document.getElementById('chip-dst').textContent = DATA.shortNames[nodeB];
+
+  const totalEl = document.getElementById('path-total');
+  const hopsEl  = document.getElementById('path-hops');
+  hopsEl.innerHTML = '';
+
+  if (!path) {
+    totalEl.innerHTML = '<span class="path-unreachable">No feasible path</span>';
+    return;
+  }
+
+  const totalDV = d[nodeA][nodeB];
+  totalEl.innerHTML = `Total ΔV: <strong>${isFinite(totalDV) ? totalDV.toFixed(1) + ' m/s' : '∞'}</strong>`;
+
+  // Individual hops
+  for (let k = 0; k < path.length; k++) {
+    const row = document.createElement('div');
+    row.className = 'path-hop';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'hop-node';
+    nameEl.textContent = DATA.shortNames[path[k]];
+
+    row.appendChild(nameEl);
+
+    if (k < path.length - 1) {
+      const costEl = document.createElement('span');
+      costEl.className = 'hop-cost';
+      const hopDV = snap && snap.dv ? snap.dv[path[k]][path[k+1]] : null;
+      costEl.textContent = (hopDV !== null && isFinite(hopDV))
+        ? '+' + hopDV.toFixed(1) + ' m/s'
+        : '+∞';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'hop-arrow';
+      arrowEl.textContent = '→';
+      row.appendChild(arrowEl);
+      row.appendChild(costEl);
     }
-    return dvColor(snap.dv[d.i][d.j]);
-  })
-  .attr('stroke-width', d => {
-    if (!snap || !snap.dv) return 2;
-    const v = snap.dv[d.i][d.j];
-    if (v === null || !isFinite(v)) return 1;
-    const onPath = (
-      isFinite(distCache[source][d.i]) && isFinite(distCache[source][d.j])
-    );
-    return onPath ? 2.5 : 2;
-  });
 
-  // dv labels on nodes
-  dvLabelSel
-    .attr('display', i => (i !== source && isFinite(distCache[source][i])) ? null : 'none')
-    .text(i => isFinite(distCache[source][i]) ? distCache[source][i].toFixed(1) : '');
+    hopsEl.appendChild(row);
+  }
 }
 
-function clearPaths() {
-  document.getElementById('source-label').textContent = 'Click a node to select source';
-  document.getElementById('path-body').innerHTML = '';
-  dvLabelSel.attr('display', 'none');
-  // restore edge colours
+function clearPath() {
+  document.getElementById('path-info').classList.remove('visible');
   const snap = getSnapshot();
   if (snap && snap.dv) {
     edgeSel
       .attr('stroke', d => dvColor(snap.dv[d.i][d.j]))
-      .attr('stroke-width', 2);
+      .attr('stroke-width', 2)
+      .attr('opacity', d => {
+        const v = snap.dv[d.i][d.j];
+        return (v === null || !isFinite(v)) ? 0 : 0.65;
+      });
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 //  SLIDER LABELS
 // ════════════════════════════════════════════════════════════════════════════
-const VU_MPS  = 1000.8;   // velocity unit
-const TU_DAYS = 4.348;    // time unit
-
 function updateSliderLabels() {
   const dv   = DATA.dvCapList[diIdx];
   const tmax = DATA.tmaxList[djIdx];
-  // physical budget = 2× (departure + arrival manoeuvre)
   document.getElementById('lbl-dv').textContent   =
-    (2 * dv * VU_MPS).toFixed(0) + ' m/s';
+    (2 * dv   * VU_MPS).toFixed(0)  + ' m/s';
   document.getElementById('lbl-tmax').textContent =
     (2 * tmax * TU_DAYS).toFixed(1) + ' days';
 }
@@ -672,8 +787,8 @@ document.getElementById('tab-best').addEventListener('click', () => {
   document.getElementById('tab-best').classList.add('active');
   document.getElementById('tab-budget').classList.remove('active');
   document.getElementById('budget-controls').classList.remove('visible');
-  source = null; distCache = null; clearPaths(); updateNodeHighlight();
-  updateGraph();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
 });
 
 document.getElementById('tab-budget').addEventListener('click', () => {
@@ -682,8 +797,8 @@ document.getElementById('tab-budget').addEventListener('click', () => {
   document.getElementById('tab-best').classList.remove('active');
   document.getElementById('budget-controls').classList.add('visible');
   updateSliderLabels();
-  source = null; distCache = null; clearPaths(); updateNodeHighlight();
-  updateGraph();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -692,21 +807,15 @@ document.getElementById('tab-budget').addEventListener('click', () => {
 document.getElementById('sl-dv').addEventListener('input', function() {
   diIdx = +this.value;
   updateSliderLabels();
-  if (source !== null) {
-    const snap = getSnapshot();
-    if (snap && snap.dv) distCache = floydWarshall(snap.dv);
-  }
-  updateGraph();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
 });
 
 document.getElementById('sl-tmax').addEventListener('input', function() {
   djIdx = +this.value;
   updateSliderLabels();
-  if (source !== null) {
-    const snap = getSnapshot();
-    if (snap && snap.dv) distCache = floydWarshall(snap.dv);
-  }
-  updateGraph();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -716,7 +825,6 @@ if (!DATA) {
   document.body.innerHTML =
     '<p style="color:red;padding:40px">DATA not found. Run export_sweep_to_json.m in MATLAB first.</p>';
 } else {
-  // Set slider max from actual data lengths
   document.getElementById('sl-dv').max    = DATA.dvCapList.length - 1;
   document.getElementById('sl-dv').value  = DATA.dvCapList.length - 1;
   document.getElementById('sl-tmax').max  = DATA.tmaxList.length - 1;
@@ -724,6 +832,7 @@ if (!DATA) {
   diIdx = DATA.dvCapList.length - 1;
   djIdx = DATA.tmaxList.length - 1;
   updateSliderLabels();
+  updateNodeHighlight();
   updateGraph();
 }
 </script>

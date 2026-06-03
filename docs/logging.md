@@ -1,29 +1,22 @@
 # Logging
 
-The original codebase prints directly with `fprintf`.
+The codebase prints progress directly with `fprintf` using the prefixes `[atlas]`,
+`[overlap]`, and `[traj]` to indicate which pipeline stage is active.
 
-This repo adds a tiny logger:
+Verbose output is controlled by `cfg.io.verbose` (default: `true`).
+Progress reporting inside PARFOR loops is controlled by `cfg.diag.progress` and
+`cfg.par.progress_every`.
 
-- `rs3_log_init(outdir)` creates `rs3_run.log` in the output folder and sets a default logger.
-- `rs3_log(level, fmt, ...)` writes timestamped messages to console + log file.
-- `rs3_log_close()` closes the log file.
-
-Example:
+To suppress all output, set both to `false` before running a runner script:
 
 ```matlab
-outdir = fullfile(rs3_repo_root(),'rs3_results','demo');
-if ~exist(outdir,'dir'), mkdir(outdir); end
-rs3_log_init(outdir,'level','info');
-cleanupObj = onCleanup(@() rs3_log_close());
-
-rs3_log('info','Hello from rs3');
-rs3_log('debug','This will show only if level is debug');
+cfg = atlas_cfg_defaults();
+cfg.io.verbose      = false;
+cfg.diag.progress   = false;
 ```
 
-## Suggested refactor pattern
+## Adding a custom logger
 
-If you want to migrate gradually:
-
-1. Leave inner-loop functions alone for now.
-2. Wrap *top-level* stages with `rs3_log('info',...)` and keep `fprintf` inside hot loops.
-3. Later, replace `fprintf` in non-hot code paths and keep performance-critical `fprintf` where needed.
+If you want to redirect output to a log file, wrap the runner in a MATLAB diary
+or replace `fprintf` calls with your own logging backend. The pattern used in
+runner scripts is straightforward to intercept.
