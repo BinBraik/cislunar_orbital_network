@@ -1,0 +1,62 @@
+# MATLAB temporary/session files
+*.asv
+*.m~
+*.autosave
+*.mlx~
+
+# MATLAB project and preferences
+*.prj
+*.mlproj
+
+# MAT and generated data artifacts
+*.mat
+*.h5
+*.hdf5
+
+# Figures and exports
+*.fig
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+
+# Animation outputs (regenerate with run_betweenness_video.m)
+*.mp4
+*.gif
+
+# Logs and caches
+*.log
+cache/
+
+# macOS / Linux / Windows metadata
+.DS_Store
+Thumbs.db
+
+# Python artifacts (if local helper scripts are added)
+__pycache__/
+*.pyc
+
+# Generated pipeline output directories
+atlas_results/
+atlas_sweep_results/
+atlas_network_results/
+atlas_cache/
+atlas_cache_quickstart/
+quickstart_output/
+
+# Legacy output directories (pre-rename rs3_ prefix)
+rs3_betweenness_explainer/
+rs3_network_results/
+rs3_sweep_results/
+
+# Betweenness explainer outputs (regenerate with run_betweenness_explainer.m)
+betweenness_explainer/
+
+# Generated web output (template is tracked; built file is not)
+web/sweep_data.js
+web/dv_map.html
+
+# Editor / IDE
+.vscode/
+.idea/

@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite both the paper and the software itself."
+title: "Cislunar Orbital Network"
+abstract: >
+  MATLAB codebase for computing reachable-set atlases in the planar Earth-Moon CR3BP,
+  inferring pairwise family accessibility from reachable-set overlap, and assembling
+  weighted cislunar orbital networks from thirteen representative periodic orbit families
+  at a common Jacobi constant. Associated with the paper "Orbital Networks in the
+  Three-Body Problem" by Braik and Ross.
+version: "1.0.0"
+date-released: 2026-05-27
+license: MIT
+repository-code: "https://github.com/binbraik/cislunar_orbital_network"
+authors:
+  - family-names: Braik
+    given-names: Abdullah
+    affiliation: "Aerospace and Ocean Engineering, Virginia Tech, Blacksburg, VA, USA"
+    email: braik@vt.edu
+    orcid: ""
+  - family-names: Ross
+    given-names: Shane D.
+    affiliation: "Aerospace and Ocean Engineering, Virginia Tech, Blacksburg, VA, USA"
+    email: sdross@vt.edu
+    orcid: ""
+keywords:
+  - "cislunar dynamics"
+  - "Earth-Moon CR3BP"
+  - "reachable sets"
+  - "periodic orbit families"
+  - "accessibility analysis"
+  - "weighted graph centrality"
+  - "low-energy transfers"
+  - "cycler orbits"
+preferred-citation:
+  type: article
+  title: "Orbital Networks in the Three-Body Problem"
+  authors:
+    - family-names: Braik
+      given-names: Abdullah
+    - family-names: Ross
+      given-names: Shane D.
+  year: 2026
+  journal: "Advances in Space Research"
+  doi: "10.48550/arXiv.2605.31543"
+  url: "https://arxiv.org/abs/2605.31543"

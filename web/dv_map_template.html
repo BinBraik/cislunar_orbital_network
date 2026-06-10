@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cislunar Orbital Network — ΔV Map</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2e3247;
+    --text: #e0e4f0;
+    --muted: #6b7494;
+    --accent: #4f8ef7;
+    --tab-active-bg: #222740;
+    --tab-active-border: #4f8ef7;
+    --green: #3ecf8e;
+    --yellow: #f0c040;
+    --orange: #f07840;
+    --red: #e04050;
+    --grey: #3a3f55;
+    --path-color: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header h1 { font-size: 17px; font-weight: 600; letter-spacing: .4px; }
+  header p  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg);
+    padding: 8px 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 7px 18px;
+    border-radius: 6px 6px 0 0;
+    transition: color .15s, background .15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--text);
+    background: var(--tab-active-bg);
+    border-color: var(--tab-active-border);
+  }
+
+  /* ── Main layout ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Graph panel ── */
+  .graph-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    gap: 16px;
+  }
+  #graph-svg {
+    background: var(--surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Budget controls (Budget Explorer only) ── */
+  #budget-controls {
+    display: none;
+    width: 100%;
+    max-width: 760px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 20px;
+    gap: 14px;
+    flex-direction: column;
+  }
+  #budget-controls.visible { display: flex; }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .slider-row label {
+    width: 80px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .slider-row input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .slider-val {
+    width: 130px;
+    font-size: 12px;
+    color: var(--text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 240px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    padding: 16px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .sidebar h2 { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .hint-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  /* ── Path display ── */
+  #path-info { display: none; flex-direction: column; gap: 8px; }
+  #path-info.visible { display: flex; }
+
+  .path-endpoints {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
+  }
+  .node-chip {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .node-chip.src  { background: #f0c04033; color: var(--yellow); border: 1px solid var(--yellow); }
+  .node-chip.dst  { background: #3ecf8e33; color: var(--green);  border: 1px solid var(--green); }
+  .path-arrow { color: var(--muted); font-size: 11px; }
+
+  .path-total {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .path-total strong { color: var(--text); font-size: 14px; }
+
+  .path-hops { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+  .path-hop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .hop-node {
+    min-width: 56px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .hop-cost {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .hop-arrow { color: var(--border); font-size: 10px; }
+  .path-unreachable {
+    font-size: 12px;
+    color: var(--red);
+    font-style: italic;
+  }
+
+  .dv-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-swatch {
+    width: 18px;
+    height: 5px;
+    border-radius: 2px;
+  }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: #1e2236;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    display: none;
+    z-index: 999;
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+    max-width: 220px;
+  }
+  #tooltip strong { color: var(--text); }
+  #tooltip span { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Cislunar Orbital Network — ΔV Map</h1>
+    <p>Earth–Moon system · 13 periodic orbit families</p>
+  </div>
+  <div class="legend" id="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#3ecf8e"></div>&lt;5 m/s</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#b0d060"></div>5–20 m/s</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#f07840"></div>20–100 m/s</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e04050"></div>&gt;100 m/s</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>infeasible</div>
+    <div class="legend-item" style="margin-left:6px">
+      <svg width="22" height="22"><circle cx="11" cy="11" r="8" fill="#1a1d27" stroke="#4f8ef7" stroke-width="2" stroke-dasharray="3,2"/></svg>
+      articulation pt
+    </div>
+    <div class="legend-item">
+      <svg width="22" height="22">
+        <circle cx="11" cy="11" r="5" fill="#4f8ef7" opacity=".7"/>
+        <circle cx="11" cy="11" r="9" fill="#4f8ef7" opacity=".3"/>
+      </svg>
+      size = reach
+    </div>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-best">Best Case</button>
+  <button class="tab-btn"        id="tab-budget">Budget Explorer</button>
+</div>
+
+<div class="main">
+  <div class="graph-panel">
+    <svg id="graph-svg" width="760" height="520"></svg>
+
+    <div id="budget-controls">
+      <div class="slider-row">
+        <label>ΔV cap</label>
+        <input type="range" id="sl-dv" min="0" max="19" step="1" value="19"/>
+        <span class="slider-val" id="lbl-dv">— m/s</span>
+      </div>
+      <div class="slider-row">
+        <label>T<sub>max</sub></label>
+        <input type="range" id="sl-tmax" min="0" max="19" step="1" value="19"/>
+        <span class="slider-val" id="lbl-tmax">— days</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div>
+      <h2>Shortest path</h2>
+      <p class="hint-label" id="selection-hint">Click a node to select source</p>
+    </div>
+
+    <div id="path-info">
+      <div class="path-endpoints">
+        <span class="node-chip src" id="chip-src">—</span>
+        <span class="path-arrow">▶</span>
+        <span class="node-chip dst" id="chip-dst">—</span>
+      </div>
+      <div class="path-total" id="path-total"></div>
+      <div class="path-hops" id="path-hops"></div>
+    </div>
+
+    <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.5">
+      Node size ∝ harmonic closeness (reach).<br>
+      Dashed ring = articulation point.<br>
+      Click 2 nodes to trace shortest path.
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+//  DATA  — injected by export_sweep_to_json.m
+// ════════════════════════════════════════════════════════════════════════════
+const DATA = /*INJECT_DATA*/null/*END_INJECT*/;
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ════════════════════════════════════════════════════════════════════════════
+const W = 760, H = 520;
+const RMIN = 8, RMAX = 26;
+
+// Physical unit conversions (derived from CR3BP Earth–Moon system)
+const LU_M        = 384400e3;
+const PERIOD_DAYS = 27.321661;
+const PERIOD_S    = PERIOD_DAYS * 86400;
+const TU_S        = PERIOD_S / (2 * Math.PI);
+const TU_DAYS     = PERIOD_DAYS / (2 * Math.PI);   // ≈ 4.3484 days
+const VU_MPS      = LU_M / TU_S;                   // ≈ 1023.2 m/s
+
+// ── Circular node layout ──────────────────────────────────────────────────
+// N nodes equally spaced on a circle; node 0 at the top (–π/2).
+const CX = 370, CY = 255, RING_R = 185;
+
+function nodeAngle(i, n) { return (2 * Math.PI * i / n) - Math.PI / 2; }
+
+function nodeXY(i, n) {
+  const a = nodeAngle(i, n);
+  return { x: CX + RING_R * Math.cos(a), y: CY + RING_R * Math.sin(a) };
+}
+
+// Radial label position (pushed outward from circle centre)
+function labelXY(i, n, nodeR) {
+  const a   = nodeAngle(i, n);
+  const r   = RING_R + nodeR + 14;
+  const x   = CX + r * Math.cos(a);
+  const y   = CY + r * Math.sin(a);
+  const cos = Math.cos(a);
+  const anchor = cos >  0.15 ? 'start'
+               : cos < -0.15 ? 'end'
+               :               'middle';
+  return { x, y, anchor };
+}
+
+// ── colour scale ──────────────────────────────────────────────────────────
+function dvColor(v) {
+  if (v === null || !isFinite(v)) return '#3a3f55';
+  if (v <   5) return '#3ecf8e';
+  if (v <  20) return '#b0d060';
+  if (v < 100) return '#f07840';
+  return '#e04050';
+}
+
+// ── state ─────────────────────────────────────────────────────────────────
+let mode  = 'bestCase';
+let diIdx = 19;
+let djIdx = 19;
+let nodeA = null;   // first selected node (source)
+let nodeB = null;   // second selected node (destination)
+let fwCache = null; // { d, nxt } from floydWarshallWithPath
+
+// ════════════════════════════════════════════════════════════════════════════
+//  FLOYD-WARSHALL  (with next-hop reconstruction)
+// ════════════════════════════════════════════════════════════════════════════
+function floydWarshallWithPath(dvMatrix) {
+  const n = dvMatrix.length;
+  const d = dvMatrix.map((row, i) =>
+    row.map((v, j) => {
+      if (i === j) return 0;
+      return (v === null || !isFinite(v)) ? Infinity : v;
+    })
+  );
+  // nxt[i][j] = next node on shortest path i → j (-1 = no path)
+  const nxt = d.map((row, i) =>
+    row.map((v, j) => (i === j || !isFinite(v)) ? -1 : j)
+  );
+  for (let k = 0; k < n; k++)
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        const alt = d[i][k] + d[k][j];
+        if (alt < d[i][j] - 1e-10) {
+          d[i][j] = alt;
+          nxt[i][j] = nxt[i][k];
+        }
+      }
+  return { d, nxt };
+}
+
+// Reconstruct node sequence for path a → b using next-hop matrix
+function reconstructPath(nxt, a, b) {
+  if (a === b) return [a];
+  if (nxt[a][b] === -1) return null;   // unreachable
+  const path = [a];
+  let cur = a;
+  while (cur !== b) {
+    cur = nxt[cur][b];
+    if (cur === -1 || path.length > 20) return null;
+    path.push(cur);
+  }
+  return path;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  DATA ACCESS
+// ════════════════════════════════════════════════════════════════════════════
+function getSnapshot() {
+  if (mode === 'bestCase') return DATA.bestCase;
+  return DATA.sweep.find(s => s.di === diIdx && s.dj === djIdx) || null;
+}
+
+function maxReach() {
+  const last = DATA.sweep[DATA.sweep.length - 1];
+  return Math.max(...last.reach.filter(r => r !== null && isFinite(r)), 1e-9);
+}
+
+function nodeRadius(reachVal) {
+  if (reachVal === null || !isFinite(reachVal)) return RMIN;
+  return RMIN + (RMAX - RMIN) * Math.min(reachVal / maxReach(), 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  BUILD SVG
+// ════════════════════════════════════════════════════════════════════════════
+const svg = d3.select('#graph-svg');
+const N = DATA.families.length;
+
+// Build edge list (upper triangle, drawn as undirected)
+const edges = [];
+for (let i = 0; i < N; i++)
+  for (let j = i + 1; j < N; j++)
+    edges.push({ i, j });
+
+// layers
+const edgeGroup    = svg.append('g').attr('class', 'edges');
+const edgeHitGroup = svg.append('g').attr('class', 'edge-hits');
+const nodeGroup    = svg.append('g').attr('class', 'nodes');
+const labelGroup   = svg.append('g').attr('class', 'labels');
+
+// ── edges ─────────────────────────────────────────────────────────────────
+const edgeSel = edgeGroup.selectAll('line')
+  .data(edges).enter().append('line')
+  .attr('x1', d => nodeXY(d.i, N).x)
+  .attr('y1', d => nodeXY(d.i, N).y)
+  .attr('x2', d => nodeXY(d.j, N).x)
+  .attr('y2', d => nodeXY(d.j, N).y)
+  .attr('stroke-width', 2)
+  .attr('stroke-linecap', 'round');
+
+// invisible wider hit lines for hover
+const edgeHitSel = edgeHitGroup.selectAll('line')
+  .data(edges).enter().append('line')
+  .attr('x1', d => nodeXY(d.i, N).x)
+  .attr('y1', d => nodeXY(d.i, N).y)
+  .attr('x2', d => nodeXY(d.j, N).x)
+  .attr('y2', d => nodeXY(d.j, N).y)
+  .attr('stroke', 'transparent')
+  .attr('stroke-width', 12)
+  .style('cursor', 'default');
+
+// ── articulation point ring ────────────────────────────────────────────────
+const apRingSel = nodeGroup.selectAll('circle.ap-ring')
+  .data(d3.range(N)).enter().append('circle')
+  .attr('class', 'ap-ring')
+  .attr('cx', i => nodeXY(i, N).x)
+  .attr('cy', i => nodeXY(i, N).y)
+  .attr('fill', 'none')
+  .attr('stroke', '#4f8ef7')
+  .attr('stroke-width', 1.5)
+  .attr('stroke-dasharray', '3,2')
+  .attr('opacity', 0);
+
+// ── node circles ──────────────────────────────────────────────────────────
+const nodeSel = nodeGroup.selectAll('circle.node')
+  .data(d3.range(N)).enter().append('circle')
+  .attr('class', 'node')
+  .attr('cx', i => nodeXY(i, N).x)
+  .attr('cy', i => nodeXY(i, N).y)
+  .attr('fill', '#4f8ef7')
+  .attr('stroke', '#1a1d27')
+  .attr('stroke-width', 2)
+  .style('cursor', 'pointer');
+
+// ── node labels (radial, pushed outward) ──────────────────────────────────
+const nameLabelSel = labelGroup.selectAll('text.name')
+  .data(d3.range(N)).enter().append('text')
+  .attr('class', 'name')
+  .attr('font-size', '11px')
+  .attr('fill', '#c0c8e0')
+  .attr('pointer-events', 'none')
+  .text(i => DATA.shortNames[i]);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  TOOLTIP
+// ════════════════════════════════════════════════════════════════════════════
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(html, x, y) {
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  const rect = tooltip.getBoundingClientRect();
+  tooltip.style.left = Math.min(x + 14, window.innerWidth  - rect.width  - 8) + 'px';
+  tooltip.style.top  = Math.min(y - 10, window.innerHeight - rect.height - 8) + 'px';
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+// ── edge hover ────────────────────────────────────────────────────────────
+edgeHitSel
+  .on('mousemove', function(event, d) {
+    const snap = getSnapshot();
+    if (!snap || !snap.dv) return;
+    const dv  = snap.dv[d.i][d.j];
+    const tof = snap.tof ? snap.tof[d.i][d.j] : null;
+    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'infeasible';
+    const tofStr = (tof !== null && isFinite(tof)) ? tof.toFixed(2) + ' days' : '—';
+    showTooltip(
+      `<strong>${DATA.shortNames[d.i]} ↔ ${DATA.shortNames[d.j]}</strong><br>
+       <span>Δv:  </span><strong>${dvStr}</strong><br>
+       <span>TOF: </span>${tofStr}`,
+      event.clientX, event.clientY);
+  })
+  .on('mouseleave', hideTooltip);
+
+// ── node hover ────────────────────────────────────────────────────────────
+nodeSel
+  .on('mousemove', function(event, i) {
+    const snap = getSnapshot();
+    const reach = snap ? (snap.reach ? snap.reach[i] : null) : null;
+    const reachStr = (reach !== null && isFinite(reach)) ? reach.toFixed(4) : '—';
+    showTooltip(
+      `<strong>${DATA.families[i]}</strong><br>
+       <span>Harmonic closeness:</span><br>
+       <strong>${reachStr}</strong>`,
+      event.clientX, event.clientY);
+  })
+  .on('mouseleave', hideTooltip);
+
+// ── node click: 2-node path selection ────────────────────────────────────
+nodeSel.on('click', function(event, i) {
+  hideTooltip();
+  if (nodeA === null) {
+    // Select source
+    nodeA = i;
+  } else if (nodeB === null) {
+    if (i === nodeA) {
+      // Deselect source
+      nodeA = null;
+    } else {
+      // Select destination — compute path
+      nodeB = i;
+      const snap = getSnapshot();
+      if (snap && snap.dv) fwCache = floydWarshallWithPath(snap.dv);
+      renderPath();
+    }
+  } else {
+    // Both already selected — reset and start fresh with this node
+    nodeA = i;
+    nodeB = null;
+    fwCache = null;
+    clearPath();
+  }
+  updateNodeHighlight();
+  event.stopPropagation();
+});
+
+// Click background → clear selection
+svg.on('click', () => {
+  nodeA = null;
+  nodeB = null;
+  fwCache = null;
+  clearPath();
+  updateNodeHighlight();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  RENDER / UPDATE
+// ════════════════════════════════════════════════════════════════════════════
+function updateGraph() {
+  const snap = getSnapshot();
+  if (!snap) return;
+
+  // Update label positions now that we know node radii
+  const reach = snap.reach || DATA.bestCase.reach;
+  nameLabelSel.each(function(i) {
+    const r   = nodeRadius(reach ? reach[i] : null);
+    const lp  = labelXY(i, N, r);
+    d3.select(this)
+      .attr('x', lp.x)
+      .attr('y', lp.y)
+      .attr('text-anchor', lp.anchor)
+      .attr('dominant-baseline', 'central');
+  });
+
+  // Edge colours
+  edgeSel
+    .attr('stroke', d => snap.dv ? dvColor(snap.dv[d.i][d.j]) : '#3a3f55')
+    .attr('opacity', d => {
+      if (!snap.dv) return 0;
+      const v = snap.dv[d.i][d.j];
+      return (v === null || !isFinite(v)) ? 0 : 0.65;
+    })
+    .attr('stroke-dasharray', d => {
+      if (!snap.dv) return '4,3';
+      const v = snap.dv[d.i][d.j];
+      return (v === null || !isFinite(v)) ? '4,3' : null;
+    })
+    .attr('stroke-width', 2);
+
+  // Node size by reach
+  nodeSel.attr('r', i => nodeRadius(reach ? reach[i] : null));
+
+  // Articulation rings
+  const isAP = snap.isAP || Array(N).fill(false);
+  apRingSel
+    .attr('r', i => nodeRadius(reach ? reach[i] : null) + 5)
+    .attr('opacity', i => isAP[i] ? 0.9 : 0);
+
+  // Re-render path if both nodes selected
+  if (nodeA !== null && nodeB !== null && snap.dv) {
+    fwCache = floydWarshallWithPath(snap.dv);
+    renderPath();
+  } else {
+    clearPath();
+  }
+}
+
+function updateNodeHighlight() {
+  const hintEl   = document.getElementById('selection-hint');
+  nodeSel
+    .attr('fill', i => {
+      if (i === nodeA) return '#f0c040';   // yellow = source
+      if (i === nodeB) return '#3ecf8e';   // green  = destination
+      return '#4f8ef7';
+    })
+    .attr('opacity', i => {
+      if (nodeA === null) return 1;
+      if (i === nodeA || i === nodeB) return 1;
+      return 0.45;
+    })
+    .attr('stroke-width', i => (i === nodeA || i === nodeB) ? 2.5 : 2);
+
+  if (nodeA === null) {
+    hintEl.textContent = 'Click a node to select source';
+  } else if (nodeB === null) {
+    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Click another node for destination.`;
+  } else {
+    hintEl.textContent = 'Click any node to start a new path.';
+  }
+}
+
+function renderPath() {
+  if (nodeA === null || nodeB === null || !fwCache) return;
+
+  const { d, nxt } = fwCache;
+  const path = reconstructPath(nxt, nodeA, nodeB);
+  const snap = getSnapshot();
+
+  // ── Highlight path edges; dim everything else ──────────────────────────
+  const pathEdgeSet = new Set();
+  if (path && path.length > 1) {
+    for (let k = 0; k < path.length - 1; k++) {
+      const a = path[k], b = path[k + 1];
+      pathEdgeSet.add(`${Math.min(a,b)}-${Math.max(a,b)}`);
+    }
+  }
+
+  edgeSel
+    .attr('stroke', ed => {
+      if (!snap || !snap.dv) return dvColor(null);
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      if (pathEdgeSet.has(key)) return '#ffffff';       // path = bright white
+      return dvColor(snap.dv[ed.i][ed.j]);
+    })
+    .attr('stroke-width', ed => {
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      return pathEdgeSet.has(key) ? 3.5 : 2;
+    })
+    .attr('opacity', ed => {
+      if (!snap || !snap.dv) return 0;
+      const v   = snap.dv[ed.i][ed.j];
+      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
+      if (pathEdgeSet.has(key)) return 1;
+      if (v === null || !isFinite(v)) return 0;
+      return 0.18;   // dim non-path edges
+    });
+
+  // ── Sidebar path info ──────────────────────────────────────────────────
+  const pathInfo = document.getElementById('path-info');
+  pathInfo.classList.add('visible');
+
+  document.getElementById('chip-src').textContent = DATA.shortNames[nodeA];
+  document.getElementById('chip-dst').textContent = DATA.shortNames[nodeB];
+
+  const totalEl = document.getElementById('path-total');
+  const hopsEl  = document.getElementById('path-hops');
+  hopsEl.innerHTML = '';
+
+  if (!path) {
+    totalEl.innerHTML = '<span class="path-unreachable">No feasible path</span>';
+    return;
+  }
+
+  const totalDV = d[nodeA][nodeB];
+  totalEl.innerHTML = `Total ΔV: <strong>${isFinite(totalDV) ? totalDV.toFixed(1) + ' m/s' : '∞'}</strong>`;
+
+  // Individual hops
+  for (let k = 0; k < path.length; k++) {
+    const row = document.createElement('div');
+    row.className = 'path-hop';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'hop-node';
+    nameEl.textContent = DATA.shortNames[path[k]];
+
+    row.appendChild(nameEl);
+
+    if (k < path.length - 1) {
+      const costEl = document.createElement('span');
+      costEl.className = 'hop-cost';
+      const hopDV = snap && snap.dv ? snap.dv[path[k]][path[k+1]] : null;
+      costEl.textContent = (hopDV !== null && isFinite(hopDV))
+        ? '+' + hopDV.toFixed(1) + ' m/s'
+        : '+∞';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'hop-arrow';
+      arrowEl.textContent = '→';
+      row.appendChild(arrowEl);
+      row.appendChild(costEl);
+    }
+
+    hopsEl.appendChild(row);
+  }
+}
+
+function clearPath() {
+  document.getElementById('path-info').classList.remove('visible');
+  const snap = getSnapshot();
+  if (snap && snap.dv) {
+    edgeSel
+      .attr('stroke', d => dvColor(snap.dv[d.i][d.j]))
+      .attr('stroke-width', 2)
+      .attr('opacity', d => {
+        const v = snap.dv[d.i][d.j];
+        return (v === null || !isFinite(v)) ? 0 : 0.65;
+      });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SLIDER LABELS
+// ════════════════════════════════════════════════════════════════════════════
+function updateSliderLabels() {
+  const dv   = DATA.dvCapList[diIdx];
+  const tmax = DATA.tmaxList[djIdx];
+  document.getElementById('lbl-dv').textContent   =
+    (2 * dv   * VU_MPS).toFixed(0)  + ' m/s';
+  document.getElementById('lbl-tmax').textContent =
+    (2 * tmax * TU_DAYS).toFixed(1) + ' days';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('tab-best').addEventListener('click', () => {
+  mode = 'bestCase';
+  document.getElementById('tab-best').classList.add('active');
+  document.getElementById('tab-budget').classList.remove('active');
+  document.getElementById('budget-controls').classList.remove('visible');
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
+});
+
+document.getElementById('tab-budget').addEventListener('click', () => {
+  mode = 'sweep';
+  document.getElementById('tab-budget').classList.add('active');
+  document.getElementById('tab-best').classList.remove('active');
+  document.getElementById('budget-controls').classList.add('visible');
+  updateSliderLabels();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SLIDER EVENTS
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('sl-dv').addEventListener('input', function() {
+  diIdx = +this.value;
+  updateSliderLabels();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
+});
+
+document.getElementById('sl-tmax').addEventListener('input', function() {
+  djIdx = +this.value;
+  updateSliderLabels();
+  nodeA = null; nodeB = null; fwCache = null;
+  clearPath(); updateNodeHighlight(); updateGraph();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════════════════════
+if (!DATA) {
+  document.body.innerHTML =
+    '<p style="color:red;padding:40px">DATA not found. Run export_sweep_to_json.m in MATLAB first.</p>';
+} else {
+  document.getElementById('sl-dv').max    = DATA.dvCapList.length - 1;
+  document.getElementById('sl-dv').value  = DATA.dvCapList.length - 1;
+  document.getElementById('sl-tmax').max  = DATA.tmaxList.length - 1;
+  document.getElementById('sl-tmax').value = DATA.tmaxList.length - 1;
+  diIdx = DATA.dvCapList.length - 1;
+  djIdx = DATA.tmaxList.length - 1;
+  updateSliderLabels();
+  updateNodeHighlight();
+  updateGraph();
+}
+</script>
+</body>
+</html>
