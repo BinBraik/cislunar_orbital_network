@@ -17,11 +17,17 @@ function gifPath = overlap_visualize_gif(O, SA, SB, cfg, outdir, tag, varargin)
 %   'HoldFRS'        seconds pausing once FRS is fully shown      (default 1.0)
 %   'HoldBRS'        seconds pausing once BRS is fully shown      (default 1.0)
 %   'HoldEnd'        seconds pausing on the final highlighted frame (default 3.0)
-%   'NBuildFRS'      number of reveal frames for the FRS stage    (default 18)
-%   'NBuildBRS'      number of reveal frames for the BRS stage    (default 18)
-%   'NBuildOverlap'  number of reveal frames for the overlap stage (default 14)
-%   'FigSize'        [width height] in pixels                     (default [760 600])
+%   'NBuildFRS'      number of reveal frames for the FRS stage    (default 12)
+%   'NBuildBRS'      number of reveal frames for the BRS stage    (default 12)
+%   'NBuildOverlap'  number of reveal frames for the overlap stage (default 10)
+%   'FigSize'        [width height] in pixels                     (default [640 500])
 %   'Seed'           RNG seed controlling the point reveal order  (default 1)
+%   'MaxPointsPerSet' cap on FRS/BRS/overlap points drawn per frame (default 4000).
+%                     Voxel clouds can be huge; redrawing every voxel on every
+%                     frame is the main cost driver for slow GIF generation.
+%                     A random subsample looks the same at GIF marker sizes
+%                     but is drawn (and quantized to GIF colors) far faster.
+%                     Set to Inf to animate every voxel.
 %
 % Output:
 %   gifPath          full path to the written .gif
@@ -37,11 +43,12 @@ addParameter(p, 'HoldStart', 1.5);
 addParameter(p, 'HoldFRS', 1.0);
 addParameter(p, 'HoldBRS', 1.0);
 addParameter(p, 'HoldEnd', 3.0);
-addParameter(p, 'NBuildFRS', 18);
-addParameter(p, 'NBuildBRS', 18);
-addParameter(p, 'NBuildOverlap', 14);
-addParameter(p, 'FigSize', [760 600]);
+addParameter(p, 'NBuildFRS', 12);
+addParameter(p, 'NBuildBRS', 12);
+addParameter(p, 'NBuildOverlap', 10);
+addParameter(p, 'FigSize', [640 500]);
 addParameter(p, 'Seed', 1);
+addParameter(p, 'MaxPointsPerSet', 4000);
 parse(p, varargin{:});
 opt = p.Results;
 
@@ -54,6 +61,13 @@ PO_B_COL = 0.55*BRS_COL + 0.45*[1 1 1];
 TXTC     = [0.92 0.94 0.99];
 
 [Ax, Ay, ~, Bx, By, ~, Ox, Oy, ~] = overlap_extract_xy_sets(SA, SB, O);
+
+nA0 = numel(Ax); nB0 = numel(Bx); nO0 = numel(Ox);
+[Ax, Ay] = overlap_subsample_xy(Ax, Ay, opt.MaxPointsPerSet, 11);
+[Bx, By] = overlap_subsample_xy(Bx, By, opt.MaxPointsPerSet, 12);
+[Ox, Oy] = overlap_subsample_xy(Ox, Oy, opt.MaxPointsPerSet, 13);
+fprintf('[overlap_visualize_gif] animating %d/%d FRS, %d/%d BRS, %d/%d overlap points\n', ...
+    numel(Ax), nA0, numel(Bx), nB0, numel(Ox), nO0);
 
 rng(opt.Seed);
 ordA = randperm(max(numel(Ax),1)); ordA = ordA(1:numel(Ax));

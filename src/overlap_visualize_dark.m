@@ -1,16 +1,35 @@
-function overlap_visualize_dark(O, SA, SB, cfg, outdir, tag)
+function overlap_visualize_dark(O, SA, SB, cfg, outdir, tag, varargin)
 %OVERLAP_VISUALIZE_DARK  Dark-theme, presentation/paper-style overlap figure.
 %
 % Same FRS (A) / BRS (B) / overlap voxel projection as overlap_visualize.m,
-% restyled for a dark background and exported as vector formats suitable
-% for a paper or poster: .fig (MATLAB), .pdf, and .eps.
+% restyled for a dark background and exported as .fig (MATLAB), .pdf, and
+% .eps suitable for a paper or poster.
 %
 % Usage:
 %   overlap_visualize_dark(O, SA, SB, cfg, outdir, tag)
+%   overlap_visualize_dark(..., 'MaxPointsPerSet', 8000, 'Resolution', 300)
+%
+% Name-value options (all optional):
+%   'MaxPointsPerSet'  cap on FRS/BRS/overlap points actually drawn (default 8000).
+%                      Voxel clouds can run into the tens/hundreds of thousands;
+%                      at this marker size a random subsample looks identical
+%                      but renders and exports far faster and smaller. Set to
+%                      Inf to plot every voxel.
+%   'Resolution'       DPI used to rasterize the PDF/EPS export (default 300).
+%                      Vector export of a huge scatter embeds one path per
+%                      point and can balloon to hundreds of MB; rasterizing
+%                      at a print-quality DPI keeps files small and fast to
+%                      generate while remaining crisp.
 
 if nargin < 6 || isempty(tag), tag = 'overlap'; end
 if nargin < 5 || isempty(outdir), outdir = pwd; end
 if ~exist(outdir,'dir'), mkdir(outdir); end
+
+p = inputParser;
+addParameter(p, 'MaxPointsPerSet', 8000);
+addParameter(p, 'Resolution', 300);
+parse(p, varargin{:});
+opt = p.Results;
 
 safeTag = sanitize_fname(tag);
 
@@ -23,6 +42,13 @@ LEGBG   = [0.09 0.10 0.14];
 LEGEDGE = [0.40 0.44 0.52];
 
 [Ax, Ay, ~, Bx, By, ~, Ox, Oy, ~] = overlap_extract_xy_sets(SA, SB, O);
+
+nA0 = numel(Ax); nB0 = numel(Bx); nO0 = numel(Ox);
+[Ax, Ay] = overlap_subsample_xy(Ax, Ay, opt.MaxPointsPerSet, 1);
+[Bx, By] = overlap_subsample_xy(Bx, By, opt.MaxPointsPerSet, 2);
+[Ox, Oy] = overlap_subsample_xy(Ox, Oy, opt.MaxPointsPerSet, 3);
+fprintf('[overlap_visualize_dark] plotting %d/%d FRS, %d/%d BRS, %d/%d overlap points\n', ...
+    numel(Ax), nA0, numel(Bx), nB0, numel(Ox), nO0);
 
 fig = figure('Color', BG, 'Name', ['Overlap XY (dark) ' tag], ...
     'Visible', local_fig_visible(cfg), 'InvertHardcopy', 'off', ...
@@ -53,15 +79,21 @@ set(lg, 'TextColor', TXTC, 'Color', LEGBG, 'EdgeColor', LEGEDGE);
 local_apply_zoom(cfg, ax);
 
 baseName = ['overlap_' safeTag '_overlap_xy_dark'];
-local_save_dark(fig, outdir, baseName, BG);
+local_save_dark(fig, outdir, baseName, BG, opt.Resolution);
 local_close_if_hidden(cfg, fig);
 
 end
 
 % ===== helpers =====
 
-function local_save_dark(fig, outdir, baseName, BG)
+function local_save_dark(fig, outdir, baseName, BG, res)
 %LOCAL_SAVE_DARK  Save .fig, .pdf, .eps preserving the dark background.
+%
+% PDF/EPS are rasterized (ContentType 'image') at `res` DPI rather than
+% exported as vector: a vector export of a large scatter cloud embeds one
+% drawing primitive per point and can reach hundreds of MB, whereas a
+% rasterized embed at print DPI is a few MB and generates in a fraction of
+% the time.
 set(fig, 'Color', BG, 'InvertHardcopy', 'off');
 
 figPath = fullfile(outdir, [baseName '.fig']);
@@ -73,17 +105,17 @@ end
 
 pdfPath = fullfile(outdir, [baseName '.pdf']);
 try
-    exportgraphics(fig, pdfPath, 'ContentType', 'vector', 'BackgroundColor', 'current');
+    exportgraphics(fig, pdfPath, 'ContentType', 'image', 'Resolution', res, 'BackgroundColor', 'current');
 catch ME
     warning('[overlap_visualize_dark] Failed to save PDF (%s): %s', pdfPath, ME.message);
 end
 
 epsPath = fullfile(outdir, [baseName '.eps']);
 try
-    exportgraphics(fig, epsPath, 'ContentType', 'vector', 'BackgroundColor', 'current');
+    exportgraphics(fig, epsPath, 'ContentType', 'image', 'Resolution', res, 'BackgroundColor', 'current');
 catch
     try
-        print(fig, epsPath, '-depsc', '-painters');
+        print(fig, epsPath, sprintf('-r%d', res), '-depsc');
     catch ME
         warning('[overlap_visualize_dark] Failed to save EPS (%s): %s', epsPath, ME.message);
     end

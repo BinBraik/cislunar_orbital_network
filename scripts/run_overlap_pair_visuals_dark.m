@@ -48,10 +48,15 @@ GIF_HOLD_START_SEC  = 1.5;
 GIF_HOLD_FRS_SEC    = 1.0;
 GIF_HOLD_BRS_SEC    = 1.0;
 GIF_HOLD_END_SEC    = 3.0;
-GIF_N_BUILD_FRS     = 18;
-GIF_N_BUILD_BRS     = 18;
-GIF_N_BUILD_OVERLAP = 14;
-GIF_FIG_SIZE        = [760 600];
+GIF_N_BUILD_FRS     = 12;
+GIF_N_BUILD_BRS     = 12;
+GIF_N_BUILD_OVERLAP = 10;
+GIF_FIG_SIZE        = [640 500];
+GIF_MAX_PTS_PER_SET = 4000;   % voxel-cloud cap for the animated scatter (speed/size knob)
+
+% Dark figure knobs
+FIG_MAX_PTS_PER_SET = 8000;   % voxel-cloud cap for the static dark figure
+FIG_PDF_RESOLUTION  = 300;    % DPI for the rasterized PDF/EPS embed (keeps files small)
 
 atlas_cfg_validate(cfg);
 
@@ -72,7 +77,9 @@ end
 O = overlap_pair(SA, SB, cfg);
 
 % ===================== DARK PRESENTATION FIGURE =====================
-overlap_visualize_dark(O, SA, SB, cfg, outdir, tag);
+overlap_visualize_dark(O, SA, SB, cfg, outdir, tag, ...
+    'MaxPointsPerSet', FIG_MAX_PTS_PER_SET, ...
+    'Resolution', FIG_PDF_RESOLUTION);
 
 % ===================== PROCESS GIF =====================
 gifPath = overlap_visualize_gif(O, SA, SB, cfg, outdir, tag, ...
@@ -84,6 +91,7 @@ gifPath = overlap_visualize_gif(O, SA, SB, cfg, outdir, tag, ...
     'NBuildFRS', GIF_N_BUILD_FRS, ...
     'NBuildBRS', GIF_N_BUILD_BRS, ...
     'NBuildOverlap', GIF_N_BUILD_OVERLAP, ...
-    'FigSize', GIF_FIG_SIZE);
+    'FigSize', GIF_FIG_SIZE, ...
+    'MaxPointsPerSet', GIF_MAX_PTS_PER_SET);
 
 fprintf('[overlap-dark] Done.\n  outdir: %s\n  gif:    %s\n', outdir, gifPath);
