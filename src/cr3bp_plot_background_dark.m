@@ -5,12 +5,12 @@ function h = cr3bp_plot_background_dark(CJ, mu, ax)
 % primaries, light ZVC boundary).
 
 if nargin < 3 || isempty(ax)
-    figure('Color', [0.047 0.055 0.078]); ax = axes; hold(ax,'on');
+    figure('Color', [0.0 0.0 0.0]); ax = axes; hold(ax,'on');
 else
     hold(ax,'on');
 end
 
-BG      = [0.047 0.055 0.078];   % near-black navy "space"
+BG      = [0.0   0.0   0.0  ];   % true black "space"
 ALLOWED = [0.11  0.15  0.24];    % Hill-allowed region tint
 ZVCLINE = [0.60  0.88  1.00];    % light cyan ZVC boundary
 EARTHC  = [0.30  0.58  1.00];

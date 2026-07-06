@@ -33,7 +33,7 @@ opt = p.Results;
 
 safeTag = sanitize_fname(tag);
 
-BG      = [0.047 0.055 0.078];
+BG      = [0.0   0.0   0.0  ];   % true black background
 FRS_COL = [1.00 0.42 0.20];   % warm bright orange-red
 BRS_COL = [0.25 0.70 1.00];   % bright cyan-blue
 OVL_COL = [0.70 0.98 0.25];   % bright lime-green

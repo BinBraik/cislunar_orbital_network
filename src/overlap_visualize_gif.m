@@ -52,7 +52,7 @@ addParameter(p, 'MaxPointsPerSet', 4000);
 parse(p, varargin{:});
 opt = p.Results;
 
-BG       = [0.047 0.055 0.078];
+BG       = [0.0   0.0   0.0  ];   % true black background
 FRS_COL  = [1.00 0.42 0.20];
 BRS_COL  = [0.25 0.70 1.00];
 OVL_COL  = [0.70 0.98 0.25];
@@ -84,8 +84,10 @@ set(ax.Children, 'HandleVisibility', 'off');
 hold(ax, 'on'); axis(ax, 'equal'); grid(ax, 'on');
 
 % Periodic orbits (closed loops), drawn once — static throughout
-local_plot_po(ax, SA.Xpo, PO_A_COL);
-local_plot_po(ax, SB.Xpo, PO_B_COL);
+% (dense Xpo is only present when cfg.cache.store_dense_po=true / on a
+% fresh build; otherwise fall back to the lightweight cached PO_xy trace)
+local_plot_po(ax, local_po_xy(SA), PO_A_COL);
+local_plot_po(ax, local_po_xy(SB), PO_B_COL);
 
 title(ax, tag, 'Interpreter', 'none', 'Color', TXTC);
 xlabel(ax, 'x', 'Color', TXTC); ylabel(ax, 'y', 'Color', TXTC);
@@ -152,8 +154,20 @@ fr = getframe(fig);
 im = fr.cdata;
 end
 
-function local_plot_po(ax, Xpo, rgb)
-xy = [Xpo(:,1:2); Xpo(1,1:2)];
+function xy = local_po_xy(S)
+%LOCAL_PO_XY  Dense Xpo if available, else the cached lightweight PO_xy trace.
+if isfield(S, 'Xpo') && ~isempty(S.Xpo)
+    xy = S.Xpo(:,1:2);
+elseif isfield(S, 'PO_xy') && ~isempty(S.PO_xy)
+    xy = S.PO_xy;
+else
+    xy = zeros(0,2);
+end
+end
+
+function local_plot_po(ax, xy, rgb)
+if isempty(xy), return; end
+xy = [xy(:,1:2); xy(1,1:2)];
 plot(ax, xy(:,1), xy(:,2), '--', 'Color', rgb, 'LineWidth', 1.3, 'HandleVisibility', 'off');
 end
 
