@@ -22,12 +22,12 @@ function gifPath = overlap_visualize_gif(O, SA, SB, cfg, outdir, tag, varargin)
 %   'NBuildOverlap'  number of reveal frames for the overlap stage (default 10)
 %   'FigSize'        [width height] in pixels                     (default [640 500])
 %   'Seed'           RNG seed controlling the point reveal order  (default 1)
-%   'MaxPointsPerSet' cap on FRS/BRS/overlap points drawn per frame (default 4000).
-%                     Voxel clouds can be huge; redrawing every voxel on every
-%                     frame is the main cost driver for slow GIF generation.
-%                     A random subsample looks the same at GIF marker sizes
-%                     but is drawn (and quantized to GIF colors) far faster.
-%                     Set to Inf to animate every voxel.
+%   'MaxPointsPerSet' cap on FRS/BRS/overlap points drawn per frame
+%                     (default 20000 — dense, matching the standard overlap
+%                     figure look). Redrawing every voxel on every frame is
+%                     the main cost driver for slow GIF generation, so lower
+%                     this (e.g. a few thousand) if a particular family pair
+%                     is too slow to render. Set to Inf to animate every voxel.
 %
 % Output:
 %   gifPath          full path to the written .gif
@@ -48,7 +48,7 @@ addParameter(p, 'NBuildBRS', 12);
 addParameter(p, 'NBuildOverlap', 10);
 addParameter(p, 'FigSize', [640 500]);
 addParameter(p, 'Seed', 1);
-addParameter(p, 'MaxPointsPerSet', 4000);
+addParameter(p, 'MaxPointsPerSet', 20000);
 parse(p, varargin{:});
 opt = p.Results;
 

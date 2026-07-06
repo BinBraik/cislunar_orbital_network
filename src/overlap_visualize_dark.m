@@ -7,14 +7,15 @@ function overlap_visualize_dark(O, SA, SB, cfg, outdir, tag, varargin)
 %
 % Usage:
 %   overlap_visualize_dark(O, SA, SB, cfg, outdir, tag)
-%   overlap_visualize_dark(..., 'MaxPointsPerSet', 8000, 'Resolution', 300)
+%   overlap_visualize_dark(..., 'MaxPointsPerSet', 20000, 'Resolution', 300)
 %
 % Name-value options (all optional):
-%   'MaxPointsPerSet'  cap on FRS/BRS/overlap points actually drawn (default 8000).
-%                      Voxel clouds can run into the tens/hundreds of thousands;
-%                      at this marker size a random subsample looks identical
-%                      but renders and exports far faster and smaller. Set to
-%                      Inf to plot every voxel.
+%   'MaxPointsPerSet'  cap on FRS/BRS/overlap points actually drawn
+%                      (default Inf — plot every voxel, matching the density
+%                      of the standard overlap_visualize.m figure). The
+%                      PDF/EPS export is rasterized (see 'Resolution' below),
+%                      so a large point count no longer bloats the file —
+%                      only lower this if drawing/exporting feels slow.
 %   'Resolution'       DPI used to rasterize the PDF/EPS export (default 300).
 %                      Vector export of a huge scatter embeds one path per
 %                      point and can balloon to hundreds of MB; rasterizing
@@ -26,7 +27,7 @@ if nargin < 5 || isempty(outdir), outdir = pwd; end
 if ~exist(outdir,'dir'), mkdir(outdir); end
 
 p = inputParser;
-addParameter(p, 'MaxPointsPerSet', 8000);
+addParameter(p, 'MaxPointsPerSet', Inf);
 addParameter(p, 'Resolution', 300);
 parse(p, varargin{:});
 opt = p.Results;

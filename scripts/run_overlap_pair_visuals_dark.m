@@ -52,10 +52,11 @@ GIF_N_BUILD_FRS     = 12;
 GIF_N_BUILD_BRS     = 12;
 GIF_N_BUILD_OVERLAP = 10;
 GIF_FIG_SIZE        = [640 500];
-GIF_MAX_PTS_PER_SET = 4000;   % voxel-cloud cap for the animated scatter (speed/size knob)
+GIF_MAX_PTS_PER_SET = 20000;  % voxel-cloud cap for the animated scatter; lower this
+                              % (e.g. 4000) only if a given family pair renders too slowly
 
 % Dark figure knobs
-FIG_MAX_PTS_PER_SET = 8000;   % voxel-cloud cap for the static dark figure
+FIG_MAX_PTS_PER_SET = Inf;    % plot every voxel (PDF/EPS is rasterized, so this is free)
 FIG_PDF_RESOLUTION  = 300;    % DPI for the rasterized PDF/EPS embed (keeps files small)
 
 atlas_cfg_validate(cfg);
