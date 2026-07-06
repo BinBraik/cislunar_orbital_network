@@ -1,14 +1,14 @@
 %% RUN_CYCLER_BUS_ANIMATION_DARK
 %
-% "Cycler bus" explainer animation (dark theme): a mothership travels once
-% around an origin periodic orbit (PO) while dispensing small spacecraft
-% toward several target families, using the results of
-% RUN_TRAJ_SINGLE_FAMILY_SWEEP (sweep_summary.mat).
+% "Cycler bus" explainer animation (dark theme): a cycler bus travels
+% continuously around an origin periodic orbit (PO), lap after lap, while
+% dispensing small spacecraft toward several target families, using the
+% results of RUN_TRAJ_SINGLE_FAMILY_SWEEP (sweep_summary.mat).
 %
 % Storyboard, per target:
-%   - the mothership keeps moving around the origin PO the whole time
+%   - the cycler bus keeps moving around the origin PO for the whole video
 %     (departures can overlap in flight -- concurrent, not one-at-a-time)
-%   - a spacecraft departs when the mothership reaches that target's real
+%   - a spacecraft departs when the cycler bus reaches that target's real
 %     optimal departure phase, then flies the already-computed
 %     departure->patch->arrival transfer (traj_dc.x/y/t), timed
 %     proportionally to its real time-of-flight (rescaled to fit the video)
@@ -25,7 +25,7 @@ ROOT_DIR   = fullfile(pwd, 'rs3_results');   % <-- match cfg.io.out_root from th
 TAG        = '20260318_225856';              % <-- sweep run folder (cfg.io.tag)
 ORIGIN_DIR = '';                             % '' = auto-detect (must be unique under TAG)
 
-VIDEO_LAP_SEC        = 22;    % video seconds for the mothership's one lap of the origin PO
+VIDEO_LAP_SEC        = 22;    % video seconds for the cycler bus's one lap of the origin PO
 COAST_SEC            = 2.5;   % video seconds coasting on each target PO after arrival
 FADE_SEC             = 1.0;   % video seconds to fade out target PO + spacecraft
 END_HOLD_SEC         = 2.0;   % trailing hold once everything has finished
@@ -87,7 +87,7 @@ PALETTE = [
 
 BG         = [0 0 0];
 TXTC       = [0.92 0.94 0.99];
-MOTHER_COL = [0.95 0.96 1.00];
+BUS_COL = [0.95 0.96 1.00];
 
 % ── Origin PO ─────────────────────────────────────────────────────────────
 ode_opts = odeset('RelTol', 1e-9, 'AbsTol', 1e-9);
@@ -159,16 +159,16 @@ set(ax.Children, 'HandleVisibility', 'off');
 hold(ax, 'on'); axis(ax, 'equal'); grid(ax, 'on');
 set(ax, 'GridAlpha', 0.15);
 
-title(ax, sprintf('Cycler bus -- origin: %s', famOrigin), 'Interpreter', 'none', 'Color', TXTC);
+title(ax, sprintf('Cycler bus -- origin: %s', local_short_name(famOrigin)), 'Interpreter', 'none', 'Color', TXTC);
 xlabel(ax, 'x [nd]', 'Color', TXTC); ylabel(ax, 'y [nd]', 'Color', TXTC);
 
 % Origin PO (dotted)
 plot(ax, [XpoO(:,1); XpoO(1,1)], [XpoO(:,2); XpoO(1,2)], ':', ...
     'Color', [0.55 0.60 0.70], 'LineWidth', 1.4, 'HandleVisibility', 'off');
 
-% Mothership marker
-h_mother = plot(ax, NaN, NaN, 'h', 'MarkerSize', 14, 'MarkerFaceColor', MOTHER_COL, ...
-    'MarkerEdgeColor', [0.15 0.15 0.18], 'LineWidth', 1.2, 'DisplayName', 'Mothership');
+% Cycler bus marker
+h_bus = plot(ax, NaN, NaN, 'h', 'MarkerSize', 14, 'MarkerFaceColor', BUS_COL, ...
+    'MarkerEdgeColor', [0.15 0.15 0.18], 'LineWidth', 1.2, 'DisplayName', 'Cycler bus');
 
 % Per-target handles: target PO (dashed), trail, spacecraft dot, label
 h_po    = gobjects(nT, 1);
@@ -185,7 +185,7 @@ for k = 1:nT
         'Color', col, 'FontSize', 8, 'FontWeight', 'bold', 'Interpreter', 'none', ...
         'HorizontalAlignment', 'left', 'VerticalAlignment', 'bottom');
 end
-lg = legend(ax, h_mother, {'Mothership'}, 'Location', 'northwest');
+lg = legend(ax, h_bus, {'Cycler bus'}, 'Location', 'northwest');
 set(lg, 'TextColor', TXTC, 'Color', [0.09 0.10 0.14], 'EdgeColor', [0.40 0.44 0.52]);
 
 % ── Video writer ──────────────────────────────────────────────────────────
@@ -200,10 +200,10 @@ fprintf('[cycler_bus] Writing %d frames to:\n  %s\n', N_frames, vid_path);
 for f = 1:N_frames
     t_v = (f-1) / FPS;
 
-    % Mothership: travels for VIDEO_LAP_SEC, then freezes at end-of-lap
-    t_nd_mother = min(t_v / k_time, Tf_O);
-    xy_mother = interp1(tO, XpoO(:,1:2), t_nd_mother);
-    set(h_mother, 'XData', xy_mother(1), 'YData', xy_mother(2));
+    % Cycler bus: keeps circling the origin PO for the whole video (never stops)
+    t_nd_bus = mod(t_v / k_time, Tf_O);
+    xy_bus = interp1(tO, XpoO(:,1:2), t_nd_bus);
+    set(h_bus, 'XData', xy_bus(1), 'YData', xy_bus(2));
 
     for k = 1:nT
         tgt = targets(k);
@@ -287,10 +287,10 @@ function s = local_short_name(fam_name)
     map = { ...
         'Lyapunov L1',            'Lyap. L1';     ...
         'Lyapunov L2',            'Lyap. L2';     ...
-        'Cycler 21',              'Cycler 2:1';   ...
-        'Cycler 11a',             'Cycler (1,1)a';...
-        'Cycler 11b',             'Cycler (1,1)b';...
-        'Cycler 32',              'Cycler 3:2';   ...
+        'Cycler 21',              '2:1-cycler';   ...
+        'Cycler 11a',             '(1,1)a-cycler';...
+        'Cycler 11b',             '(1,1)b-cycler';...
+        'Cycler 32',              '3:2-cycler';   ...
         'Resonant 2to1 Stable',   'R2:1-S';       ...
         'Resonant 2to1 Unstable', 'R2:1-U';       ...
         'Resonant 3to1 Stable',   'R3:1-S';       ...
