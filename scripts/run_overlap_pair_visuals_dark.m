@@ -51,7 +51,7 @@ GIF_HOLD_END_SEC    = 3.0;
 GIF_N_BUILD_FRS     = 12;
 GIF_N_BUILD_BRS     = 12;
 GIF_N_BUILD_OVERLAP = 10;
-GIF_FIG_SIZE        = [640 500];
+GIF_FIG_SIZE        = [900 700];
 GIF_MAX_PTS_PER_SET = 20000;  % voxel-cloud cap for the animated scatter; lower this
                               % (e.g. 4000) only if a given family pair renders too slowly
 

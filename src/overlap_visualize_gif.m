@@ -20,7 +20,7 @@ function gifPath = overlap_visualize_gif(O, SA, SB, cfg, outdir, tag, varargin)
 %   'NBuildFRS'      number of reveal frames for the FRS stage    (default 12)
 %   'NBuildBRS'      number of reveal frames for the BRS stage    (default 12)
 %   'NBuildOverlap'  number of reveal frames for the overlap stage (default 10)
-%   'FigSize'        [width height] in pixels                     (default [640 500])
+%   'FigSize'        [width height] in pixels                     (default [900 700])
 %   'Seed'           RNG seed controlling the point reveal order  (default 1)
 %   'MaxPointsPerSet' cap on FRS/BRS/overlap points drawn per frame
 %                     (default 20000 — dense, matching the standard overlap
@@ -46,7 +46,7 @@ addParameter(p, 'HoldEnd', 3.0);
 addParameter(p, 'NBuildFRS', 12);
 addParameter(p, 'NBuildBRS', 12);
 addParameter(p, 'NBuildOverlap', 10);
-addParameter(p, 'FigSize', [640 500]);
+addParameter(p, 'FigSize', [900 700]);
 addParameter(p, 'Seed', 1);
 addParameter(p, 'MaxPointsPerSet', 20000);
 parse(p, varargin{:});
@@ -95,10 +95,14 @@ xlabel(ax, 'x', 'Color', TXTC); ylabel(ax, 'y', 'Color', TXTC);
 local_apply_zoom(cfg, ax);
 
 % Reveal handles (start empty)
-hA     = scatter(ax, NaN, NaN, 10, FRS_COL, '.', 'MarkerEdgeAlpha', 0.30, 'MarkerFaceAlpha', 0.30);
-hB     = scatter(ax, NaN, NaN, 10, BRS_COL, '.', 'MarkerEdgeAlpha', 0.30, 'MarkerFaceAlpha', 0.30);
-hOglow = scatter(ax, NaN, NaN, 70, OVL_COL, 'filled', 'MarkerFaceAlpha', 0.20, 'MarkerEdgeAlpha', 0);
-hO     = scatter(ax, NaN, NaN, 18, OVL_COL, 'filled', 'MarkerFaceAlpha', 0.95, ...
+% Markers are sized up relative to the static figure's since the GIF canvas
+% renders at a much lower pixel resolution (no export DPI to fall back on) —
+% at the static figure's marker size, dots round down to sub-pixel here and
+% the cloud reads as sparse even at full point density.
+hA     = scatter(ax, NaN, NaN, 16, FRS_COL, 'filled', 'MarkerFaceAlpha', 0.45, 'MarkerEdgeAlpha', 0);
+hB     = scatter(ax, NaN, NaN, 16, BRS_COL, 'filled', 'MarkerFaceAlpha', 0.45, 'MarkerEdgeAlpha', 0);
+hOglow = scatter(ax, NaN, NaN, 90, OVL_COL, 'filled', 'MarkerFaceAlpha', 0.20, 'MarkerEdgeAlpha', 0);
+hO     = scatter(ax, NaN, NaN, 24, OVL_COL, 'filled', 'MarkerFaceAlpha', 0.95, ...
     'MarkerEdgeColor', [1 1 1], 'MarkerEdgeAlpha', 0.35);
 
 lg = legend(ax, [hA hB hO], {'FRS (A)', 'BRS (B)', 'Overlap'}, 'Location', 'northwest');
