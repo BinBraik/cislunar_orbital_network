@@ -65,13 +65,18 @@ PAIRS = { ...
 
 % Ta ladder, expressed as multiples of pi (nd). Build order is largest
 % first (real propagation), then atlas_derive_subset() peels off every
-% smaller rung from that one fat atlas.
-Ta_multiples_of_pi = sort([1 2 4 8 16], 'descend');
+% smaller rung from that one fat atlas -- since deriving a subset is just
+% a row filter (no re-integration), it costs almost nothing to sample
+% densely, including rungs BELOW the paper's own pi reference point.
+% Geometric ladder with ratio sqrt(2): 2^(n/2) for n = -3..8, i.e.
+% 0.354*pi ... 16*pi (~1.25 days ... ~218.6 days at TU_days~4.348).
+Ta_multiples_of_pi = sort(2.^((-3:8)/2), 'descend');
 
 % Parallel workers for the (seed x heading) propagation inside each fat
 % atlas build. This is orthogonal to the rung/pair loop below, which is
-% cheap and runs serially.
-N_WORKERS = 4;
+% cheap and runs serially. Match this to --cpus-per-task in the SLURM
+% script (minus ~1 core for the MATLAB client/driver process).
+N_WORKERS = 60;
 
 CHECKPOINT_FILE = fullfile(repoRoot, 'ta_asymptote_results', 'checkpoint.mat');
 OUTPUT_DIR      = fullfile(repoRoot, 'ta_asymptote_results');
@@ -170,7 +175,7 @@ Tmax_fat = Ta_multiples_of_pi(1) * pi;
 cfg_fat  = cfg;
 cfg_fat.propag.Tmax = Tmax_fat;
 
-fprintf('\n[ta_sweep] ══ Building FAT atlas(es) at Ta = %d*pi = %.4f nd (%.2f days) ══\n', ...
+fprintf('\n[ta_sweep] ══ Building FAT atlas(es) at Ta = %.4gpi = %.4f nd (%.2f days) ══\n', ...
     Ta_multiples_of_pi(1), Tmax_fat, Tmax_fat * TU_days);
 
 S_fat = struct();
@@ -189,13 +194,13 @@ end
 for r = 1:nRung
 
     if rung_done(r)
-        fprintf('[ta_sweep] Rung %d/%d (Ta=%d*pi) already done -- skipping.\n', ...
+        fprintf('[ta_sweep] Rung %d/%d (Ta=%.4gpi) already done -- skipping.\n', ...
             r, nRung, Ta_multiples_of_pi(r));
         continue;
     end
 
     Tmax_r = Ta_multiples_of_pi(r) * pi;
-    fprintf('\n[ta_sweep] ── Rung %d/%d: Ta = %d*pi = %.4f nd (%.2f days) ──\n', ...
+    fprintf('\n[ta_sweep] ── Rung %d/%d: Ta = %.4gpi = %.4f nd (%.2f days) ──\n', ...
         r, nRung, Ta_multiples_of_pi(r), Tmax_r, Tmax_r * TU_days);
     tRung = tic;
 
