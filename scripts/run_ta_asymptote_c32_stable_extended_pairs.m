@@ -5,9 +5,10 @@
 % those files already ARE the by-rung cache (no monolithic bundle stage,
 % no repack needed, unlike the original full-sweep/hub scripts).
 %
-% Computes both C32-vs-Resonant2to1Stable and C32-vs-Resonant3to1Stable
-% curves across all 24 rungs. Run this only after all three families'
-% run_ta_asymptote_c32_stable_extended_family.m calls have finished.
+% Computes C32-vs-Resonant2to1Stable, C32-vs-Resonant3to1Stable, and
+% C32-vs-Resonant5to2Stable curves across all 24 rungs. Run this only
+% after all four families' run_ta_asymptote_c32_stable_extended_family.m
+% calls have finished.
 
 clear; clc;
 
@@ -20,7 +21,7 @@ addpath(fullfile(repoRoot, 'scripts'));
 rehash;
 
 HUB_FAMILY = 'Cycler 32';
-PARTNER_FAMILIES = {'Resonant 2to1 Stable', 'Resonant 3to1 Stable'};
+PARTNER_FAMILIES = {'Resonant 2to1 Stable', 'Resonant 3to1 Stable', 'Resonant 5to2 Stable'};
 
 Ta_multiples_of_pi = sort(2.^linspace(-1.5, 5, 24), 'descend');   % must match the family script
 DV_cap_nd_expected = 0.15;

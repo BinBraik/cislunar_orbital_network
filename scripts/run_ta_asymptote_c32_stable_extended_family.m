@@ -17,13 +17,14 @@ function run_ta_asymptote_c32_stable_extended_family(familyName, nWorkers)
 % cutting the fan search space -- and therefore build cost/memory -- by
 % 25% relative to 0.2, on top of the already much longer Tmax.
 %
-% MEANT TO RUN CONCURRENTLY: launched as one of three simultaneous
+% MEANT TO RUN CONCURRENTLY: launched as one of four simultaneous
 % `matlab -batch` processes (one per family: Cycler 32, Resonant 2to1
-% Stable, Resonant 3to1 Stable) sharing one big-memory node -- see
-% run_ta_asymptote_c32_stable_extended.slurm. Each instance gets its own
-% parpool of nWorkers, sized by the launcher so all three pools fit the
-% node's core budget together. The three families are otherwise fully
-% independent (different orbits, no shared state), so this is safe --
+% Stable, Resonant 3to1 Stable, Resonant 5to2 Stable) sharing one
+% big-memory node -- see run_ta_asymptote_c32_stable_extended.slurm. Each
+% instance gets its own parpool of nWorkers, sized by the launcher so all
+% four pools fit the node's core budget together. The four families are
+% otherwise fully independent (different orbits, no shared state), so
+% this is safe --
 % unlike parallelizing the derive-subset/footprint loop WITHIN a family,
 % which would mean broadcasting one (multi-GB-to-tens-of-GB) fat atlas to
 % every worker and multiplying memory by worker count -- exactly the bug
