@@ -50,8 +50,14 @@ DV_cap_nd = 0.15;
 
 % Single shared pool for the whole serial run -- same worker count that
 % already worked cleanly on this exact hardware (700G/61 cores, Owl base
-% nodes) for a fresh full-atlas build (job 640852).
+% nodes) for a fresh full-atlas build (job 640852). Overridable via env
+% var so a .slurm file can size it to whatever cpus-per-task it actually
+% requested, without needing a second copy of this script.
 N_WORKERS = 60;
+envWorkers = getenv('C32_STABLE_EXT_NWORKERS');
+if ~isempty(envWorkers)
+    N_WORKERS = str2double(envWorkers);
+end
 
 OUTPUT_DIR  = fullfile(repoRoot, 'ta_asymptote_c32_stable_extended_results');
 BYRUNG_DIR  = fullfile(OUTPUT_DIR, 'footprints_by_rung');
