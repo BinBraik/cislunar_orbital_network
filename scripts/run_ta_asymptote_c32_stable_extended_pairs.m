@@ -40,6 +40,14 @@ nRung   = numel(Ta_multiples_of_pi);
 OUTPUT_DIR = fullfile(repoRoot, 'ta_asymptote_c32_stable_extended_results');
 BYRUNG_DIR = fullfile(OUTPUT_DIR, 'footprints_by_rung');
 
+% OUTPUT_DIR is symlinked to /scratch (large per-rung cache, tens-to-
+% hundreds of GB across 4 families x 24 rungs). The actual final results
+% table is tiny (KB-scale, like the earlier C32-hub CSV) and deliberately
+% goes to a SEPARATE, un-symlinked directory that stays in $HOME, so it's
+% natively browsable/downloadable from OnDemand without depending on
+% symlink-following.
+RESULTS_DIR = fullfile(repoRoot, 'ta_asymptote_c32_stable_extended_final');
+
 ALL_NEEDED = [{HUB_FAMILY}, PARTNER_FAMILIES];
 famReady = false(size(ALL_NEEDED));
 for i = 1:numel(ALL_NEEDED)
@@ -109,9 +117,9 @@ if any(nearCap)
         sum(nearCap), cfg.fan.DV_cap_nd, capMps);
 end
 
-if ~exist(OUTPUT_DIR, 'dir'), mkdir(OUTPUT_DIR); end
-outMat = fullfile(OUTPUT_DIR, 'ta_asymptote_c32_stable_extended_results.mat');
-outCsv = fullfile(OUTPUT_DIR, 'ta_asymptote_c32_stable_extended_results.csv');
+if ~exist(RESULTS_DIR, 'dir'), mkdir(RESULTS_DIR); end
+outMat = fullfile(RESULTS_DIR, 'ta_asymptote_c32_stable_extended_results.mat');
+outCsv = fullfile(RESULTS_DIR, 'ta_asymptote_c32_stable_extended_results.csv');
 save(outMat, 'T', 'Ta_multiples_of_pi', 'HUB_FAMILY', 'availablePartners', 'missingFamilies', 'cfg');
 writetable(T, outCsv);
 
