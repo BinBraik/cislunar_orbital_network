@@ -196,13 +196,14 @@ for hh = 1:2
 
     [thisMin, iLoc] = min(dv);
     if thisMin < bestDv
-        bestDv  = thisMin;
-        found   = true;
-        dv_mps  = thisMin;
-        t_days  = abs(tCand(iLoc)) * TU_days;
-        iSeed_w = iSeedCand(iLoc);
-        iHead_w = iHeadCand(iLoc);
-        half_w  = half;
+        bestDv     = thisMin;
+        found      = true;
+        dv_mps     = thisMin;
+        t_days     = abs(tCand(iLoc)) * TU_days;
+        t_match_nd = tCand(iLoc);   % exact (signed) crossing time of the winning voxel -- used to truncate the trajectory below
+        iSeed_w    = iSeedCand(iLoc);
+        iHead_w    = iHeadCand(iLoc);
+        half_w     = half;
     end
 end
 
@@ -218,6 +219,14 @@ if found
     tt = double(rows.t(idxT));
     [tt, order] = sort(tt);
     idxT = idxT(order);
+
+    % Truncate at (and including) the exact crossing time of the winning
+    % voxel -- Step4 logs every voxel crossed for the whole atlas build
+    % duration, not just up to the meeting point.
+    [~, matchIdxInSorted] = min(abs(tt - t_match_nd));
+    tt   = tt(1:matchIdxInSorted);
+    idxT = idxT(1:matchIdxInSorted);
+
     ixT = double(rows.ix(idxT));
     iyT = double(rows.iy(idxT));
     itT = double(rows.it(idxT));

@@ -350,13 +350,14 @@ for hh = 1:2
 
     [thisMin, iLoc] = min(dv);
     if thisMin < bestDv
-        bestDv  = thisMin;
-        found   = true;
-        dv_mps  = thisMin;
-        t_days  = abs(tCand(iLoc)) * TU_days;
-        iSeed_w = iSeedCand(iLoc);
-        iHead_w = iHeadCand(iLoc);
-        half_w  = half;
+        bestDv    = thisMin;
+        found     = true;
+        dv_mps    = thisMin;
+        t_days    = abs(tCand(iLoc)) * TU_days;
+        t_match_nd = tCand(iLoc);   % exact (signed) crossing time of the winning voxel -- used to truncate the trajectory below
+        iSeed_w   = iSeedCand(iLoc);
+        iHead_w   = iHeadCand(iLoc);
+        half_w    = half;
     end
 end
 
@@ -372,6 +373,19 @@ if found
     tt = double(rows.t(idxT));
     [tt, order] = sort(tt);
     idxT = idxT(order);
+
+    % Step4 logs every voxel crossed for the WHOLE atlas build duration
+    % (e.g. the full 16pi/32pi), not just up to the winning voxel -- so
+    % without truncating here, the exported trajectory keeps coasting
+    % well past the actual meeting point. Cut it off at (and including)
+    % the exact crossing time of the winning voxel found above. Using
+    % the sorted position of the match (rather than a sign-dependent
+    % inequality) keeps this correct regardless of whether t runs
+    % positive or negative in this half.
+    [~, matchIdxInSorted] = min(abs(tt - t_match_nd));
+    tt   = tt(1:matchIdxInSorted);
+    idxT = idxT(1:matchIdxInSorted);
+
     ixT = double(rows.ix(idxT));
     iyT = double(rows.iy(idxT));
     itT = double(rows.it(idxT));
