@@ -283,8 +283,11 @@ if strcmp(side, 'BRS')
     thm = wrap_to_pi(pi - grid3.th_centers(:));
     lut = discretize(thm, grid3.th_edges);
     lut(isnan(lut)) = 0;
-    it_lut = uint16(lut);
+    it_lut = uint32(lut);
 end
+
+targetVoxelId = uint32(targetVoxelId);
+Ny32 = uint32(Ny); Nx32 = uint32(Nx); Nt32 = uint32(Nt); %#ok<NASGU>
 
 bestDv = inf;
 halves = {'upper', 'lower'};
@@ -298,24 +301,34 @@ for hh = 1:2
     n = double(rows.n);
     if n == 0, continue; end
 
-    ix = double(rows.ix(1:n));
-    iy = double(rows.iy(1:n));
-    it = double(rows.it(1:n));
+    % Stay in compact integer types as long as possible -- converting a
+    % billion-row uint16 array to double quadruples its memory footprint
+    % for no reason; sub2ind and equality comparisons work directly on
+    % integer types. Explicit clears below release each big temporary as
+    % soon as it's no longer needed rather than waiting on the next loop
+    % iteration's reassignment.
+    ix_i = uint32(rows.ix(1:n));
+    iy_i = uint32(rows.iy(1:n));
+    it_i = uint32(rows.it(1:n));
 
     if strcmp(side, 'FRS')
-        ids = sub2ind([Ny, Nx, Nt], iy, ix, it);
+        ids = sub2ind([Ny, Nx, Nt], iy_i, ix_i, it_i);
         mask = (ids == targetVoxelId);
     else
-        biy = Ny - iy + 1;
-        bit = double(it_lut(it));
-        okMirror = bit > 0;
-        ids = nan(n, 1);
-        ids(okMirror) = sub2ind([Ny, Nx, Nt], biy(okMirror), ix(okMirror), max(1, min(Nt, bit(okMirror))));
+        biy_i = Ny32 - iy_i + 1;
+        bit_i = it_lut(it_i);
+        okMirror = bit_i > 0;
+        ids = zeros(n, 1, 'uint32');
+        ids(okMirror) = sub2ind([Ny, Nx, Nt], biy_i(okMirror), ix_i(okMirror), ...
+            max(uint32(1), min(Nt32, bit_i(okMirror))));
         mask = okMirror & (ids == targetVoxelId);
+        clear biy_i bit_i okMirror
     end
+    clear ix_i iy_i it_i ids
 
     if ~any(mask), continue; end
     idxCand = find(mask);
+    clear mask
     iSeedCand = double(rows.iSeed(idxCand));
     iHeadCand = double(rows.iHead(idxCand));
     tCand     = double(rows.t(idxCand));
