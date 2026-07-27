@@ -212,6 +212,16 @@ for i = 1:size(allJobs, 1)
         'DVlb_check_mps', dv_A + dv_mps); %#ok<AGROW>
 
     clear S_p
+
+    % Write the summary after EVERY partner, not just once at the end --
+    % this is exactly what went wrong last time: Part 3 crashed on the
+    % very last partner (Resonant 5to2 Stable) and the summary table,
+    % which was only written after the full loop, never made it to disk
+    % even though 11/12 partners had already completed. Same
+    % save-immediately-not-batched-at-the-end lesson as everywhere else
+    % in this project.
+    outCsv = fullfile(OUTPUT_DIR, 'c32_trajectory_contribution_split.csv');
+    writetable(struct2table(summary), outCsv);
 end
 
 T = struct2table(summary);
