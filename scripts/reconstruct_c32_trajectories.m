@@ -353,8 +353,10 @@ if found
     iyT = double(rows.iy(idxT));
     itT = double(rows.it(idxT));
 
-    traj = table(tt(:), tt(:) * TU_days, grid3.x_centers(ixT(:)), grid3.y_centers(iyT(:)), ...
-        rad2deg(grid3.th_centers(itT(:))), ...
+    xVals  = reshape(grid3.x_centers(ixT), [], 1);
+    yVals  = reshape(grid3.y_centers(iyT), [], 1);
+    thVals = reshape(rad2deg(grid3.th_centers(itT)), [], 1);
+    traj = table(tt(:), tt(:) * TU_days, xVals, yVals, thVals, ...
         'VariableNames', {'t_nd', 't_days', 'x_nd', 'y_nd', 'theta_deg'});
 end
 end
