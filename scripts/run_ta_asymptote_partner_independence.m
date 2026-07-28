@@ -180,6 +180,14 @@ for i = 1:nFam
         end
         F = local_compute_footprint(Ssub, grid3, VU_mps, TU_days); %#ok<NASGU>
         clear Ssub
+        % Re-check/recreate famDir immediately before every save rather
+        % than trusting the one-time mkdir at the top of this family's
+        % loop -- a real run hit "Cannot create rung01.mat because ...
+        % does not exist" after an hour-plus atlas build sat between the
+        % directory being created and the first save, so something
+        % removed it in that window. Cheap insurance against that
+        % recurring, regardless of the root cause.
+        if ~exist(famDir, 'dir'), mkdir(famDir); end
         save(rpath, 'F', 'Ta_multiples_of_pi', 'DV_cap_nd', '-v7.3');
         clear F
         fprintf('[partner_indep]   %-25s rung %d/%d (Ta=%.2fd) done and saved (%.1fs elapsed).\n', ...
