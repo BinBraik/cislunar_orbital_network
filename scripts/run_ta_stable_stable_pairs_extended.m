@@ -392,25 +392,28 @@ end
 
 [F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
     [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
+clear ids_u ids_l
 
 if ~isempty(ix_u)
-    biy_u = Ny - iy_u + 1;
-    bit_u = double(it_lut(it_u));
+    biy_u = uint32(Ny) - iy_u + 1;
+    bit_u = uint32(it_lut(it_u));
     ok_u  = bit_u > 0;
-    ids_brs_u = sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), max(1, min(Nt, bit_u(ok_u))));
+    ids_brs_u = uint32(sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), max(uint32(1), min(uint32(Nt), bit_u(ok_u)))));
     dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
+    clear biy_u bit_u ok_u ix_u iy_u it_u dv_u t_u
 else
-    ids_brs_u = zeros(0,1);  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
+    ids_brs_u = zeros(0,1,'uint32');  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
 end
 
 if ~isempty(ix_l)
-    biy_l = Ny - iy_l + 1;
-    bit_l = double(it_lut(it_l));
+    biy_l = uint32(Ny) - iy_l + 1;
+    bit_l = uint32(it_lut(it_l));
     ok_l  = bit_l > 0;
-    ids_brs_l = sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), max(1, min(Nt, bit_l(ok_l))));
+    ids_brs_l = uint32(sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), max(uint32(1), min(uint32(Nt), bit_l(ok_l)))));
     dv_bl = dv_l(ok_l);  t_bl = t_l(ok_l);
+    clear biy_l bit_l ok_l ix_l iy_l it_l dv_l t_l
 else
-    ids_brs_l = zeros(0,1);  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
+    ids_brs_l = zeros(0,1,'uint32');  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
 end
 
 [F.uid_brs, F.dv_min_brs, F.t_mean_brs] = local_fp_agg( ...
@@ -424,21 +427,26 @@ end
 % ─────────────────────────────────────────────────────────────────────────────
 function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
         rows, n, v0_per_seed, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
-ix_out = double(rows.ix(1:n));
-iy_out = double(rows.iy(1:n));
-it_out = double(rows.it(1:n));
-ids    = sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out);
+ix_out = uint32(rows.ix(1:n));
+iy_out = uint32(rows.iy(1:n));
+it_out = uint32(rows.it(1:n));
+ids    = uint32(sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out));
 
-iSeed = double(rows.iSeed(1:n));
-iHead = double(rows.iHead(1:n));
-t_nd  = double(rows.t(1:n));
+iSeed = uint32(rows.iSeed(1:n));
+iHead = uint32(rows.iHead(1:n));
 
-lin   = sub2ind([Ns, max_h], iSeed, iHead);
+lin   = sub2ind([Ns, max_h], double(iSeed), double(iHead));
 delta = delta_mat(lin);
+clear lin
 
-v0     = v0_per_seed(iSeed);
+v0 = v0_per_seed(double(iSeed));
+clear iSeed iHead
 dv_mps = 2 * v0(:) .* sin(abs(delta(:)) / 2) * VU_mps;
+clear delta v0
+
+t_nd   = double(rows.t(1:n));
 t_days = abs(t_nd(:)) * TU_days;
+clear t_nd
 end
 
 % ─────────────────────────────────────────────────────────────────────────────
