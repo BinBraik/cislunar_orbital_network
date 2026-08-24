@@ -133,14 +133,14 @@
 
   /* ── Sidebar ── */
   .sidebar {
-    width: 240px;
+    width: 280px;
     border-left: 1px solid var(--border);
     background: var(--surface);
     padding: 16px 14px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
   }
   .sidebar h2 { font-size: 13px; color: var(--muted); font-weight: 500; }
   .hint-label {
@@ -230,22 +230,6 @@
     font-style: italic;
   }
 
-  /* ── Family legend ── */
-  .fam-legend { display: flex; flex-direction: column; gap: 6px; }
-  .fam-row {
-    display: flex;
-    gap: 8px;
-    font-size: 11px;
-    line-height: 1.4;
-  }
-  .fam-abbr {
-    min-width: 52px;
-    font-weight: 600;
-    color: var(--text);
-    flex-shrink: 0;
-  }
-  .fam-full { color: var(--muted); }
-
   .dv-chip {
     display: inline-block;
     padding: 1px 6px;
@@ -283,10 +267,115 @@
     display: none;
     z-index: 999;
     box-shadow: 0 4px 16px rgba(0,0,0,.5);
-    max-width: 220px;
+    max-width: 260px;
   }
   #tooltip strong { color: var(--text); }
   #tooltip span { color: var(--muted); }
+
+  /* ── Intro box ── */
+  .intro-box {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .intro-box summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: 12px;
+    user-select: none;
+    list-style: none;
+  }
+  .intro-box summary::-webkit-details-marker { display: none; }
+  .intro-box summary::before { content: '▶  '; font-size: 10px; }
+  .intro-box[open] > summary::before { content: '▼  '; }
+  .intro-box p { margin-top: 6px; }
+
+  /* ── Sidebar info sections ── */
+  .info-section {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+  .info-section > summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+    user-select: none;
+    list-style: none;
+  }
+  .info-section > summary::-webkit-details-marker { display: none; }
+  .info-section > summary::before { content: '▶  '; font-size: 10px; }
+  .info-section[open] > summary::before { content: '▼  '; }
+  .info-text {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 6px;
+  }
+  .info-text ul { padding-left: 14px; margin-top: 2px; }
+  .info-text li { margin-bottom: 3px; }
+  .info-text p { margin-bottom: 4px; }
+  .info-text strong { color: var(--text); }
+
+  /* ── Info tables (roles, abbreviations) ── */
+  .info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  .info-table th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 500;
+    padding: 3px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .info-table td {
+    padding: 3px 4px;
+    color: var(--muted);
+    vertical-align: top;
+  }
+  .info-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .info-table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+
+  /* ── Slider label full-width layout ── */
+  .slider-row {
+    flex-wrap: wrap;
+  }
+  .slider-row label {
+    width: 100% !important;
+    min-width: unset !important;
+  }
+  .slider-val {
+    width: auto !important;
+    min-width: 60px;
+  }
+
+  /* ── Mobile responsiveness ── */
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 16px;
+    }
+    #legend { font-size: 10px; gap: 6px; }
+    .tabs { padding: 8px 12px 0; flex-wrap: wrap; }
+    .intro-box { padding: 10px 16px; }
+    .main { flex-direction: column; overflow: visible; }
+    .graph-panel { padding: 10px; }
+    #graph-svg { width: 100% !important; height: auto !important; }
+    .sidebar {
+      width: 100% !important;
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+    #budget-controls { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -301,48 +390,53 @@
     <div class="legend-item"><div class="legend-swatch" style="background:#b0d060"></div>5–20 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#f07840"></div>20–100 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#e04050"></div>&gt;100 m/s</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>infeasible</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>No connection</div>
     <div class="legend-item" style="margin-left:6px">
       <svg width="22" height="22"><circle cx="11" cy="11" r="8" fill="#1a1d27" stroke="#4f8ef7" stroke-width="2" stroke-dasharray="3,2"/></svg>
-      articulation pt
+      Structural bottleneck
     </div>
     <div class="legend-item">
       <svg width="22" height="22">
         <circle cx="11" cy="11" r="5" fill="#4f8ef7" opacity=".7"/>
         <circle cx="11" cy="11" r="9" fill="#4f8ef7" opacity=".3"/>
       </svg>
-      size = reach
+      Node size ∝ harmonic closeness
     </div>
   </div>
 </header>
 
 <div class="tabs">
-  <button class="tab-btn active" id="tab-best">Best Case</button>
+  <button class="tab-btn active" id="tab-best">Maximum Budget</button>
   <button class="tab-btn"        id="tab-budget">Budget Explorer</button>
 </div>
 
+<details class="intro-box" open>
+  <summary>About this map</summary>
+  <p>This interactive ΔV map visualizes budget-dependent accessibility among 13 representative cislunar periodic-orbit families in the planar Earth–Moon CR3BP (Jacobi level C<sub>J</sub> = 3.1294). Edges represent candidate family-to-family connections inferred from reachable-set overlap and weighted by proxy maneuver cost; corrected trajectory costs typically lie below these proxy estimates.</p>
+</details>
+
 <div class="main">
   <div class="graph-panel">
-    <svg id="graph-svg" width="760" height="520"></svg>
+    <svg id="graph-svg" width="760" height="520" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"></svg>
 
     <div id="budget-controls">
       <div class="slider-row">
-        <label>ΔV cap</label>
+        <label>Maneuver budget, ΔV<sub>max</sub></label>
         <input type="range" id="sl-dv" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-dv">— m/s</span>
+        <span class="slider-val" id="lbl-dv">—</span>
       </div>
       <div class="slider-row">
-        <label>T<sub>max</sub></label>
+        <label>Time-of-flight budget, T<sub>max</sub></label>
         <input type="range" id="sl-tmax" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-tmax">— days</span>
+        <span class="slider-val" id="lbl-tmax">—</span>
       </div>
     </div>
   </div>
 
   <div class="sidebar">
     <div>
-      <h2>Point-to-point query</h2>
-      <p class="hint-label" id="selection-hint">Click a node to select source</p>
+      <h2>Point-to-point routes</h2>
+      <p class="hint-label" id="selection-hint">Select a family to set the source</p>
     </div>
 
     <div id="path-info">
@@ -353,28 +447,91 @@
       </div>
 
       <div class="path-block">
-        <h3><span class="path-swatch" style="background:#ffffff"></span>Cheapest (min ΔV)</h3>
+        <h3><span class="path-swatch" style="background:#ffffff"></span>Minimum-cost (ΔV)</h3>
         <div class="path-total" id="dv-total"></div>
         <div class="path-hops" id="dv-hops"></div>
       </div>
 
       <div class="path-block">
-        <h3><span class="path-swatch" style="background:repeating-linear-gradient(90deg,#e06ef0 0 4px,transparent 4px 7px)"></span>Fastest (min TOF)</h3>
+        <h3><span class="path-swatch" style="background:repeating-linear-gradient(90deg,#e06ef0 0 4px,transparent 4px 7px)"></span>Fastest (TOF)</h3>
         <div class="path-total" id="tof-total"></div>
         <div class="path-hops" id="tof-hops"></div>
       </div>
     </div>
 
-    <div>
-      <h2 style="margin-bottom:6px">Orbit families</h2>
-      <div class="fam-legend" id="fam-legend"></div>
+    <div style="font-size:11px; color:var(--muted); line-height:1.5; padding-top:4px">
+      Select two families to compute the minimum-cost and fastest multileg routes.
     </div>
 
-    <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.5">
-      Node size ∝ harmonic closeness (reach).<br>
-      Dashed ring = articulation point.<br>
-      Click 2 nodes to trace cheapest &amp; fastest paths.
-    </div>
+    <details class="info-section">
+      <summary>How to read this map</summary>
+      <div class="info-text">
+        <ul>
+          <li><strong>Nodes</strong> are representative periodic-orbit families.</li>
+          <li><strong>Edges</strong> show candidate family-to-family connections.</li>
+          <li><strong>Edge color</strong> represents proxy maneuver cost.</li>
+          <li><strong>Larger nodes</strong> have higher harmonic closeness — better global gateway or staging families.</li>
+          <li><strong>Structural bottlenecks</strong> are families whose removal strongly changes network connectivity.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Network roles</summary>
+      <div class="info-text">
+        <table class="info-table">
+          <thead><tr><th>Metric</th><th>Role</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Strength</td><td>Hub score</td><td>Many low-cost direct connections</td></tr>
+            <tr><td>Harmonic closeness</td><td>Gateway / staging score</td><td>Efficient access to many other families</td></tr>
+            <tr><td>Betweenness</td><td>Relay score</td><td>Often lies along minimum-cost multileg routes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Maximum Budget summary</summary>
+      <div class="info-text">
+        <p>At the maximum-budget case, the network contains 75 of 78 possible direct family pairs. The (3,2)-cycler, C32, appears as the dominant hub, gateway, and relay. The 2:1 stable resonant family, R21-S, remains the hardest-access family, with missing direct pairs LL1–R21-S, LL2–R21-S, and DPO–R21-S.</p>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Budget regimes</summary>
+      <div class="info-text">
+        <p>The network transitions through three distinct operational regimes as budgets increase:</p>
+        <ul>
+          <li><strong>Sparse direct accessibility</strong> — time-critical retasking.</li>
+          <li><strong>Graph connectedness</strong> — sustained coverage.</li>
+          <li><strong>Multileg accessibility</strong> — time-flexible redistribution.</li>
+        </ul>
+        <p style="margin-top:4px">At low time-of-flight budgets, the (1,1)a-cycler (C11a) emerges as the dominant gateway family.</p>
+      </div>
+    </details>
+
+    <details class="info-section">
+      <summary>Family abbreviations</summary>
+      <div class="info-text">
+        <table class="info-table">
+          <tbody>
+            <tr><td>LL1</td><td>L1 Lyapunov</td></tr>
+            <tr><td>LL2</td><td>L2 Lyapunov</td></tr>
+            <tr><td>C11a</td><td>(1,1)a-cycler</td></tr>
+            <tr><td>C11b</td><td>(1,1)b-cycler</td></tr>
+            <tr><td>C21</td><td>(2,1)-cycler</td></tr>
+            <tr><td>C32</td><td>(3,2)-cycler</td></tr>
+            <tr><td>R21-S</td><td>2:1 stable resonant</td></tr>
+            <tr><td>R21-U</td><td>2:1 unstable resonant</td></tr>
+            <tr><td>R31-S</td><td>3:1 stable resonant</td></tr>
+            <tr><td>R31-U</td><td>3:1 unstable resonant</td></tr>
+            <tr><td>R52-S</td><td>5:2 stable resonant</td></tr>
+            <tr><td>R52-U</td><td>5:2 unstable resonant</td></tr>
+            <tr><td>DPO</td><td>Distant prograde orbit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -399,8 +556,8 @@ const DATA = {
 const W = 760, H = 520;
 const RMIN = 8, RMAX = 26;
 
-const DV_PATH_COLOR  = '#ffffff';   // min-ΔV path highlight
-const TOF_PATH_COLOR = '#e06ef0';   // min-TOF path highlight (dashed)
+const DV_PATH_COLOR  = '#ffffff';   // minimum-cost path highlight
+const TOF_PATH_COLOR = '#e06ef0';   // fastest path highlight (dashed)
 
 // Physical unit conversions (derived from CR3BP Earth–Moon system)
 const LU_M        = 384400e3;
@@ -625,7 +782,7 @@ edgeHitSel
     if (!snap || !snap.dv) return;
     const dv  = snap.dv[d.i][d.j];
     const tof = snap.tof ? snap.tof[d.i][d.j] : null;
-    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'infeasible';
+    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'No connection within selected budgets';
     const tofStr = (tof !== null && isFinite(tof)) ? tof.toFixed(2) + ' days' : '—';
     showTooltip(
       `<strong>${DATA.shortNames[d.i]} ↔ ${DATA.shortNames[d.j]}</strong><br>
@@ -753,11 +910,11 @@ function updateNodeHighlight() {
     .attr('stroke-width', i => (i === nodeA || i === nodeB) ? 2.5 : 2);
 
   if (nodeA === null) {
-    hintEl.textContent = 'Click a node to select source';
+    hintEl.textContent = 'Select a family to set the source';
   } else if (nodeB === null) {
-    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Click another node for destination.`;
+    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Select another family for the destination.`;
   } else {
-    hintEl.textContent = 'Click any node to start a new path.';
+    hintEl.textContent = 'Click any family to start a new route.';
   }
 }
 
@@ -766,7 +923,7 @@ function samePath(p, q) {
   return p.every((v, k) => v === q[k]);
 }
 
-// Draw one highlighted path as an overlay polyline (segment per hop)
+// Draw one highlighted route as an overlay polyline (segment per leg)
 function drawPathOverlay(path, color, dash) {
   if (!path || path.length < 2) return;
   for (let k = 0; k < path.length - 1; k++) {
@@ -781,14 +938,14 @@ function drawPathOverlay(path, color, dash) {
   }
 }
 
-// Fill one sidebar block: totals line + per-hop list
+// Fill one sidebar block: totals line + per-leg list
 function fillPathBlock(totalId, hopsId, path, primary, secondary) {
   const totalEl = document.getElementById(totalId);
   const hopsEl  = document.getElementById(hopsId);
   hopsEl.innerHTML = '';
 
   if (!path) {
-    totalEl.innerHTML = '<span class="path-unreachable">No feasible path</span>';
+    totalEl.innerHTML = '<span class="path-unreachable">No connection within selected budgets</span>';
     return;
   }
 
@@ -831,7 +988,7 @@ function renderPath() {
   const pathDV  = reconstructPath(fwCache.dv.nxt, nodeA, nodeB);
   const pathTOF = fwCache.tof ? reconstructPath(fwCache.tof.nxt, nodeA, nodeB) : null;
 
-  // ── Dim base edges, draw both paths as overlays ────────────────────────
+  // ── Dim base edges, draw both routes as overlays ───────────────────────
   edgeSel
     .attr('stroke', ed => snap && snap.dv ? dvColor(snap.dv[ed.i][ed.j]) : dvColor(null))
     .attr('stroke-width', 2)
@@ -845,7 +1002,7 @@ function renderPath() {
   drawPathOverlay(pathDV,  DV_PATH_COLOR,  null);
   if (!samePath(pathTOF, pathDV)) drawPathOverlay(pathTOF, TOF_PATH_COLOR, '5,5');
 
-  // ── Sidebar path info ──────────────────────────────────────────────────
+  // ── Sidebar route info ─────────────────────────────────────────────────
   document.getElementById('path-info').classList.add('visible');
   document.getElementById('chip-src').textContent = DATA.shortNames[nodeA];
   document.getElementById('chip-dst').textContent = DATA.shortNames[nodeB];
@@ -866,8 +1023,8 @@ function renderPath() {
     tofHopsEl.innerHTML = '';
     const fmt = (v, u) => (v !== null && isFinite(v)) ? v.toFixed(1) + ' ' + u : '—';
     tofTotalEl.innerHTML = pathTOF
-      ? `<span class="path-same-note">Same route as min ΔV</span> · TOF: <strong>${fmt(fwCache.tof.d[nodeA][nodeB], 'days')}</strong>`
-      : '<span class="path-unreachable">No feasible path</span>';
+      ? `<span class="path-same-note">Same route as minimum-cost</span> · TOF: <strong>${fmt(fwCache.tof.d[nodeA][nodeB], 'days')}</strong>`
+      : '<span class="path-unreachable">No connection within selected budgets</span>';
   } else {
     fillPathBlock('tof-total', 'tof-hops', pathTOF,
       { label: 'TOF', unit: 'days', total: pathTOF ? fwCache.tof.d[nodeA][nodeB] : null, matrix: tofMat },
@@ -954,23 +1111,6 @@ if (!DATA) {
   document.getElementById('sl-tmax').value = DATA.tmaxList.length - 1;
   diIdx = DATA.dvCapList.length - 1;
   djIdx = DATA.tmaxList.length - 1;
-
-  // Family legend: abbreviation → full family name
-  const famLegend = document.getElementById('fam-legend');
-  for (let i = 0; i < N; i++) {
-    const row = document.createElement('div');
-    row.className = 'fam-row';
-    const abbr = document.createElement('span');
-    abbr.className = 'fam-abbr';
-    abbr.textContent = DATA.shortNames[i];
-    const full = document.createElement('span');
-    full.className = 'fam-full';
-    full.textContent = DATA.families[i];
-    row.appendChild(abbr);
-    row.appendChild(full);
-    famLegend.appendChild(row);
-  }
-
   updateSliderLabels();
   updateNodeHighlight();
   updateGraph();
