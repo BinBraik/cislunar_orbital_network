@@ -199,6 +199,13 @@ else
     fclose(fid);
     fprintf('\nSelf-contained HTML written to:\n  %s\n', HTML_OUT);
     fprintf('Open it directly in Chrome or Firefox.\n');
+
+    % Keep the published GitHub Pages copy (docs/index.html) in sync
+    PAGES_OUT = fullfile(repoRoot, 'docs', 'index.html');
+    if isfile(PAGES_OUT)
+        copyfile(HTML_OUT, PAGES_OUT);
+        fprintf('Also updated GitHub Pages copy:\n  %s\n', PAGES_OUT);
+    end
 end
 
 fprintf('Done.\n');

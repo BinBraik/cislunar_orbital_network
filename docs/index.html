@@ -133,14 +133,14 @@
 
   /* ── Sidebar ── */
   .sidebar {
-    width: 280px;
+    width: 240px;
     border-left: 1px solid var(--border);
     background: var(--surface);
     padding: 16px 14px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
   }
   .sidebar h2 { font-size: 13px; color: var(--muted); font-weight: 500; }
   .hint-label {
@@ -201,6 +201,51 @@
     font-style: italic;
   }
 
+  .path-block {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+  }
+  .path-block h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .path-swatch {
+    width: 16px;
+    height: 4px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .path-same-note {
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Family legend ── */
+  .fam-legend { display: flex; flex-direction: column; gap: 6px; }
+  .fam-row {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .fam-abbr {
+    min-width: 52px;
+    font-weight: 600;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .fam-full { color: var(--muted); }
+
   .dv-chip {
     display: inline-block;
     padding: 1px 6px;
@@ -238,115 +283,10 @@
     display: none;
     z-index: 999;
     box-shadow: 0 4px 16px rgba(0,0,0,.5);
-    max-width: 260px;
+    max-width: 220px;
   }
   #tooltip strong { color: var(--text); }
   #tooltip span { color: var(--muted); }
-
-  /* ── Intro box ── */
-  .intro-box {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.6;
-  }
-  .intro-box summary {
-    cursor: pointer;
-    color: var(--accent);
-    font-weight: 500;
-    font-size: 12px;
-    user-select: none;
-    list-style: none;
-  }
-  .intro-box summary::-webkit-details-marker { display: none; }
-  .intro-box summary::before { content: '▶  '; font-size: 10px; }
-  .intro-box[open] > summary::before { content: '▼  '; }
-  .intro-box p { margin-top: 6px; }
-
-  /* ── Sidebar info sections ── */
-  .info-section {
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
-  }
-  .info-section > summary {
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--accent);
-    font-weight: 500;
-    user-select: none;
-    list-style: none;
-  }
-  .info-section > summary::-webkit-details-marker { display: none; }
-  .info-section > summary::before { content: '▶  '; font-size: 10px; }
-  .info-section[open] > summary::before { content: '▼  '; }
-  .info-text {
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.6;
-    margin-top: 6px;
-  }
-  .info-text ul { padding-left: 14px; margin-top: 2px; }
-  .info-text li { margin-bottom: 3px; }
-  .info-text p { margin-bottom: 4px; }
-  .info-text strong { color: var(--text); }
-
-  /* ── Info tables (roles, abbreviations) ── */
-  .info-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-    margin-top: 6px;
-  }
-  .info-table th {
-    text-align: left;
-    color: var(--muted);
-    font-weight: 500;
-    padding: 3px 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .info-table td {
-    padding: 3px 4px;
-    color: var(--muted);
-    vertical-align: top;
-  }
-  .info-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
-  .info-table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
-
-  /* ── Slider label full-width layout ── */
-  .slider-row {
-    flex-wrap: wrap;
-  }
-  .slider-row label {
-    width: 100% !important;
-    min-width: unset !important;
-  }
-  .slider-val {
-    width: auto !important;
-    min-width: 60px;
-  }
-
-  /* ── Mobile responsiveness ── */
-  @media (max-width: 768px) {
-    header {
-      flex-wrap: wrap;
-      gap: 10px;
-      padding: 12px 16px;
-    }
-    #legend { font-size: 10px; gap: 6px; }
-    .tabs { padding: 8px 12px 0; flex-wrap: wrap; }
-    .intro-box { padding: 10px 16px; }
-    .main { flex-direction: column; overflow: visible; }
-    .graph-panel { padding: 10px; }
-    #graph-svg { width: 100% !important; height: auto !important; }
-    .sidebar {
-      width: 100% !important;
-      border-left: none;
-      border-top: 1px solid var(--border);
-    }
-    #budget-controls { max-width: 100%; }
-  }
 </style>
 </head>
 <body>
@@ -361,53 +301,48 @@
     <div class="legend-item"><div class="legend-swatch" style="background:#b0d060"></div>5–20 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#f07840"></div>20–100 m/s</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#e04050"></div>&gt;100 m/s</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>No connection</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3a3f55;border:1px dashed #6b7494"></div>infeasible</div>
     <div class="legend-item" style="margin-left:6px">
       <svg width="22" height="22"><circle cx="11" cy="11" r="8" fill="#1a1d27" stroke="#4f8ef7" stroke-width="2" stroke-dasharray="3,2"/></svg>
-      Structural bottleneck
+      articulation pt
     </div>
     <div class="legend-item">
       <svg width="22" height="22">
         <circle cx="11" cy="11" r="5" fill="#4f8ef7" opacity=".7"/>
         <circle cx="11" cy="11" r="9" fill="#4f8ef7" opacity=".3"/>
       </svg>
-      Node size ∝ harmonic closeness
+      size = reach
     </div>
   </div>
 </header>
 
 <div class="tabs">
-  <button class="tab-btn active" id="tab-best">Maximum Budget</button>
+  <button class="tab-btn active" id="tab-best">Best Case</button>
   <button class="tab-btn"        id="tab-budget">Budget Explorer</button>
 </div>
 
-<details class="intro-box" open>
-  <summary>About this map</summary>
-  <p>This interactive ΔV map visualizes budget-dependent accessibility among 13 representative cislunar periodic-orbit families in the planar Earth–Moon CR3BP (Jacobi level C<sub>J</sub> = 3.1294). Edges represent candidate family-to-family connections inferred from reachable-set overlap and weighted by proxy maneuver cost; corrected trajectory costs typically lie below these proxy estimates.</p>
-</details>
-
 <div class="main">
   <div class="graph-panel">
-    <svg id="graph-svg" width="760" height="520" viewBox="0 0 760 520" preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"></svg>
+    <svg id="graph-svg" width="760" height="520"></svg>
 
     <div id="budget-controls">
       <div class="slider-row">
-        <label>Maneuver budget, ΔV<sub>max</sub></label>
+        <label>ΔV cap</label>
         <input type="range" id="sl-dv" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-dv">—</span>
+        <span class="slider-val" id="lbl-dv">— m/s</span>
       </div>
       <div class="slider-row">
-        <label>Time-of-flight budget, T<sub>max</sub></label>
+        <label>T<sub>max</sub></label>
         <input type="range" id="sl-tmax" min="0" max="19" step="1" value="19"/>
-        <span class="slider-val" id="lbl-tmax">—</span>
+        <span class="slider-val" id="lbl-tmax">— days</span>
       </div>
     </div>
   </div>
 
   <div class="sidebar">
     <div>
-      <h2>Minimum-cost path</h2>
-      <p class="hint-label" id="selection-hint">Select a family to set the source</p>
+      <h2>Point-to-point query</h2>
+      <p class="hint-label" id="selection-hint">Click a node to select source</p>
     </div>
 
     <div id="path-info">
@@ -416,83 +351,30 @@
         <span class="path-arrow">▶</span>
         <span class="node-chip dst" id="chip-dst">—</span>
       </div>
-      <div class="path-total" id="path-total"></div>
-      <div class="path-hops" id="path-hops"></div>
+
+      <div class="path-block">
+        <h3><span class="path-swatch" style="background:#ffffff"></span>Cheapest (min ΔV)</h3>
+        <div class="path-total" id="dv-total"></div>
+        <div class="path-hops" id="dv-hops"></div>
+      </div>
+
+      <div class="path-block">
+        <h3><span class="path-swatch" style="background:repeating-linear-gradient(90deg,#e06ef0 0 4px,transparent 4px 7px)"></span>Fastest (min TOF)</h3>
+        <div class="path-total" id="tof-total"></div>
+        <div class="path-hops" id="tof-hops"></div>
+      </div>
     </div>
 
-    <div style="font-size:11px; color:var(--muted); line-height:1.5; padding-top:4px">
-      Select two families to compute the minimum-cost multileg route.
+    <div>
+      <h2 style="margin-bottom:6px">Orbit families</h2>
+      <div class="fam-legend" id="fam-legend"></div>
     </div>
 
-    <details class="info-section">
-      <summary>How to read this map</summary>
-      <div class="info-text">
-        <ul>
-          <li><strong>Nodes</strong> are representative periodic-orbit families.</li>
-          <li><strong>Edges</strong> show candidate family-to-family connections.</li>
-          <li><strong>Edge color</strong> represents proxy maneuver cost.</li>
-          <li><strong>Larger nodes</strong> have higher harmonic closeness — better global gateway or staging families.</li>
-          <li><strong>Structural bottlenecks</strong> are families whose removal strongly changes network connectivity.</li>
-        </ul>
-      </div>
-    </details>
-
-    <details class="info-section">
-      <summary>Network roles</summary>
-      <div class="info-text">
-        <table class="info-table">
-          <thead><tr><th>Metric</th><th>Role</th><th>Meaning</th></tr></thead>
-          <tbody>
-            <tr><td>Strength</td><td>Hub score</td><td>Many low-cost direct connections</td></tr>
-            <tr><td>Harmonic closeness</td><td>Gateway / staging score</td><td>Efficient access to many other families</td></tr>
-            <tr><td>Betweenness</td><td>Relay score</td><td>Often lies along minimum-cost multileg routes</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
-
-    <details class="info-section">
-      <summary>Maximum Budget summary</summary>
-      <div class="info-text">
-        <p>At the maximum-budget case, the network contains 75 of 78 possible direct family pairs. The (3,2)-cycler, C32, appears as the dominant hub, gateway, and relay. The 2:1 stable resonant family, R21-S, remains the hardest-access family, with missing direct pairs LL1–R21-S, LL2–R21-S, and DPO–R21-S.</p>
-      </div>
-    </details>
-
-    <details class="info-section">
-      <summary>Budget regimes</summary>
-      <div class="info-text">
-        <p>The network transitions through three distinct operational regimes as budgets increase:</p>
-        <ul>
-          <li><strong>Sparse direct accessibility</strong> — time-critical retasking.</li>
-          <li><strong>Graph connectedness</strong> — sustained coverage.</li>
-          <li><strong>Multileg accessibility</strong> — time-flexible redistribution.</li>
-        </ul>
-        <p style="margin-top:4px">At low time-of-flight budgets, the (1,1)a-cycler (C11a) emerges as the dominant gateway family.</p>
-      </div>
-    </details>
-
-    <details class="info-section">
-      <summary>Family abbreviations</summary>
-      <div class="info-text">
-        <table class="info-table">
-          <tbody>
-            <tr><td>LL1</td><td>L1 Lyapunov</td></tr>
-            <tr><td>LL2</td><td>L2 Lyapunov</td></tr>
-            <tr><td>C11a</td><td>(1,1)a-cycler</td></tr>
-            <tr><td>C11b</td><td>(1,1)b-cycler</td></tr>
-            <tr><td>C21</td><td>(2,1)-cycler</td></tr>
-            <tr><td>C32</td><td>(3,2)-cycler</td></tr>
-            <tr><td>R21-S</td><td>2:1 stable resonant</td></tr>
-            <tr><td>R21-U</td><td>2:1 unstable resonant</td></tr>
-            <tr><td>R31-S</td><td>3:1 stable resonant</td></tr>
-            <tr><td>R31-U</td><td>3:1 unstable resonant</td></tr>
-            <tr><td>R52-S</td><td>5:2 stable resonant</td></tr>
-            <tr><td>R52-U</td><td>5:2 unstable resonant</td></tr>
-            <tr><td>DPO</td><td>Distant prograde orbit</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
+    <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.5">
+      Node size ∝ harmonic closeness (reach).<br>
+      Dashed ring = articulation point.<br>
+      Click 2 nodes to trace cheapest &amp; fastest paths.
+    </div>
   </div>
 </div>
 
@@ -516,6 +398,9 @@ const DATA = {
 // ════════════════════════════════════════════════════════════════════════════
 const W = 760, H = 520;
 const RMIN = 8, RMAX = 26;
+
+const DV_PATH_COLOR  = '#ffffff';   // min-ΔV path highlight
+const TOF_PATH_COLOR = '#e06ef0';   // min-TOF path highlight (dashed)
 
 // Physical unit conversions (derived from CR3BP Earth–Moon system)
 const LU_M        = 384400e3;
@@ -564,7 +449,7 @@ let diIdx = 19;
 let djIdx = 19;
 let nodeA = null;   // first selected node (source)
 let nodeB = null;   // second selected node (destination)
-let fwCache = null; // { d, nxt } from floydWarshallWithPath
+let fwCache = null; // { dv: {d,nxt}, tof: {d,nxt}|null } for current snapshot
 
 // ════════════════════════════════════════════════════════════════════════════
 //  FLOYD-WARSHALL  (with next-hop reconstruction)
@@ -591,6 +476,27 @@ function floydWarshallWithPath(dvMatrix) {
         }
       }
   return { d, nxt };
+}
+
+// Build shortest-path caches for both metrics of the current snapshot
+function buildFWCache(snap) {
+  if (!snap || !snap.dv) return null;
+  return {
+    dv:  floydWarshallWithPath(snap.dv),
+    tof: snap.tof ? floydWarshallWithPath(snap.tof) : null
+  };
+}
+
+// Sum matrix values along a path; null if any hop is missing/infeasible
+function sumAlongPath(path, M) {
+  if (!path || path.length < 2 || !M) return null;
+  let s = 0;
+  for (let k = 0; k < path.length - 1; k++) {
+    const v = M[path[k]][path[k + 1]];
+    if (v === null || !isFinite(v)) return null;
+    s += v;
+  }
+  return s;
 }
 
 // Reconstruct node sequence for path a → b using next-hop matrix
@@ -640,6 +546,8 @@ for (let i = 0; i < N; i++)
 // layers
 const edgeGroup    = svg.append('g').attr('class', 'edges');
 const edgeHitGroup = svg.append('g').attr('class', 'edge-hits');
+const pathGroup    = svg.append('g').attr('class', 'paths')
+                        .attr('pointer-events', 'none');
 const nodeGroup    = svg.append('g').attr('class', 'nodes');
 const labelGroup   = svg.append('g').attr('class', 'labels');
 
@@ -717,7 +625,7 @@ edgeHitSel
     if (!snap || !snap.dv) return;
     const dv  = snap.dv[d.i][d.j];
     const tof = snap.tof ? snap.tof[d.i][d.j] : null;
-    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'No connection within selected budgets';
+    const dvStr  = (dv  !== null && isFinite(dv))  ? dv.toFixed(2)  + ' m/s'  : 'infeasible';
     const tofStr = (tof !== null && isFinite(tof)) ? tof.toFixed(2) + ' days' : '—';
     showTooltip(
       `<strong>${DATA.shortNames[d.i]} ↔ ${DATA.shortNames[d.j]}</strong><br>
@@ -752,10 +660,9 @@ nodeSel.on('click', function(event, i) {
       // Deselect source
       nodeA = null;
     } else {
-      // Select destination — compute path
+      // Select destination — compute paths
       nodeB = i;
-      const snap = getSnapshot();
-      if (snap && snap.dv) fwCache = floydWarshallWithPath(snap.dv);
+      fwCache = buildFWCache(getSnapshot());
       renderPath();
     }
   } else {
@@ -821,9 +728,9 @@ function updateGraph() {
     .attr('r', i => nodeRadius(reach ? reach[i] : null) + 5)
     .attr('opacity', i => isAP[i] ? 0.9 : 0);
 
-  // Re-render path if both nodes selected
+  // Re-render paths if both nodes selected
   if (nodeA !== null && nodeB !== null && snap.dv) {
-    fwCache = floydWarshallWithPath(snap.dv);
+    fwCache = buildFWCache(snap);
     renderPath();
   } else {
     clearPath();
@@ -846,70 +753,50 @@ function updateNodeHighlight() {
     .attr('stroke-width', i => (i === nodeA || i === nodeB) ? 2.5 : 2);
 
   if (nodeA === null) {
-    hintEl.textContent = 'Select a family to set the source';
+    hintEl.textContent = 'Click a node to select source';
   } else if (nodeB === null) {
-    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Select another family for the destination.`;
+    hintEl.textContent = `Source: ${DATA.shortNames[nodeA]}. Click another node for destination.`;
   } else {
-    hintEl.textContent = 'Click any family to start a new route.';
+    hintEl.textContent = 'Click any node to start a new path.';
   }
 }
 
-function renderPath() {
-  if (nodeA === null || nodeB === null || !fwCache) return;
+function samePath(p, q) {
+  if (!p || !q || p.length !== q.length) return false;
+  return p.every((v, k) => v === q[k]);
+}
 
-  const { d, nxt } = fwCache;
-  const path = reconstructPath(nxt, nodeA, nodeB);
-  const snap = getSnapshot();
-
-  // ── Highlight path edges; dim everything else ──────────────────────────
-  const pathEdgeSet = new Set();
-  if (path && path.length > 1) {
-    for (let k = 0; k < path.length - 1; k++) {
-      const a = path[k], b = path[k + 1];
-      pathEdgeSet.add(`${Math.min(a,b)}-${Math.max(a,b)}`);
-    }
+// Draw one highlighted path as an overlay polyline (segment per hop)
+function drawPathOverlay(path, color, dash) {
+  if (!path || path.length < 2) return;
+  for (let k = 0; k < path.length - 1; k++) {
+    const a = nodeXY(path[k], N), b = nodeXY(path[k + 1], N);
+    pathGroup.append('line')
+      .attr('x1', a.x).attr('y1', a.y)
+      .attr('x2', b.x).attr('y2', b.y)
+      .attr('stroke', color)
+      .attr('stroke-width', 3.5)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-dasharray', dash || null);
   }
+}
 
-  edgeSel
-    .attr('stroke', ed => {
-      if (!snap || !snap.dv) return dvColor(null);
-      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
-      if (pathEdgeSet.has(key)) return '#ffffff';       // path = bright white
-      return dvColor(snap.dv[ed.i][ed.j]);
-    })
-    .attr('stroke-width', ed => {
-      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
-      return pathEdgeSet.has(key) ? 3.5 : 2;
-    })
-    .attr('opacity', ed => {
-      if (!snap || !snap.dv) return 0;
-      const v   = snap.dv[ed.i][ed.j];
-      const key = `${Math.min(ed.i,ed.j)}-${Math.max(ed.i,ed.j)}`;
-      if (pathEdgeSet.has(key)) return 1;
-      if (v === null || !isFinite(v)) return 0;
-      return 0.18;   // dim non-path edges
-    });
-
-  // ── Sidebar path info ──────────────────────────────────────────────────
-  const pathInfo = document.getElementById('path-info');
-  pathInfo.classList.add('visible');
-
-  document.getElementById('chip-src').textContent = DATA.shortNames[nodeA];
-  document.getElementById('chip-dst').textContent = DATA.shortNames[nodeB];
-
-  const totalEl = document.getElementById('path-total');
-  const hopsEl  = document.getElementById('path-hops');
+// Fill one sidebar block: totals line + per-hop list
+function fillPathBlock(totalId, hopsId, path, primary, secondary) {
+  const totalEl = document.getElementById(totalId);
+  const hopsEl  = document.getElementById(hopsId);
   hopsEl.innerHTML = '';
 
   if (!path) {
-    totalEl.innerHTML = '<span class="path-unreachable">No connection within selected budgets</span>';
+    totalEl.innerHTML = '<span class="path-unreachable">No feasible path</span>';
     return;
   }
 
-  const totalDV = d[nodeA][nodeB];
-  totalEl.innerHTML = `Total ΔV: <strong>${isFinite(totalDV) ? totalDV.toFixed(1) + ' m/s' : '∞'}</strong>`;
+  const fmt = (v, unit) => (v !== null && isFinite(v)) ? v.toFixed(1) + ' ' + unit : '—';
+  totalEl.innerHTML =
+    `${primary.label}: <strong>${fmt(primary.total, primary.unit)}</strong>` +
+    ` <span style="color:var(--muted)">· ${secondary.label}: ${fmt(secondary.total, secondary.unit)}</span>`;
 
-  // Individual hops
   for (let k = 0; k < path.length; k++) {
     const row = document.createElement('div');
     row.className = 'path-hop';
@@ -917,15 +804,14 @@ function renderPath() {
     const nameEl = document.createElement('span');
     nameEl.className = 'hop-node';
     nameEl.textContent = DATA.shortNames[path[k]];
-
     row.appendChild(nameEl);
 
     if (k < path.length - 1) {
+      const hopV = primary.matrix ? primary.matrix[path[k]][path[k+1]] : null;
       const costEl = document.createElement('span');
       costEl.className = 'hop-cost';
-      const hopDV = snap && snap.dv ? snap.dv[path[k]][path[k+1]] : null;
-      costEl.textContent = (hopDV !== null && isFinite(hopDV))
-        ? '+' + hopDV.toFixed(1) + ' m/s'
+      costEl.textContent = (hopV !== null && isFinite(hopV))
+        ? '+' + hopV.toFixed(1) + ' ' + primary.unit
         : '+∞';
       const arrowEl = document.createElement('span');
       arrowEl.className = 'hop-arrow';
@@ -938,8 +824,60 @@ function renderPath() {
   }
 }
 
+function renderPath() {
+  if (nodeA === null || nodeB === null || !fwCache) return;
+
+  const snap = getSnapshot();
+  const pathDV  = reconstructPath(fwCache.dv.nxt, nodeA, nodeB);
+  const pathTOF = fwCache.tof ? reconstructPath(fwCache.tof.nxt, nodeA, nodeB) : null;
+
+  // ── Dim base edges, draw both paths as overlays ────────────────────────
+  edgeSel
+    .attr('stroke', ed => snap && snap.dv ? dvColor(snap.dv[ed.i][ed.j]) : dvColor(null))
+    .attr('stroke-width', 2)
+    .attr('opacity', ed => {
+      if (!snap || !snap.dv) return 0;
+      const v = snap.dv[ed.i][ed.j];
+      return (v === null || !isFinite(v)) ? 0 : 0.18;
+    });
+
+  pathGroup.selectAll('*').remove();
+  drawPathOverlay(pathDV,  DV_PATH_COLOR,  null);
+  if (!samePath(pathTOF, pathDV)) drawPathOverlay(pathTOF, TOF_PATH_COLOR, '5,5');
+
+  // ── Sidebar path info ──────────────────────────────────────────────────
+  document.getElementById('path-info').classList.add('visible');
+  document.getElementById('chip-src').textContent = DATA.shortNames[nodeA];
+  document.getElementById('chip-dst').textContent = DATA.shortNames[nodeB];
+
+  const dvMat  = snap ? snap.dv  : null;
+  const tofMat = snap ? snap.tof : null;
+
+  fillPathBlock('dv-total', 'dv-hops', pathDV,
+    { label: 'ΔV',  unit: 'm/s',  total: pathDV ? fwCache.dv.d[nodeA][nodeB] : null, matrix: dvMat },
+    { label: 'TOF', unit: 'days', total: sumAlongPath(pathDV, tofMat) });
+
+  const tofTotalEl = document.getElementById('tof-total');
+  const tofHopsEl  = document.getElementById('tof-hops');
+  if (!fwCache.tof) {
+    tofHopsEl.innerHTML = '';
+    tofTotalEl.innerHTML = '<span class="path-same-note">TOF data unavailable</span>';
+  } else if (samePath(pathTOF, pathDV)) {
+    tofHopsEl.innerHTML = '';
+    const fmt = (v, u) => (v !== null && isFinite(v)) ? v.toFixed(1) + ' ' + u : '—';
+    tofTotalEl.innerHTML = pathTOF
+      ? `<span class="path-same-note">Same route as min ΔV</span> · TOF: <strong>${fmt(fwCache.tof.d[nodeA][nodeB], 'days')}</strong>`
+      : '<span class="path-unreachable">No feasible path</span>';
+  } else {
+    fillPathBlock('tof-total', 'tof-hops', pathTOF,
+      { label: 'TOF', unit: 'days', total: pathTOF ? fwCache.tof.d[nodeA][nodeB] : null, matrix: tofMat },
+      { label: 'ΔV',  unit: 'm/s',  total: sumAlongPath(pathTOF, dvMat) });
+  }
+}
+
 function clearPath() {
   document.getElementById('path-info').classList.remove('visible');
+  pathGroup.selectAll('*').remove();
   const snap = getSnapshot();
   if (snap && snap.dv) {
     edgeSel
@@ -1016,6 +954,23 @@ if (!DATA) {
   document.getElementById('sl-tmax').value = DATA.tmaxList.length - 1;
   diIdx = DATA.dvCapList.length - 1;
   djIdx = DATA.tmaxList.length - 1;
+
+  // Family legend: abbreviation → full family name
+  const famLegend = document.getElementById('fam-legend');
+  for (let i = 0; i < N; i++) {
+    const row = document.createElement('div');
+    row.className = 'fam-row';
+    const abbr = document.createElement('span');
+    abbr.className = 'fam-abbr';
+    abbr.textContent = DATA.shortNames[i];
+    const full = document.createElement('span');
+    full.className = 'fam-full';
+    full.textContent = DATA.families[i];
+    row.appendChild(abbr);
+    row.appendChild(full);
+    famLegend.appendChild(row);
+  }
+
   updateSliderLabels();
   updateNodeHighlight();
   updateGraph();
