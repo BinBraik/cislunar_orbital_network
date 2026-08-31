@@ -103,11 +103,10 @@ cfg = atlas_cfg_defaults();
 cfg.families.list      = families;
 cfg.families.test_only = false;
 
-% NOTE: these MUST byte-for-byte match whatever cfg built your cached base
-% atlases (they feed atlas_grid_make and the cache fingerprint) — pull the
-% exact values back out of one cache file's cache_meta.fingerprint if in
-% doubt. Current values below match a cache built under the pre-rename
-% 'rs3_v2_keep_masked' scheme; adjust if yours differs.
+% NOTE: these MUST byte-for-byte match TARGET_CFG in
+% run_atlas_cache_rebuild_to_target.m (the script that reconciles/rebuilds
+% atlas_cache/ to a known-good state) — they feed atlas_grid_make and the
+% cache fingerprint. If you change one, change it in both places.
 cfg.grid.dx               = 0.0005;
 cfg.grid.dy               = 0.0005;
 cfg.grid.dtheta           = deg2rad(0.5);
@@ -124,7 +123,7 @@ cfg.log.maxstep_factor    = 2;
 cfg.cache.enable      = true;
 cfg.cache.dir         = fullfile(repoRoot, 'atlas_cache');
 cfg.cache.rebuild     = false;
-cfg.cache.version_tag = 'rs3_v2_keep_masked';   % matches the on-disk cache filenames
+cfg.cache.version_tag = 'atlas_v1_keep_masked';   % must match run_atlas_cache_rebuild_to_target.m's TARGET_CFG
 
 % Suppress all figure/file output from sub-functions
 cfg.io.save_figs   = false;
