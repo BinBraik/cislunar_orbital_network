@@ -78,11 +78,13 @@ FAMILIES = { ...
 };
 
 % ══════════════════════════════════════════════════════════════════════════════
-%  TARGET CONFIG  — Table 3 ("Nominal discretization and numerical parameters
-%  used in the reachable-set construction") of the paper:
+%  TARGET CONFIG  — extended-budget atlas (beyond Table 3's nominal 0.2/pi):
 %    Rdom=1.2, dx=dy=0.001 (384.4 km), dtheta=1°, ds_seed=0.01,
-%    dtheta_fan=0.5°, DV_a=0.2 (204.6 m/s), Ta=pi (13.66 day),
-%    RelTol=AbsTol=v2tol=1e-8.
+%    dtheta_fan=0.5°, DV_a=0.3, Ta=3*pi/2, RelTol=AbsTol=v2tol=1e-8.
+%  Raising fan.DV_cap_nd / propag.Tmax changes the atlas GENERATION bounds
+%  (not just a network-analysis filter), so none of the Table-3 (0.2/pi)
+%  cached atlases will match this — every family gets a genuine from-
+%  scratch rebuild here, not a reuse.
 % ══════════════════════════════════════════════════════════════════════════════
 TARGET_CFG = atlas_cfg_defaults();
 
@@ -93,8 +95,8 @@ TARGET_CFG.grid.dx               = 0.001;
 TARGET_CFG.grid.dy               = 0.001;
 TARGET_CFG.grid.dtheta           = deg2rad(1);
 TARGET_CFG.seed.ds_seed          = 0.01;
-TARGET_CFG.propag.Tmax           = pi;      % maximum budget / base atlas
-TARGET_CFG.fan.DV_cap_nd         = 0.2;     % maximum budget / base atlas
+TARGET_CFG.propag.Tmax           = 3*pi/2;  % extended budget / base atlas
+TARGET_CFG.fan.DV_cap_nd         = 0.3;     % extended budget / base atlas
 TARGET_CFG.fan.dtheta_fan        = deg2rad(0.5);
 TARGET_CFG.propag.absTol         = 1e-8;
 TARGET_CFG.propag.relTol         = 1e-8;

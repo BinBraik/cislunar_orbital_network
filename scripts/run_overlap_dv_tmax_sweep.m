@@ -12,7 +12,7 @@
 % Strategy:
 %   0. Pre-flight: verify a cached atlas exists for every family (fails fast
 %      instead of silently rebuilding for hours).
-%   1. Load base atlases once  (Tmax = pi, DV_cap = 0.2).
+%   1. Load base atlases once  (Tmax = 3*pi/2, DV_cap = 0.3).
 %   2. For each (DV_cap, Tmax) cell:
 %        a. Check atlas_results for a finished run whose config matches
 %           → extract minDVproxyMat + TOFmatrix directly, skip recompute.
@@ -87,8 +87,11 @@ OUTPUT_DIR      = fullfile(repoRoot, 'atlas_sweep_results');
 SWEEP_CACHE_DIR = fullfile(repoRoot, 'atlas_cache_sweep');   % derived caches (if ever saved)
 
 % ── Sweep grid ────────────────────────────────────────────────────────────────
-DV_cap_list = linspace(0.025, 0.200, 20)';   % 20 values  (0.025 → 0.200)
-Tmax_list   = linspace(pi/4,  pi,    20)';   % 20 values  (pi/4  → pi)
+% Upper bounds MUST NOT exceed the base atlas's own generation bounds
+% (cfg.fan.DV_cap_nd / cfg.propag.Tmax below) — atlas_derive_subset can only
+% shrink the candidate row set, never grow it beyond what the atlas has.
+DV_cap_list = linspace(0.025, 0.300,   20)';   % 20 values  (0.025 → 0.300)
+Tmax_list   = linspace(pi/4,  3*pi/2,  20)';   % 20 values  (pi/4  → 3*pi/2)
 
 % Short labels for Excel sheet names  (≤31 chars; keep them compact)
 % Encode Tmax as a multiple of pi, rounded to 3 decimals: e.g., Tp0p250 = 0.250*pi
@@ -103,18 +106,19 @@ cfg = atlas_cfg_defaults();
 cfg.families.list      = families;
 cfg.families.test_only = false;
 
-% NOTE: these are Table 3 of the paper (Rdom=1.2, dx=dy=0.001, dtheta=1°,
-% ds_seed=0.01, dtheta_fan=0.5°, DV_a=0.2, Ta=pi, tolerances=1e-8) and MUST
-% byte-for-byte match TARGET_CFG in run_atlas_cache_rebuild_to_target.m
-% (the script that reconciles/rebuilds atlas_cache/ to this config) — they
-% feed atlas_grid_make and the cache fingerprint. If you change one, change
-% it in both places.
+% NOTE: these are the extended-budget atlas config (Rdom=1.2, dx=dy=0.001,
+% dtheta=1°, ds_seed=0.01, dtheta_fan=0.5°, DV_a=0.3, Ta=3*pi/2,
+% tolerances=1e-8 — Table 3 of the paper except DV_a/Ta raised beyond their
+% nominal 0.2/pi) and MUST byte-for-byte match TARGET_CFG in
+% run_atlas_cache_rebuild_to_target.m (the script that reconciles/rebuilds
+% atlas_cache/ to this config) — they feed atlas_grid_make and the cache
+% fingerprint. If you change one, change it in both places.
 cfg.grid.dx               = 0.001;
 cfg.grid.dy               = 0.001;
 cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
-cfg.propag.Tmax           = pi;
-cfg.fan.DV_cap_nd         = 0.2;
+cfg.propag.Tmax           = 3*pi/2;
+cfg.fan.DV_cap_nd         = 0.3;
 cfg.fan.dtheta_fan        = deg2rad(0.5);
 cfg.propag.absTol         = 1e-8;
 cfg.propag.relTol         = 1e-8;
@@ -264,9 +268,9 @@ else
     end
 
     % ══════════════════════════════════════════════════════════════════════════
-    %  LOAD BASE ATLASES  (Tmax = pi, DV_cap = 0.2)  — once for the whole sweep
+    %  LOAD BASE ATLASES  (Tmax = 3*pi/2, DV_cap = 0.3)  — once for the whole sweep
     % ══════════════════════════════════════════════════════════════════════════
-    fprintf('[sweep] Loading base atlases (Tmax=π, DV_cap=0.2)...\n');
+    fprintf('[sweep] Loading base atlases (Tmax=3π/2, DV_cap=0.3)...\n');
     grid3_base = atlas_grid_make(cfg);
     Sall_base  = cell(N, 1);
     for i = 1:N
