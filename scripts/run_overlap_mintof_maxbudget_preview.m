@@ -14,10 +14,11 @@
 % as run_network_centrality_sweep.m (net_build_graph / net_floyd_warshall /
 % net_centrality), for this one snapshot only.
 %
-% PRE-FLIGHT: this script REQUIRES a cached atlas for every family already
-% present under cfg.cache.dir. It will NOT silently rebuild — if any atlas
-% is missing it errors out immediately (rebuilding one atlas can take
-% hours; that should be an explicit, separate step).
+% PRE-FLIGHT: self-healing — checks cfg.cache.dir for every family and, if
+% anything is missing or built under a different config, reconciles/builds
+% it automatically via atlas_ensure_cache_ready (reuse-if-matching, else
+% build from scratch). A family that needs a full rebuild can take hours;
+% this is a real cost, just no longer a separate manual step.
 %
 % Outputs written to OUT_DIR:
 %   node_metrics_maxbudget.csv   — per-family metrics, both networks side by side
@@ -119,14 +120,18 @@ Tmax_nd   = cfg.propag.Tmax;
 if ~exist(OUT_DIR, 'dir'), mkdir(OUT_DIR); end
 
 % ══════════════════════════════════════════════════════════════════════════════
-%  PRE-FLIGHT: verify the atlas cache exists for every family
+%  PRE-FLIGHT: ensure a cached atlas exists for every family — SELF-HEALING.
+%  Uses cfg.cache.dir as both source and destination: any family already
+%  cached under this config (any known fingerprint scheme) is reused
+%  as-is; anything missing/mismatched is built from scratch (can take a
+%  while). See src/atlas_ensure_cache_ready.m.
 % ══════════════════════════════════════════════════════════════════════════════
 [cache_ok, cache_report] = atlas_check_cache_exists(families, cfg); %#ok<ASGLU>
 if ~cache_ok
-    error(['run_overlap_mintof_maxbudget_preview: one or more cached atlases ' ...
-           'are missing (see list above). This preview script will not build ' ...
-           'atlases from scratch — run the base atlas build for those ' ...
-           'families first (e.g. via run_atlas_one_family.m), then re-run.']);
+    fprintf(['[preview] Cache incomplete for this config — reconciling/building ' ...
+             'via atlas_ensure_cache_ready (this can take a while for any family ' ...
+             'that needs a full rebuild)...\n']);
+    atlas_ensure_cache_ready(families, cfg, cfg.cache.dir, cfg.cache.dir);
 end
 
 % ══════════════════════════════════════════════════════════════════════════════

@@ -10,8 +10,11 @@
 % (src/overlap_proxy_footprint.m), matching how dv_proxy already uses MIN DV.
 %
 % Strategy:
-%   0. Pre-flight: verify a cached atlas exists for every family (fails fast
-%      instead of silently rebuilding for hours).
+%   0. Pre-flight: self-healing — ensure a cached atlas exists for every
+%      family, reusing whatever already matches cfg and building the rest
+%      from scratch (src/atlas_ensure_cache_ready.m). This is what lets
+%      this ONE script go straight from "atlas cache incomplete" to a
+%      finished sweep with no separate manual rebuild step.
 %   1. Load base atlases once  (Tmax = 3*pi/2, DV_cap = 0.3).
 %   2. For each (DV_cap, Tmax) cell:
 %        a. Check atlas_results for a finished run whose config matches
@@ -258,13 +261,19 @@ if all(done_mask(:))
     fprintf('[sweep] All cells already done — skipping computation.\n');
 else
     % ══════════════════════════════════════════════════════════════════════════
-    %  PRE-FLIGHT: verify the base atlas cache exists before doing any work
+    %  PRE-FLIGHT: ensure the base atlas cache exists — SELF-HEALING. Uses
+    %  cfg.cache.dir as both source and destination: any family already
+    %  cached under this config (any known fingerprint scheme) is reused
+    %  as-is; anything missing/mismatched is built from scratch (can take a
+    %  while — this is the one-script "build + sweep" entry point). See
+    %  src/atlas_ensure_cache_ready.m.
     % ══════════════════════════════════════════════════════════════════════════
     [cache_ok, cache_report] = atlas_check_cache_exists(families, cfg); %#ok<ASGLU>
     if ~cache_ok
-        error(['run_overlap_dv_tmax_sweep: one or more base-atlas cache files ' ...
-               'are missing (see list above). Either run the atlas build for ' ...
-               'those families first, or set cfg.cache.rebuild appropriately.']);
+        fprintf(['[sweep] Base atlas cache incomplete for this config — reconciling/' ...
+                 'building via atlas_ensure_cache_ready (this can take a while for ' ...
+                 'any family that needs a full rebuild)...\n']);
+        atlas_ensure_cache_ready(families, cfg, cfg.cache.dir, cfg.cache.dir);
     end
 
     % ══════════════════════════════════════════════════════════════════════════
