@@ -78,16 +78,20 @@ FAMILIES = { ...
 };
 
 % ══════════════════════════════════════════════════════════════════════════════
-%  TARGET CONFIG  — the config every output atlas will match (paper / current code)
+%  TARGET CONFIG  — Table 3 ("Nominal discretization and numerical parameters
+%  used in the reachable-set construction") of the paper:
+%    Rdom=1.2, dx=dy=0.001 (384.4 km), dtheta=1°, ds_seed=0.01,
+%    dtheta_fan=0.5°, DV_a=0.2 (204.6 m/s), Ta=pi (13.66 day),
+%    RelTol=AbsTol=v2tol=1e-8.
 % ══════════════════════════════════════════════════════════════════════════════
 TARGET_CFG = atlas_cfg_defaults();
 
 TARGET_CFG.families.list      = FAMILIES;
 TARGET_CFG.families.test_only = false;
 
-TARGET_CFG.grid.dx               = 0.0005;
-TARGET_CFG.grid.dy               = 0.0005;
-TARGET_CFG.grid.dtheta           = deg2rad(0.5);
+TARGET_CFG.grid.dx               = 0.001;
+TARGET_CFG.grid.dy               = 0.001;
+TARGET_CFG.grid.dtheta           = deg2rad(1);
 TARGET_CFG.seed.ds_seed          = 0.01;
 TARGET_CFG.propag.Tmax           = pi;      % maximum budget / base atlas
 TARGET_CFG.fan.DV_cap_nd         = 0.2;     % maximum budget / base atlas

@@ -103,13 +103,15 @@ cfg = atlas_cfg_defaults();
 cfg.families.list      = families;
 cfg.families.test_only = false;
 
-% NOTE: these MUST byte-for-byte match TARGET_CFG in
-% run_atlas_cache_rebuild_to_target.m (the script that reconciles/rebuilds
-% atlas_cache/ to a known-good state) — they feed atlas_grid_make and the
-% cache fingerprint. If you change one, change it in both places.
-cfg.grid.dx               = 0.0005;
-cfg.grid.dy               = 0.0005;
-cfg.grid.dtheta           = deg2rad(0.5);
+% NOTE: these are Table 3 of the paper (Rdom=1.2, dx=dy=0.001, dtheta=1°,
+% ds_seed=0.01, dtheta_fan=0.5°, DV_a=0.2, Ta=pi, tolerances=1e-8) and MUST
+% byte-for-byte match TARGET_CFG in run_atlas_cache_rebuild_to_target.m
+% (the script that reconciles/rebuilds atlas_cache/ to this config) — they
+% feed atlas_grid_make and the cache fingerprint. If you change one, change
+% it in both places.
+cfg.grid.dx               = 0.001;
+cfg.grid.dy               = 0.001;
+cfg.grid.dtheta           = deg2rad(1);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;
 cfg.fan.DV_cap_nd         = 0.2;
