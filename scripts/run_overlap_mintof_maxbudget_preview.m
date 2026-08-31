@@ -70,9 +70,15 @@ cfg = atlas_cfg_defaults();
 cfg.families.list      = families;
 cfg.families.test_only = false;
 
-cfg.grid.dx               = 0.001;
-cfg.grid.dy               = 0.001;
-cfg.grid.dtheta           = deg2rad(1);
+% NOTE: these MUST byte-for-byte match whatever cfg built your cached
+% atlases (they feed atlas_grid_make and the cache fingerprint) — pull the
+% exact values back out of one cache file's cache_meta.fingerprint if in
+% doubt (each family's .mat stores it). Current values below match a cache
+% built under the pre-rename 'rs3_v2_keep_masked' scheme; adjust if yours
+% differs.
+cfg.grid.dx               = 0.0005;
+cfg.grid.dy               = 0.0005;
+cfg.grid.dtheta           = deg2rad(0.5);
 cfg.seed.ds_seed          = 0.01;
 cfg.propag.Tmax           = pi;      % maximum budget
 cfg.fan.DV_cap_nd         = 0.2;     % maximum budget
@@ -83,9 +89,10 @@ cfg.propag.v2tol          = 1e-8;
 cfg.log.step_len_factor   = 0.75;
 cfg.log.maxstep_factor    = 2;
 
-cfg.cache.enable  = true;
-cfg.cache.dir     = fullfile(repoRoot, 'atlas_cache');
-cfg.cache.rebuild = false;
+cfg.cache.enable      = true;
+cfg.cache.dir         = fullfile(repoRoot, 'atlas_cache');
+cfg.cache.rebuild     = false;
+cfg.cache.version_tag = 'rs3_v2_keep_masked';   % matches the on-disk cache filenames
 
 cfg.io.save_figs   = false;
 cfg.io.save_fig    = false;
@@ -129,10 +136,11 @@ grid3 = atlas_grid_make(cfg);
 Sall  = cell(N, 1);
 for i = 1:N
     fprintf('[preview]   family %d/%d: %s\n', i, N, families{i});
-    [Sall{i}, cacheInfo] = atlas_prepare_or_load(families{i}, cfg, grid3);
-    if ~cacheInfo.hit
-        warning('[preview] Family "%s" was NOT a cache hit — it was just rebuilt from scratch.', ...
-            families{i});
+    % Cache-only load (current scheme, then legacy_rs3 fallback) — never
+    % builds from scratch. See atlas_load_cached_compat.m.
+    [Sall{i}, scheme] = atlas_load_cached_compat(families{i}, cfg);
+    if ~strcmp(scheme, 'current')
+        fprintf('[preview]     (loaded via %s fingerprint scheme)\n', scheme);
     end
 end
 
