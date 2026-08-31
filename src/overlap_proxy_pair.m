@@ -107,7 +107,13 @@ try
     end
 
     % ── 8. Min-TOF winner — independent argmin over the same candidates ────
-    validTOF = isfinite(tof_proxy);
+    % Exclude tof_proxy <= 0: a voxel hit at t=0 is a family's own
+    % unpropagated seed state, not a computed transfer of any real
+    % duration. Letting argmin land there would pick a "0-day transfer"
+    % that isn't physically meaningful, and a distance of exactly 0
+    % between two distinct nodes later blows up 1/distance centrality
+    % metrics (harmonic closeness, strength) to Inf downstream.
+    validTOF = isfinite(tof_proxy) & (tof_proxy > 0);
     if any(validTOF)
         idxValidTOF   = find(validTOF);
         [~, iLocTOF]  = min(tof_proxy(idxValidTOF));
