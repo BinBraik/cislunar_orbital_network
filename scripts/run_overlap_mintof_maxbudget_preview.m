@@ -197,22 +197,30 @@ for p = 1:nPairs
 end
 
 % ══════════════════════════════════════════════════════════════════════════════
-%  BUILD BOTH NETWORKS  (same feasibility + centrality pipeline as the sweep)
+%  BUILD BOTH NETWORKS — each SINGLE-OBJECTIVE: the min-DV network is
+%  constrained only by DVcap (TOF cap -> Inf, i.e. unconstrained); the
+%  min-TOF network is constrained only by Tmax (DV cap -> Inf). Each
+%  network then purely answers "reachable under MY optimized budget",
+%  without cross-rejection from the other, unoptimized metric evaluated
+%  at that same winning voxel.
 % ══════════════════════════════════════════════════════════════════════════════
 short_names = net_family_short_names();
 
-fprintf('[preview] Building min-DV network (baseline)...\n');
-[A_dv, W_dv, D_sym_dv, T_sym_dv, edges_dv, DVcap_true, Tmax_true, skip_dv] = ...
-    net_build_graph(minDVproxyMat, TOFatMinDVmat, DV_cap_nd, Tmax_nd, ...
+DVcap_true_mps = BUDGET_FACTOR * DV_cap_nd * VU_mps;
+Tmax_true_days = BUDGET_FACTOR * Tmax_nd   * TU_days;
+
+fprintf('[preview] Building min-DV network (baseline, DV-constrained only)...\n');
+[A_dv, W_dv, D_sym_dv, T_sym_dv, edges_dv, ~, ~, skip_dv] = ...
+    net_build_graph(minDVproxyMat, TOFatMinDVmat, DV_cap_nd, Inf, ...
                      VU_mps, TU_days, BUDGET_FACTOR);
 if skip_dv, error('[preview] min-DV snapshot is empty/all-NaN — check atlas data.'); end
 dist_dv    = net_floyd_warshall(W_dv);
-metrics_dv = net_centrality(A_dv, W_dv, D_sym_dv, dist_dv, DVcap_true);
+metrics_dv = net_centrality(A_dv, W_dv, D_sym_dv, dist_dv, DVcap_true_mps);
 [lcc_sz_dv, lcc_full_dv, ~] = net_lcc(A_dv);
 
-fprintf('[preview] Building min-TOF network (new)...\n');
+fprintf('[preview] Building min-TOF network (new, TOF-constrained only)...\n');
 [A_tof, ~, D_sym_tof, T_sym_tof, edges_tof, ~, ~, skip_tof] = ...
-    net_build_graph(DVatMinTOFmat, minTOFproxyMat, DV_cap_nd, Tmax_nd, ...
+    net_build_graph(DVatMinTOFmat, minTOFproxyMat, Inf, Tmax_nd, ...
                      VU_mps, TU_days, BUDGET_FACTOR);
 if skip_tof, error('[preview] min-TOF snapshot is empty/all-NaN — check atlas data.'); end
 
@@ -223,17 +231,17 @@ W_tof(feasMask)      = T_sym_tof(feasMask);
 W_tof(1:N+1:end)     = 0;
 
 dist_tof    = net_floyd_warshall(W_tof);
-metrics_tof = net_centrality(A_tof, W_tof, T_sym_tof, dist_tof, Tmax_true);
+metrics_tof = net_centrality(A_tof, W_tof, T_sym_tof, dist_tof, Tmax_true_days);
 [lcc_sz_tof, lcc_full_tof, ~] = net_lcc(A_tof);
 
 % ══════════════════════════════════════════════════════════════════════════════
 %  CONSOLE SUMMARY
 % ══════════════════════════════════════════════════════════════════════════════
-fprintf('\n=== Snapshot: DV_cap = %.1f m/s, Tmax = %.1f days ===\n', DVcap_true, Tmax_true);
+fprintf('\n=== Snapshot: DV_cap = %.1f m/s, Tmax = %.1f days ===\n', DVcap_true_mps, Tmax_true_days);
 
-local_print_summary('MIN-DV network  (baseline)', short_names, N, ...
+local_print_summary('MIN-DV network  (baseline, DV-constrained only)', short_names, N, ...
     edges_dv, lcc_sz_dv, lcc_full_dv, metrics_dv);
-local_print_summary('MIN-TOF network (new)', short_names, N, ...
+local_print_summary('MIN-TOF network (new, TOF-constrained only)', short_names, N, ...
     edges_tof, lcc_sz_tof, lcc_full_tof, metrics_tof);
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -260,7 +268,7 @@ fprintf('\n[preview] Wrote %s\n', csv_path);
 % ══════════════════════════════════════════════════════════════════════════════
 mat_path = fullfile(OUT_DIR, 'network_compare_maxbudget.mat');
 save(mat_path, 'families', 'short_names', 'DV_cap_nd', 'Tmax_nd', ...
-    'DVcap_true', 'Tmax_true', 'BUDGET_FACTOR', ...
+    'DVcap_true_mps', 'Tmax_true_days', 'BUDGET_FACTOR', ...
     'minDVproxyMat', 'TOFatMinDVmat', 'minTOFproxyMat', 'DVatMinTOFmat', ...
     'A_dv', 'W_dv', 'dist_dv', 'metrics_dv', 'edges_dv', 'lcc_sz_dv', 'lcc_full_dv', ...
     'A_tof', 'W_tof', 'dist_tof', 'metrics_tof', 'edges_tof', 'lcc_sz_tof', 'lcc_full_tof', ...
@@ -277,8 +285,8 @@ bd_dv.strength           = metrics_dv.strength;
 bd_dv.harmonic_closeness = metrics_dv.harmonic_closeness;
 bd_dv.betweenness        = metrics_dv.betweenness;
 bd_dv.is_articulation    = metrics_dv.is_articulation;
-bd_dv.DVcap_mps          = DVcap_true;
-bd_dv.Tmax_days          = Tmax_true;
+bd_dv.DVcap_mps          = DVcap_true_mps;
+bd_dv.Tmax_days          = Tmax_true_days;
 net_plot_baseline(bd_dv, short_names, N, dv_dir);
 
 bd_tof = bd_dv;
