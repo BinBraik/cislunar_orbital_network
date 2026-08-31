@@ -245,6 +245,57 @@ local_print_summary('MIN-TOF network (new, TOF-constrained only)', short_names, 
     edges_tof, lcc_sz_tof, lcc_full_tof, metrics_tof);
 
 % ══════════════════════════════════════════════════════════════════════════════
+%  MINIMUM SINGLE-AXIS BUDGET FOR FULL (N*(N-1)/2 pair) CONNECTIVITY
+%
+%  minDVproxyMat / minTOFproxyMat are each the GLOBAL minimum achievable
+%  value per pair — computed from the full, un-subsetted atlas (any
+%  smaller DV_cap_nd/Tmax in a sweep only REMOVES candidate rows, never
+%  adds cheaper ones). So the smallest single-axis budget that connects
+%  ALL pairs is just the worst (max) pair value across the whole matrix —
+%  no sweep required. This is only a lower bound within what the current
+%  atlas represents: a pair with no overlap voxel at all (NaN/Inf) can't
+%  be fixed by raising the cap without rebuilding the atlas at a larger
+%  fan/propagation bound.
+% ══════════════════════════════════════════════════════════════════════════════
+fprintf('\n=== Minimum single-axis budget for full (%d/%d pairs) connectivity ===\n', ...
+    nPairs, nPairs);
+
+upperMask   = triu(true(N), 1);
+[iu, ju]    = find(upperMask);
+dv_vec      = minDVproxyMat(upperMask);
+tof_vec     = minTOFproxyMat(upperMask);
+
+dv_bad = ~isfinite(dv_vec);
+if any(dv_bad)
+    b = find(dv_bad, 1);
+    fprintf(['  DV : %d pair(s) have NO overlap voxel at all in this atlas -- ' ...
+        'e.g. %s <-> %s.\n       Full connectivity on the DV axis is UNREACHABLE ' ...
+        'without rebuilding the atlas at a larger fan bound.\n'], ...
+        sum(dv_bad), families{iu(b)}, families{ju(b)});
+else
+    [maxDV, k]     = max(dv_vec);
+    DVcap_nd_full  = maxDV / (BUDGET_FACTOR * VU_mps);
+    fprintf('  DV : full connectivity needs DVcap >= %.2f m/s  (DV_cap_nd >= %.4f)\n', ...
+        maxDV, DVcap_nd_full);
+    fprintf('       bottleneck pair: %s <-> %s\n', families{iu(k)}, families{ju(k)});
+end
+
+tof_bad = ~isfinite(tof_vec);
+if any(tof_bad)
+    b = find(tof_bad, 1);
+    fprintf(['  TOF: %d pair(s) have NO overlap voxel at all in this atlas -- ' ...
+        'e.g. %s <-> %s.\n       Full connectivity on the TOF axis is UNREACHABLE ' ...
+        'without rebuilding the atlas at a larger propagation bound.\n'], ...
+        sum(tof_bad), families{iu(b)}, families{ju(b)});
+else
+    [maxTOF, k]      = max(tof_vec);
+    Tmax_nd_full     = maxTOF / (BUDGET_FACTOR * TU_days);
+    fprintf('  TOF: full connectivity needs Tmax  >= %.2f days (Tmax_nd  >= %.4f, %.3f*pi)\n', ...
+        maxTOF, Tmax_nd_full, Tmax_nd_full/pi);
+    fprintf('       bottleneck pair: %s <-> %s\n', families{iu(k)}, families{ju(k)});
+end
+
+% ══════════════════════════════════════════════════════════════════════════════
 %  SAVE node_metrics_maxbudget.csv  (both networks, side by side)
 % ══════════════════════════════════════════════════════════════════════════════
 csv_path = fullfile(OUT_DIR, 'node_metrics_maxbudget.csv');
