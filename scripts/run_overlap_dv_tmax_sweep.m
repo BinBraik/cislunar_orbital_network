@@ -59,7 +59,10 @@ rehash;
 % Parallel workers for the PAIR loop inside each combination.
 %   0 → fully serial  (use on memory-limited nodes)
 %   N → parfor with N workers
-N_WORKERS = 4;
+% NOTE: keep this <= (SLURM --cpus-per-task - 1), leaving one core for the
+% main MATLAB thread / BLAS / OS overhead. Matches slurm/run_sweep.slurm's
+% --cpus-per-task=8 default (7 workers + 1 main thread).
+N_WORKERS = 7;
 
 
 % Output controls
