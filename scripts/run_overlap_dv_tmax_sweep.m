@@ -1,11 +1,23 @@
 %% RUN_RS4_DV_TMAX_SWEEP
-% Sweep DVmatrix (and TOFmatrix) over all (DV_cap_nd, Tmax) combinations.
+% Sweep DVmatrix/TOFmatrix (min-DV-proxy) AND TOFproxyMatrix/DVatMinTOFMatrix
+% (min-TOF-proxy) over all (DV_cap_nd, Tmax) combinations.
+%
+% Each family pair's overlap voxels are scored two independent ways
+% (see src/overlap_proxy_pair.m):
+%   - min-DV-proxy winner:  argmin(dv_proxy)   → DVmatrix_sweep / TOFmatrix_sweep
+%   - min-TOF-proxy winner: argmin(tof_proxy)  → TOFproxyMatrix_sweep / DVatMinTOFMatrix_sweep
+% where tof_proxy = per-voxel MIN TOF of family A + MIN TOF of family B
+% (src/overlap_proxy_footprint.m), matching how dv_proxy already uses MIN DV.
 %
 % Strategy:
+%   0. Pre-flight: verify a cached atlas exists for every family (fails fast
+%      instead of silently rebuilding for hours).
 %   1. Load base atlases once  (Tmax = pi, DV_cap = 0.2).
 %   2. For each (DV_cap, Tmax) cell:
 %        a. Check atlas_results for a finished run whose config matches
 %           → extract minDVproxyMat + TOFmatrix directly, skip recompute.
+%           NOTE: legacy atlas_results runs predate the min-TOF-proxy
+%           selection, so reused cells get NaN TOFproxyMatrix/DVatMinTOFMatrix.
 %        b. Otherwise: derive in-memory subset atlases and run the pairwise
 %           overlap loop  (no figures, no per-pair .mat files).
 %   3. Checkpoint after EVERY completed cell  (safe to kill + requeue on HPC).
@@ -17,10 +29,14 @@
 %   Set N_WORKERS = 0 to force fully serial (safest for memory-limited nodes).
 %
 % Outputs written to OUTPUT_DIR:
-%   sweep_DVmatrix_results.mat  — authoritative data store
+%   sweep_DVmatrix_results.mat  — authoritative data store (DV-proxy AND TOF-proxy)
 %   sweep_DVmatrix.xlsx         — one sheet per combination, N×N DVproxy matrix
 %   sweep_TOFmatrix.xlsx        — one sheet per combination, N×N mean-TOF matrix
 %   sweep_winners.xlsx          — one sheet per combination, pair-winner table
+%
+% See also: scripts/run_overlap_mintof_maxbudget_preview.m — single-snapshot
+% (max-budget) preview of the min-TOF network, meant to be inspected BEFORE
+% committing to a full sweep run.
 
 clear; clc;
 
@@ -152,21 +168,29 @@ fprintf('[sweep] Checkpoint file: %s\n', CHECKPOINT_FILE);
 % ══════════════════════════════════════════════════════════════════════════════
 %  LOAD / INITIALISE CHECKPOINT
 % ══════════════════════════════════════════════════════════════════════════════
-done_mask       = false(nDV, nTmax);
-DVmatrix_sweep  = cell(nDV, nTmax);
-TOFmatrix_sweep = cell(nDV, nTmax);
-winners_sweep   = cell(nDV, nTmax);
-source_sweep    = cell(nDV, nTmax);
+done_mask             = false(nDV, nTmax);
+DVmatrix_sweep        = cell(nDV, nTmax);   % min-DV-proxy winner:  DV at that voxel
+TOFmatrix_sweep       = cell(nDV, nTmax);   % TOF read off at the min-DV winner voxel
+TOFproxyMatrix_sweep  = cell(nDV, nTmax);   % min-TOF-proxy winner: TOF at that voxel
+DVatMinTOFMatrix_sweep = cell(nDV, nTmax);  % DV read off at the min-TOF winner voxel
+winners_sweep         = cell(nDV, nTmax);
+source_sweep          = cell(nDV, nTmax);
 
 if isfile(CHECKPOINT_FILE)
     fprintf('[sweep] Checkpoint found — loading...\n');
     try
         ck = load(CHECKPOINT_FILE, ...
-            'done_mask', 'DVmatrix_sweep', 'TOFmatrix_sweep', 'winners_sweep', 'source_sweep');
+            'done_mask', 'DVmatrix_sweep', 'TOFmatrix_sweep', ...
+            'TOFproxyMatrix_sweep', 'DVatMinTOFMatrix_sweep', ...
+            'winners_sweep', 'source_sweep');
         if isequal(size(ck.done_mask), [nDV, nTmax])
             done_mask       = ck.done_mask;
             DVmatrix_sweep  = ck.DVmatrix_sweep;
             TOFmatrix_sweep = ck.TOFmatrix_sweep;
+            if isfield(ck, 'TOFproxyMatrix_sweep')
+                TOFproxyMatrix_sweep   = ck.TOFproxyMatrix_sweep;
+                DVatMinTOFMatrix_sweep = ck.DVatMinTOFMatrix_sweep;
+            end
             winners_sweep   = ck.winners_sweep;
             source_sweep    = ck.source_sweep;
             fprintf('[sweep] Checkpoint loaded. %d/%d cells already done.\n', ...
@@ -194,11 +218,19 @@ for di = 1:nDV
             e = existing{di, dj};
             DVmatrix_sweep{di, dj}  = e.minDVproxyMat;
             TOFmatrix_sweep{di, dj} = e.TOFmat;
+            % Legacy atlas_results runs predate the min-TOF-proxy selection
+            % (overlap_proxy_pair) and only recorded the min-DV winner, so
+            % there is no min-TOF voxel to recover here. Leave NaN — these
+            % cells will read as "skip" in the min-TOF network unless
+            % recomputed (delete the matching entry from CHECKPOINT_FILE,
+            % or clear atlas_results, to force a recompute).
+            TOFproxyMatrix_sweep{di, dj}   = nan(size(e.minDVproxyMat));
+            DVatMinTOFMatrix_sweep{di, dj} = nan(size(e.minDVproxyMat));
             winners_sweep{di, dj}   = e.T;
             source_sweep{di, dj}    = 'loaded_from_results';
             done_mask(di, dj)       = true;
             nFound = nFound + 1;
-            fprintf('[sweep]   loaded (%d,%d): DV=%.3f  Tmax=%s\n', ...
+            fprintf('[sweep]   loaded (%d,%d): DV=%.3f  Tmax=%s  (min-TOF-proxy NOT available for reused cells)\n', ...
                 di, dj, DV_cap_list(di), local_tmax_str(Tmax_list(dj)));
         end
     end
@@ -207,12 +239,23 @@ fprintf('[sweep] %d cell(s) loaded from existing results. %d remain to compute.\
     nFound, sum(~done_mask(:)));
 
 local_save_checkpoint(CHECKPOINT_FILE, done_mask, ...
-    DVmatrix_sweep, TOFmatrix_sweep, winners_sweep, source_sweep);
+    DVmatrix_sweep, TOFmatrix_sweep, TOFproxyMatrix_sweep, DVatMinTOFMatrix_sweep, ...
+    winners_sweep, source_sweep);
 
 % Early exit if everything is already done
 if all(done_mask(:))
     fprintf('[sweep] All cells already done — skipping computation.\n');
 else
+    % ══════════════════════════════════════════════════════════════════════════
+    %  PRE-FLIGHT: verify the base atlas cache exists before doing any work
+    % ══════════════════════════════════════════════════════════════════════════
+    [cache_ok, cache_report] = atlas_check_cache_exists(families, cfg); %#ok<ASGLU>
+    if ~cache_ok
+        error(['run_overlap_dv_tmax_sweep: one or more base-atlas cache files ' ...
+               'are missing (see list above). Either run the atlas build for ' ...
+               'those families first, or set cfg.cache.rebuild appropriately.']);
+    end
+
     % ══════════════════════════════════════════════════════════════════════════
     %  LOAD BASE ATLASES  (Tmax = pi, DV_cap = 0.2)  — once for the whole sweep
     % ══════════════════════════════════════════════════════════════════════════
@@ -285,19 +328,19 @@ else
             end
 
             % ── Build compact per-family voxel footprints ─────────────────────
-            % Each footprint is ~5-25 MB (unique voxel IDs + per-voxel dv_min/t_mean)
+            % Each footprint is ~5-25 MB (unique voxel IDs + per-voxel dv_min/t_min)
             % vs. full atlas ~0.5-2 GB.  Workers in the pair parfor receive footprints
             % instead of full row structs → drastically reduces worker heap growth.
             fprintf('[sweep] Building voxel footprints...\n');
             Fall_sub = cell(N, 1);
             if N_WORKERS > 0
                 parfor i = 1:N
-                    Fall_sub{i} = local_compute_footprint( ...
+                    Fall_sub{i} = overlap_proxy_footprint( ...
                         Sall_sub{i}, grid3_base, VU_mps, TU_days);
                 end
             else
                 for i = 1:N
-                    Fall_sub{i} = local_compute_footprint( ...
+                    Fall_sub{i} = overlap_proxy_footprint( ...
                         Sall_sub{i}, grid3_base, VU_mps, TU_days);
                 end
             end
@@ -313,40 +356,54 @@ else
             clear Fall_sub   % individual footprints held by FA/FB_arr
 
             % ── Run pair loop ─────────────────────────────────────────────────
-            pair_minDV   = nan(nPairs, 1);
-            pair_DVlb    = nan(nPairs, 1);
-            pair_DVpatch = nan(nPairs, 1);
-            pair_TOF     = nan(nPairs, 1);
-            pair_voxelId = nan(nPairs, 1);
+            % Each pair yields TWO independent winners over the same candidate
+            % voxels: the min-DV-proxy voxel (unchanged from before) and the
+            % min-TOF-proxy voxel (new).  See overlap_proxy_pair.m.
+            pair_minDV      = nan(nPairs, 1);
+            pair_DVlb       = nan(nPairs, 1);
+            pair_DVpatch    = nan(nPairs, 1);
+            pair_TOF        = nan(nPairs, 1);   % TOF at the min-DV winner voxel
+            pair_voxelId    = nan(nPairs, 1);
+            pair_minTOF     = nan(nPairs, 1);   % min-TOF-proxy winner
+            pair_DVatMinTOF = nan(nPairs, 1);   % DV at the min-TOF winner voxel
+            pair_voxelIdTOF = nan(nPairs, 1);
 
             if N_WORKERS > 0
                 % parfor over pairs — FA/FB_arr sliced, grid3_base/cfg_sub/VU_mps broadcast
                 parfor p = 1:nPairs
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                        pair_TOF(p), pair_voxelId(p)] = ...
-                        local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
+                        pair_TOF(p), pair_voxelId(p), ...
+                        pair_minTOF(p), pair_DVatMinTOF(p), pair_voxelIdTOF(p)] = ...
+                        overlap_proxy_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             else
                 for p = 1:nPairs
                     fprintf('[sweep]   pair %d/%d: %-30s → %s\n', ...
                         p, nPairs, families{pairI(p)}, families{pairJ(p)});
                     [pair_minDV(p), pair_DVlb(p), pair_DVpatch(p), ...
-                        pair_TOF(p), pair_voxelId(p)] = ...
-                        local_run_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
+                        pair_TOF(p), pair_voxelId(p), ...
+                        pair_minTOF(p), pair_DVatMinTOF(p), pair_voxelIdTOF(p)] = ...
+                        overlap_proxy_pair(FA_arr{p}, FB_arr{p}, grid3_base, cfg_sub, VU_mps);
                 end
             end
 
             clear FA_arr FB_arr   % free pair-footprint memory
 
             % ── Assemble N×N matrices ─────────────────────────────────────────
-            minDVproxyMat = nan(N, N);
-            TOFmat        = nan(N, N);
+            minDVproxyMat  = nan(N, N);
+            TOFmat         = nan(N, N);
+            minTOFproxyMat = nan(N, N);
+            DVatMinTOFmat  = nan(N, N);
             for p = 1:nPairs
                 i = pairI(p);  j = pairJ(p);
-                minDVproxyMat(i, j) = pair_minDV(p);
-                minDVproxyMat(j, i) = pair_minDV(p);
-                TOFmat(i, j)        = pair_TOF(p);
-                TOFmat(j, i)        = pair_TOF(p);
+                minDVproxyMat(i, j)  = pair_minDV(p);
+                minDVproxyMat(j, i)  = pair_minDV(p);
+                TOFmat(i, j)         = pair_TOF(p);
+                TOFmat(j, i)         = pair_TOF(p);
+                minTOFproxyMat(i, j) = pair_minTOF(p);
+                minTOFproxyMat(j, i) = pair_minTOF(p);
+                DVatMinTOFmat(i, j)  = pair_DVatMinTOF(p);
+                DVatMinTOFmat(j, i)  = pair_DVatMinTOF(p);
             end
 
             % ── Build winners table (mirrors pair_winners_top1.csv) ───────────
@@ -354,21 +411,26 @@ else
             pair_famB = families(pairJ);
             T = table(pair_famA(:), pair_famB(:), ...
                 pair_minDV, pair_DVlb, pair_DVpatch, pair_TOF, pair_voxelId, ...
+                pair_minTOF, pair_DVatMinTOF, pair_voxelIdTOF, ...
                 'VariableNames', { ...
                     'FamilyA', 'FamilyB', ...
                     'minDVproxy_mps', 'DVlb_mps', 'DVpatch_ub_mps', ...
-                    'EstimatedTOF_days', 'VoxelId'});
+                    'TOFatMinDV_days', 'VoxelId_DV', ...
+                    'minTOFproxy_days', 'DVatMinTOF_mps', 'VoxelId_TOF'});
 
             % ── Store in sweep arrays ─────────────────────────────────────────
-            DVmatrix_sweep{di, dj}  = minDVproxyMat;
-            TOFmatrix_sweep{di, dj} = TOFmat;
+            DVmatrix_sweep{di, dj}         = minDVproxyMat;
+            TOFmatrix_sweep{di, dj}        = TOFmat;
+            TOFproxyMatrix_sweep{di, dj}   = minTOFproxyMat;
+            DVatMinTOFMatrix_sweep{di, dj} = DVatMinTOFmat;
             winners_sweep{di, dj}   = T;
             source_sweep{di, dj}    = 'computed';
             done_mask(di, dj)       = true;
 
             % ── Checkpoint immediately after cell completes ───────────────────
             local_save_checkpoint(CHECKPOINT_FILE, done_mask, ...
-                DVmatrix_sweep, TOFmatrix_sweep, winners_sweep, source_sweep);
+                DVmatrix_sweep, TOFmatrix_sweep, TOFproxyMatrix_sweep, DVatMinTOFMatrix_sweep, ...
+                winners_sweep, source_sweep);
 
             fprintf('[sweep] Cell (%d,%d) done in %.1f s — checkpoint saved.\n', ...
                 di, dj, toc(tCell));
@@ -386,7 +448,9 @@ end  % if ~all(done_mask)
 outMat = fullfile(OUTPUT_DIR, 'sweep_DVmatrix_results.mat');
 save(outMat, ...
     'DV_cap_list', 'Tmax_list', 'Tmax_labels', 'families', ...
-    'DVmatrix_sweep', 'TOFmatrix_sweep', 'winners_sweep', 'source_sweep', ...
+    'DVmatrix_sweep', 'TOFmatrix_sweep', ...
+    'TOFproxyMatrix_sweep', 'DVatMinTOFMatrix_sweep', ...
+    'winners_sweep', 'source_sweep', ...
     '-v7.3');
 fprintf('\n[sweep] Final .mat saved:\n  %s\n', outMat);
 
@@ -434,253 +498,23 @@ end
 % ══════════════════════════════════════════════════════════════════════════════
 
 %  LOCAL FUNCTIONS
+%
+%  NOTE: the per-family footprint builder and per-pair winner search used to
+%  live here as local_compute_footprint / local_run_pair. They now live in
+%  src/ as overlap_proxy_footprint.m / overlap_proxy_pair.m (reused by the
+%  single-snapshot preview script run_overlap_mintof_maxbudget_preview.m).
 % ══════════════════════════════════════════════════════════════════════════════
 
 % ─────────────────────────────────────────────────────────────────────────────
-function [minDV, dvlb, dvpatch, tof, voxelId] = ...
-        local_run_pair(FA, FB, grid3, cfg, VU_mps)
-%LOCAL_RUN_PAIR  Compute DV proxy and TOF for one pair using pre-computed footprints.
-%
-% FA / FB are compact structs produced by local_compute_footprint; they contain
-% unique sorted voxel-ID vectors + per-voxel dv_min and t_mean for FRS and BRS.
-% No full row data is needed — workers only receive ~5-25 MB instead of ~1-3 GB.
-%
-% Results are numerically identical to the overlap_pair +
-% overlap_extract_voxel_info + inline-proxy pipeline.
-minDV = NaN;  dvlb = NaN;  dvpatch = NaN;  tof = NaN;  voxelId = NaN;
-try
-    % ── 1. Intersect FRS(A) with BRS(B) (both already sorted unique) ──────
-    idsO = intersect(FA.uid_frs, FB.uid_brs);
-    if isempty(idsO), return; end
-
-    % ── 2. Unpack voxel grid indices ───────────────────────────────────────
-    Ny = numel(grid3.y_centers);
-    Nx = numel(grid3.x_centers);
-    Nt = numel(grid3.th_centers);
-    [iy, ix, ~] = ind2sub([Ny, Nx, Nt], idsO);
-
-    % ── 3. Keep + primary-buffer filter (mirrors overlap_pair) ─────────
-    bufFrac = 0.05;
-    if isfield(cfg,'overlap') && isfield(cfg.overlap,'primary_buffer_frac') ...
-            && ~isempty(cfg.overlap.primary_buffer_frac)
-        bufFrac = cfg.overlap.primary_buffer_frac;
-    end
-    if ~(isfield(cfg,'sys') && isfield(cfg.sys,'RE_nd') && isfield(cfg.sys,'RM_nd'))
-        error('cfg.sys.RE_nd and cfg.sys.RM_nd required for primary buffer filter.');
-    end
-    RE = cfg.sys.RE_nd;
-    RM = cfg.sys.RM_nd;
-    mu = FA.mu;
-
-    % Keep mask — all families share grid3_base so keepA = keepB = grid3.Keep
-    if isfield(grid3,'Keep') && ~isempty(grid3.Keep)
-        keepXY = logical(grid3.Keep);
-        if ~isequal(size(keepXY), [Ny, Nx]), keepXY = keepXY.'; end
-        okKeep = keepXY(sub2ind([Ny, Nx], iy, ix));
-    else
-        okKeep = true(numel(idsO), 1);
-    end
-
-    x = grid3.x_centers(ix);
-    y = grid3.y_centers(iy);
-    okEarth = hypot(x + mu, y)     > (1 + bufFrac) * RE;
-    okMoon  = hypot(x - (1-mu), y) > (1 + bufFrac) * RM;
-    ok = okKeep(:) & okEarth(:) & okMoon(:);
-
-    idsO = idsO(ok);
-    if isempty(idsO), return; end
-    ix = ix(ok);  iy = iy(ok);
-
-    % ── 4. Look up pre-computed per-voxel DV and TOF ──────────────────────
-    % FA.uid_frs and FB.uid_brs are sorted → ismember is fast
-    [~, locA] = ismember(idsO, FA.uid_frs);
-    [~, locB] = ismember(idsO, FB.uid_brs);
-    dv_min_A = FA.dv_min_frs(locA);
-    dv_min_B = FB.dv_min_brs(locB);
-    t_mean_A = FA.t_mean_frs(locA);
-    t_mean_B = FB.t_mean_brs(locB);
-
-    % ── 5. DV proxy (identical formula to original local_run_pair) ─────────
-    x_ok = grid3.x_centers(ix);
-    y_ok = grid3.y_centers(iy);
-    CJstar = min(FA.CJ, FB.CJ);
-    pot = cr3bp_potential(x_ok(:), y_ok(:), mu);
-    v_box = sqrt(max(2 * pot.U - CJstar, 0));
-    dv_patch_vec = 2 * v_box .* sin(abs(grid3.dtheta) / 2) * VU_mps;
-    dv_lb_vec    = dv_min_A(:) + dv_min_B(:);
-    dv_proxy     = dv_lb_vec + dv_patch_vec;
-
-    valid = isfinite(dv_proxy);
-    if ~any(valid), return; end
-
-    idxValid  = find(valid);
-    [~, iLoc] = min(dv_proxy(idxValid));
-    iWin      = idxValid(iLoc);
-
-    minDV   = dv_proxy(iWin);
-    dvlb    = dv_lb_vec(iWin);
-    dvpatch = dv_patch_vec(iWin);
-    voxelId = idsO(iWin);
-    tof     = t_mean_A(iWin) + t_mean_B(iWin);
-catch ME
-    warning('[sweep:pair] %s', ME.message);
-end
-end
-
-% ─────────────────────────────────────────────────────────────────────────────
-function F = local_compute_footprint(S, grid3, VU_mps, TU_days)
-%LOCAL_COMPUTE_FOOTPRINT  Build compact per-voxel summary for one atlas family.
-%
-% Computes, for FRS and BRS separately:
-%   uid       — sorted unique voxel IDs  (linear index into [Ny,Nx,Nt])
-%   dv_min    — min dv_turn (m/s) over all rows in that voxel
-%   t_mean    — mean |TOF| (days) over all rows in that voxel
-%
-% FRS  = direct rows (FRS_upper + FRS_lower).
-% BRS  = R(FRS): mirror of FRS_upper + mirror of FRS_lower.
-%        Mirror: iy → Ny-iy+1,  it → it_lut(it)  (same as overlap_pair).
-%
-% DV reuse: since U(x,y)=U(x,-y) in CR3BP, the DV computed at a seed and at
-% its y-mirror are identical.  BRS voxels therefore reuse the DV values from
-% the corresponding FRS rows — no extra potential evaluation needed.
-
-Ny = numel(grid3.y_centers);
-Nx = numel(grid3.x_centers);
-Nt = numel(grid3.th_centers);
-
-% ── Theta mirror LUT (identical formula to overlap_pair) ───────────────
-thm = wrap_to_pi(pi - grid3.th_centers(:));
-lut = discretize(thm, grid3.th_edges);
-lut(isnan(lut)) = 0;
-it_lut = uint16(lut);
-
-% ── Pre-build delta-angle lookup matrix (vectorised, avoids cell loop) ──────
-dlists = S.Step4.delta_lists;
-Ns     = numel(dlists);
-max_h  = max(1, max(cellfun(@numel, dlists)));
-delta_mat = zeros(Ns, max_h);
-for s = 1:Ns
-    v = double(dlists{s});
-    delta_mat(s, 1:numel(v)) = v;
-end
-
-% ── Pre-compute v0 per unique seed (avoids per-row potential evaluation) ────
-% cr3bp_potential on ~1000 seeds is O(1000x) faster than on
-% millions of rows.  Per-row v0 is then a cheap index lookup: v0(iSeed).
-pot_u = cr3bp_potential(S.SeedsUpper(:,1), S.SeedsUpper(:,2), S.mu);
-v0_upper = sqrt(max(2*pot_u.U(:) - S.CJ, 0));   % [Nseeds_upper, 1]
-
-if isfield(S,'SeedsLower') && ~isempty(S.SeedsLower)
-    pot_l = cr3bp_potential(S.SeedsLower(:,1), S.SeedsLower(:,2), S.mu);
-    v0_lower = sqrt(max(2*pot_l.U(:) - S.CJ, 0));
-else
-    v0_lower = v0_upper;
-end
-
-% ── Process FRS_upper rows ─────────────────────────────────────────────────
-nu = double(S.Step4.rows_FRS_upper.n);
-if nu > 0
-    [ids_u, dv_u, t_u, ix_u, iy_u, it_u] = local_fp_rows( ...
-        S.Step4.rows_FRS_upper, nu, v0_upper, ...
-        delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
-else
-    ids_u=zeros(0,1); dv_u=zeros(0,1); t_u=zeros(0,1);
-    ix_u=zeros(0,1);  iy_u=zeros(0,1); it_u=zeros(0,1);
-end
-
-% ── Process FRS_lower rows ─────────────────────────────────────────────────
-nl = double(S.Step4.rows_FRS_lower.n);
-if nl > 0
-    [ids_l, dv_l, t_l, ix_l, iy_l, it_l] = local_fp_rows( ...
-        S.Step4.rows_FRS_lower, nl, v0_lower, ...
-        delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days);
-else
-    ids_l=zeros(0,1); dv_l=zeros(0,1); t_l=zeros(0,1);
-    ix_l=zeros(0,1);  iy_l=zeros(0,1); it_l=zeros(0,1);
-end
-
-% ── Aggregate FRS voxels ───────────────────────────────────────────────────
-[F.uid_frs, F.dv_min_frs, F.t_mean_frs] = local_fp_agg( ...
-    [ids_u; ids_l], [dv_u; dv_l], [t_u; t_l]);
-
-% ── BRS: mirror FRS_upper ──────────────────────────────────────────────────
-if ~isempty(ix_u)
-    biy_u = Ny - iy_u + 1;
-    bit_u = double(it_lut(it_u));
-    ok_u  = bit_u > 0;
-    ids_brs_u = sub2ind([Ny,Nx,Nt], biy_u(ok_u), ix_u(ok_u), ...
-        max(1, min(Nt, bit_u(ok_u))));
-    dv_bu = dv_u(ok_u);  t_bu = t_u(ok_u);
-else
-    ids_brs_u = zeros(0,1);  dv_bu = zeros(0,1);  t_bu = zeros(0,1);
-end
-
-% ── BRS: mirror FRS_lower ──────────────────────────────────────────────────
-if ~isempty(ix_l)
-    biy_l = Ny - iy_l + 1;
-    bit_l = double(it_lut(it_l));
-    ok_l  = bit_l > 0;
-    ids_brs_l = sub2ind([Ny,Nx,Nt], biy_l(ok_l), ix_l(ok_l), ...
-        max(1, min(Nt, bit_l(ok_l))));
-    dv_bl = dv_l(ok_l);  t_bl = t_l(ok_l);
-else
-    ids_brs_l = zeros(0,1);  dv_bl = zeros(0,1);  t_bl = zeros(0,1);
-end
-
-% ── Aggregate BRS voxels ───────────────────────────────────────────────────
-[F.uid_brs, F.dv_min_brs, F.t_mean_brs] = local_fp_agg( ...
-    [ids_brs_u; ids_brs_l], [dv_bu; dv_bl], [t_bu; t_bl]);
-
-F.CJ   = S.CJ;
-F.mu   = S.mu;
-F.name = S.name;
-end
-
-% ─────────────────────────────────────────────────────────────────────────────
-function [ids, dv_mps, t_days, ix_out, iy_out, it_out] = local_fp_rows( ...
-        rows, n, v0_per_seed, delta_mat, Ns, max_h, Ny, Nx, Nt, VU_mps, TU_days)
-%LOCAL_FP_ROWS  Extract voxel IDs, DV (m/s), and |TOF| (days) for n packed rows.
-% v0_per_seed  [Nseeds,1] — pre-computed sqrt(max(2U-CJ,0)) per seed position.
-%   Caller computes this once with cr3bp_potential on the seeds
-%   matrix (~hundreds of evals) so this function avoids per-row pot evaluation.
-ix_out = double(rows.ix(1:n));
-iy_out = double(rows.iy(1:n));
-it_out = double(rows.it(1:n));
-ids    = sub2ind([Ny, Nx, Nt], iy_out, ix_out, it_out);
-
-iSeed = double(rows.iSeed(1:n));
-iHead = double(rows.iHead(1:n));
-t_nd  = double(rows.t(1:n));
-
-% Vectorised delta-angle lookup
-lin   = sub2ind([Ns, max_h], iSeed, iHead);
-delta = delta_mat(lin);
-
-% Per-row v0 via seed lookup (O(n) index, no potential evaluation)
-v0     = v0_per_seed(iSeed);
-dv_mps = 2 * v0(:) .* sin(abs(delta(:)) / 2) * VU_mps;
-t_days = abs(t_nd(:)) * TU_days;
-end
-
-% ─────────────────────────────────────────────────────────────────────────────
-function [uid, dv_min, t_mean] = local_fp_agg(ids, dv, t)
-%LOCAL_FP_AGG  Aggregate per-voxel min DV and mean TOF from raw row arrays.
-if isempty(ids)
-    uid = zeros(0,1);  dv_min = zeros(0,1);  t_mean = zeros(0,1);
-    return;
-end
-[uid, ~, ic] = unique(ids(:));
-dv_min = accumarray(ic, dv(:), [], @min);          % @min has a native built-in path
-t_mean = accumarray(ic, t(:)) ./ accumarray(ic, ones(numel(ic), 1)); % @mean does not → use sum/count
-end
-
-% ─────────────────────────────────────────────────────────────────────────────
 function local_save_checkpoint(fpath, done_mask, ...
-        DVmatrix_sweep, TOFmatrix_sweep, winners_sweep, source_sweep)
+        DVmatrix_sweep, TOFmatrix_sweep, TOFproxyMatrix_sweep, DVatMinTOFMatrix_sweep, ...
+        winners_sweep, source_sweep)
 %LOCAL_SAVE_CHECKPOINT  Atomically save sweep progress.
 tmp = [fpath '.tmp'];
 save(tmp, ...
-    'done_mask', 'DVmatrix_sweep', 'TOFmatrix_sweep', 'winners_sweep', 'source_sweep', ...
+    'done_mask', 'DVmatrix_sweep', 'TOFmatrix_sweep', ...
+    'TOFproxyMatrix_sweep', 'DVatMinTOFMatrix_sweep', ...
+    'winners_sweep', 'source_sweep', ...
     '-v7.3');
 if isfile(fpath), delete(fpath); end
 movefile(tmp, fpath);
