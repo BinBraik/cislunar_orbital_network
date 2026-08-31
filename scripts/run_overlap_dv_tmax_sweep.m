@@ -61,9 +61,9 @@ rehash;
 %   N → parfor with N workers
 % NOTE: keep this <= (SLURM --cpus-per-task - 1), leaving one core for the
 % main MATLAB thread / BLAS / OS overhead. Matches scripts/run_sweep.slurm's
-% --cpus-per-task=36 (normal_q / owl_normal_base) default: 35 workers + 1
+% --cpus-per-task=40 (normal_q / owl_normal_base) default: 39 workers + 1
 % main thread.
-N_WORKERS = 35;
+N_WORKERS = 39;
 
 
 % Output controls
