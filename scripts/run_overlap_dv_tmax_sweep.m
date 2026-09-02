@@ -59,11 +59,16 @@ rehash;
 % Parallel workers for the PAIR loop inside each combination.
 %   0 → fully serial  (use on memory-limited nodes)
 %   N → parfor with N workers
-% NOTE: keep this <= (SLURM --cpus-per-task - 1), leaving one core for the
-% main MATLAB thread / BLAS / OS overhead. Matches scripts/run_sweep.slurm's
-% --cpus-per-task=40 (normal_q / owl_normal_base) default: 39 workers + 1
-% main thread.
-N_WORKERS = 39;
+% NOTE: set to 13 (= number of families), not cpus-per-task-1. The
+% subset-derivation and footprint-building parfor loops earlier in each
+% cell only ever use up to N=13 workers regardless of pool size — a
+% bigger pool just means more idle MATLAB worker processes, each with
+% its own fixed memory overhead, sitting around during exactly the phase
+% that caused an OOM at job 765432 (see scripts/run_sweep.slurm). Only
+% the later 78-pair loop benefits from more than 13 workers, so this
+% trades some of that parallelism for materially less baseline memory
+% pressure at the riskiest point in each cell.
+N_WORKERS = 13;
 
 
 % Output controls
