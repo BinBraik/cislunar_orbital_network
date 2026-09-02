@@ -350,15 +350,37 @@ else
             cfg_sub.cache.dir      = SWEEP_CACHE_DIR;
 
             % ── Derive in-memory subset atlases ───────────────────────────────
-            fprintf('[sweep] Deriving subset atlases...\n');
-            Sall_sub = cell(N, 1);
-            if N_WORKERS > 0
-                parfor i = 1:N
-                    Sall_sub{i} = atlas_derive_subset(Sall_base{i}, cfg_sub);
-                end
+            % If this cell's budget equals the BASE atlas's own generation
+            % bounds (cfg.fan.DV_cap_nd / cfg.propag.Tmax), there is nothing
+            % to subset — atlas_derive_subset would just filter out ~0 rows
+            % and return an equivalent-but-separately-allocated copy. That
+            % cell is processed FIRST (the sweep runs largest-budget-first),
+            % so without this check every run briefly holds a near-full
+            % second copy of the entire base atlas at the worst possible
+            % moment (this is what caused the OOM in job 765432 — the atlas
+            % build log for that run put total FRS rows across all 13
+            % families at ~2.64 billion). Aliasing Sall_sub = Sall_base
+            % instead costs ~0 extra memory (MATLAB copy-on-write; Sall_sub
+            % is only ever read from below, never mutated).
+            is_full_budget = abs(dv_cap - cfg.fan.DV_cap_nd) < 1e-9 && ...
+                             abs(tmax   - cfg.propag.Tmax)   < 1e-9;
+
+            if is_full_budget
+                fprintf(['[sweep] DV_cap/Tmax match the base atlas exactly — ' ...
+                         'reusing Sall_base directly (no subset derivation, ' ...
+                         'no memory duplication).\n']);
+                Sall_sub = Sall_base;
             else
-                for i = 1:N
-                    Sall_sub{i} = atlas_derive_subset(Sall_base{i}, cfg_sub);
+                fprintf('[sweep] Deriving subset atlases...\n');
+                Sall_sub = cell(N, 1);
+                if N_WORKERS > 0
+                    parfor i = 1:N
+                        Sall_sub{i} = atlas_derive_subset(Sall_base{i}, cfg_sub);
+                    end
+                else
+                    for i = 1:N
+                        Sall_sub{i} = atlas_derive_subset(Sall_base{i}, cfg_sub);
+                    end
                 end
             end
 
