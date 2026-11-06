@@ -5,23 +5,25 @@ abstract: >
   MATLAB codebase for computing reachable-set atlases in the planar Earth-Moon CR3BP,
   inferring pairwise family accessibility from reachable-set overlap, and assembling
   weighted cislunar orbital networks from thirteen representative periodic orbit families
-  at a common Jacobi constant. Associated with the paper "Orbital Networks in the
-  Three-Body Problem" by Braik and Ross.
+  at a common Jacobi constant. Accompanies the paper "Orbital Networks in the
+  Three-Body Problem" by Braik and Ross, Advances in Space Research (2026).
+type: software
 version: "1.0.0"
-date-released: 2026-05-27
+date-released: 2026-11-06
 license: MIT
 repository-code: "https://github.com/binbraik/cislunar_orbital_network"
+url: "https://binbraik.github.io/cislunar_orbital_network"
 authors:
   - family-names: Braik
     given-names: Abdullah
     affiliation: "Aerospace and Ocean Engineering, Virginia Tech, Blacksburg, VA, USA"
     email: braik@vt.edu
-    orcid: ""
+    orcid: "https://orcid.org/0009-0007-8207-2997"
   - family-names: Ross
     given-names: Shane D.
     affiliation: "Aerospace and Ocean Engineering, Virginia Tech, Blacksburg, VA, USA"
     email: sdross@vt.edu
-    orcid: ""
+    orcid: "https://orcid.org/0000-0001-5523-2376"
 keywords:
   - "cislunar dynamics"
   - "Earth-Moon CR3BP"
@@ -37,9 +39,20 @@ preferred-citation:
   authors:
     - family-names: Braik
       given-names: Abdullah
+      orcid: "https://orcid.org/0009-0007-8207-2997"
     - family-names: Ross
       given-names: Shane D.
+      orcid: "https://orcid.org/0000-0001-5523-2376"
   year: 2026
   journal: "Advances in Space Research"
-  doi: "10.48550/arXiv.2605.31543"
-  url: "https://arxiv.org/abs/2605.31543"
+  issn: "0273-1177"
+  status: advance-online
+  doi: "10.1016/j.asr.2026.10.100"
+  url: "https://doi.org/10.1016/j.asr.2026.10.100"
+  identifiers:
+    - type: doi
+      value: "10.1016/j.asr.2026.10.100"
+      description: "Journal article (Advances in Space Research)"
+    - type: doi
+      value: "10.48550/arXiv.2605.31543"
+      description: "arXiv preprint"
