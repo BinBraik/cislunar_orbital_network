@@ -1,6 +1,18 @@
 # Changelog
 
-## v1.0.0 — 2026-05-27 (initial public release)
+## v1.0.0 — 2026-11-06 (published-paper archival release)
+
+Release matching the published paper in *Advances in Space Research*
+(DOI [10.1016/j.asr.2026.10.100](https://doi.org/10.1016/j.asr.2026.10.100)),
+archived on Zenodo.
+
+- Updated citation metadata (`README.md`, `CITATION.cff`) from preprint to the journal
+  article; added author ORCIDs.
+- Added `.zenodo.json` metadata for the Zenodo archive.
+- Added a data-availability section to `README.md` that maps the paper's results to files.
+- Interactive ΔV map: minimum-TOF path query and orbit-family legend (since `v1.0-paper`).
+
+## Initial public release — 2026-05-27
 
 ### Physics fixes (carried forward from development history)
 

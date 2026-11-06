@@ -1,0 +1,49 @@
+{
+  "title": "Cislunar Orbital Network: code and data for \"Orbital Networks in the Three-Body Problem\"",
+  "upload_type": "software",
+  "description": "<p>MATLAB code and numerical results accompanying the paper <em>Orbital Networks in the Three-Body Problem</em> by A. Braik and S. D. Ross, Advances in Space Research (2026), <a href=\"https://doi.org/10.1016/j.asr.2026.10.100\">doi:10.1016/j.asr.2026.10.100</a>.</p><p>The code builds forward and backward reachable-set atlases for thirteen periodic orbit families at a common Jacobi constant in the planar Earth-Moon CR3BP, infers pairwise family accessibility from reachable-set overlap, and assembles the results into a weighted cislunar orbital network. Included numerical results: the family-to-family ΔV and time-of-flight proxy matrices, budget-plane network diagnostics (node centrality metrics and per-budget snapshot summaries), and differential-correction summaries of the corrected trajectory realizations. The full reachable-set atlases (hundreds of GB) are not archived; the code regenerates them deterministically.</p><p>Interactive ΔV-map visualization: <a href=\"https://binbraik.github.io/cislunar_orbital_network\">binbraik.github.io/cislunar_orbital_network</a>.</p>",
+  "creators": [
+    {
+      "name": "Braik, Abdullah",
+      "affiliation": "Aerospace and Ocean Engineering, Virginia Tech",
+      "orcid": "0009-0007-8207-2997"
+    },
+    {
+      "name": "Ross, Shane D.",
+      "affiliation": "Aerospace and Ocean Engineering, Virginia Tech",
+      "orcid": "0000-0001-5523-2376"
+    }
+  ],
+  "license": "MIT",
+  "access_right": "open",
+  "keywords": [
+    "cislunar dynamics",
+    "Earth-Moon CR3BP",
+    "reachable sets",
+    "periodic orbit families",
+    "accessibility analysis",
+    "weighted graph centrality",
+    "low-energy transfers",
+    "cycler orbits"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.1016/j.asr.2026.10.100",
+      "relation": "isSupplementTo",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "10.48550/arXiv.2605.31543",
+      "relation": "isSupplementTo",
+      "resource_type": "publication-preprint",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "https://binbraik.github.io/cislunar_orbital_network",
+      "relation": "isSupplementedBy",
+      "resource_type": "other",
+      "scheme": "url"
+    }
+  ]
+}

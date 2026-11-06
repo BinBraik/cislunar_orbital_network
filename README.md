@@ -5,7 +5,10 @@ MATLAB codebase accompanying the paper:
 > **Orbital Networks in the Three-Body Problem**  
 > Abdullah Braik and Shane D. Ross  
 > Aerospace and Ocean Engineering, Virginia Tech  
-> *Preprint, 2026*
+> *Advances in Space Research*, 2026. DOI: [10.1016/j.asr.2026.10.100](https://doi.org/10.1016/j.asr.2026.10.100)  
+> Preprint: [arXiv:2605.31543](https://arxiv.org/abs/2605.31543)
+
+Interactive ΔV-map visualization: <https://binbraik.github.io/cislunar_orbital_network>
 
 This repository implements a reachable-set-based framework for characterizing pairwise accessibility across thirteen representative cislunar periodic orbit families at a common Jacobi constant in the planar Earth–Moon CR3BP. Forward and backward reachable-set atlases are built for each family, pairwise accessibility is inferred from reachable-set overlap, and the resulting cost matrix is assembled into a weighted cislunar orbital network whose hub, gateway, relay, and bottleneck roles are analyzed over varying maneuver and time budgets.
 
@@ -131,10 +134,37 @@ runner scripts before calling `atlas_cfg_validate`. Key parameters:
 - **Sweep data** — written to `atlas_sweep_results/` (DV/TOF matrices over budget plane)
 - **Network results** — written to `atlas_network_results/` (centrality CSVs and figures)
 
+## Data availability
+
+The repository contains the numerical results reported in the paper:
+
+| Paper content | Location |
+|---|---|
+| Family-to-family accessibility matrices (ΔV proxy, time of flight) | `example_outputs/DVmatrix_mps.csv`, `example_outputs/TOFmatrix_days.csv` |
+| Budget-plane network diagnostics (per-node centrality, per-budget snapshots) | `example_outputs/node_metrics.csv`, `example_outputs/snapshot_summary.csv` |
+| Full (ΔV cap, Tmax) sweep of ΔV/TOF matrices | embedded in the interactive page `docs/index.html` |
+| Corrected trajectory realizations (differential-correction summaries) | `example_outputs/dc_refined_summary_mps.csv` |
+
+The full reachable-set atlases (hundreds of GB) are not stored in the repository.
+They are regenerated deterministically by `scripts/run_atlas_one_family.m` using the
+parameters in `atlas_cfg_defaults`.
+
 ## Citing this work
 
-See `CITATION.cff` for the BibTeX entry. GitHub renders a "Cite this repository" button
-from that file automatically.
+Please cite the paper:
+
+```bibtex
+@article{BraikRoss2026OrbitalNetworks,
+  author  = {Braik, Abdullah and Ross, Shane D.},
+  title   = {Orbital Networks in the Three-Body Problem},
+  journal = {Advances in Space Research},
+  year    = {2026},
+  doi     = {10.1016/j.asr.2026.10.100}
+}
+```
+
+The software citation is in `CITATION.cff`. GitHub renders a "Cite this repository"
+button from that file automatically.
 
 ## Further reading
 
