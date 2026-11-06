@@ -1,5 +1,7 @@
 # Cislunar Orbital Network
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24022012.svg)](https://doi.org/10.5281/zenodo.24022012)
+
 MATLAB codebase accompanying the paper:
 
 > **Orbital Networks in the Three-Body Problem**  
@@ -8,7 +10,8 @@ MATLAB codebase accompanying the paper:
 > *Advances in Space Research*, 2026. DOI: [10.1016/j.asr.2026.10.100](https://doi.org/10.1016/j.asr.2026.10.100)  
 > Preprint: [arXiv:2605.31543](https://arxiv.org/abs/2605.31543)
 
-Interactive ΔV-map visualization: <https://binbraik.github.io/cislunar_orbital_network>
+Interactive ΔV-map visualization: <https://binbraik.github.io/cislunar_orbital_network>  
+Archived release (v1.0.0, matches the published paper): [doi:10.5281/zenodo.24022012](https://doi.org/10.5281/zenodo.24022012)
 
 This repository implements a reachable-set-based framework for characterizing pairwise accessibility across thirteen representative cislunar periodic orbit families at a common Jacobi constant in the planar Earth–Moon CR3BP. Forward and backward reachable-set atlases are built for each family, pairwise accessibility is inferred from reachable-set overlap, and the resulting cost matrix is assembled into a weighted cislunar orbital network whose hub, gateway, relay, and bottleneck roles are analyzed over varying maneuver and time budgets.
 
@@ -136,7 +139,8 @@ runner scripts before calling `atlas_cfg_validate`. Key parameters:
 
 ## Data availability
 
-The repository contains the numerical results reported in the paper:
+Release v1.0.0 of this repository is archived on Zenodo at
+[doi:10.5281/zenodo.24022012](https://doi.org/10.5281/zenodo.24022012). The repository contains the numerical results reported in the paper:
 
 | Paper content | Location |
 |---|---|
@@ -160,6 +164,19 @@ Please cite the paper:
   journal = {Advances in Space Research},
   year    = {2026},
   doi     = {10.1016/j.asr.2026.10.100}
+}
+```
+
+and, if you use the code or data, the archived software release:
+
+```bibtex
+@software{BraikRoss2026CislunarOrbitalNetworkCode,
+  author    = {Braik, Abdullah and Ross, Shane D.},
+  title     = {Cislunar Orbital Network: code and data for ``Orbital Networks in the Three-Body Problem''},
+  version   = {v1.0.0},
+  publisher = {Zenodo},
+  year      = {2026},
+  doi       = {10.5281/zenodo.24022012}
 }
 ```
 
